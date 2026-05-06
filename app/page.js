@@ -1,0 +1,440 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Check, X, Camera, Trash2, Users, LogOut } from "lucide-react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase";
+import {
+  TOTAL,
+  PRINTED_TOTAL,
+  SET_CODE,
+  NAMES,
+  PRICES_USD,
+  VARIANTS,
+  isVariantEligible,
+  RATES,
+  valueOf,
+  fmtMoney,
+  tierFor,
+  TIER_STYLES,
+  TIER_LABELS,
+} from "@/lib/cards";
+
+const officialImg = (n) =>
+  `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_${String(n).padStart(3, "0")}_R_EN_LG.png`;
+
+function CardArt({ n, isChecked, name, tier, tierStyles, tierLabels }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center transition-all duration-300 ${tierStyles[tier]} ${isChecked ? "" : "grayscale opacity-30"}`}
+      >
+        <div className="text-2xl font-black tabular-nums leading-none">
+          {String(n).padStart(3, "0")}
+        </div>
+        <div className="mt-1.5 text-[11px] font-bold leading-tight line-clamp-2">
+          {name || "—"}
+        </div>
+        <div className="mt-1 text-[8px] uppercase tracking-widest opacity-70">
+          {tierLabels[tier]}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={officialImg(n)}
+      alt={name}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className={`w-full h-full object-cover transition-all duration-300 ${isChecked ? "" : "grayscale opacity-30"}`}
+    />
+  );
+}
+
+export default function HomePage() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [entries, setEntries] = useState({}); // { [card_number]: { checked, variant, photo_url } }
+  const [picking, setPicking] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [currency, setCurrency] = useState("AUD");
+  const fileInputRef = useRef(null);
+  const photoTargetRef = useRef(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("po:currency");
+    if (saved && RATES[saved]) setCurrency(saved);
+  }, []);
+
+  const switchCurrency = (c) => {
+    setCurrency(c);
+    localStorage.setItem("po:currency", c);
+  };
+
+  // Load user + profile + entries
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setUser(user);
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      setProfile(profileData);
+
+      const { data: entriesData } = await supabase
+        .from("collection_entries")
+        .select("card_number, checked, variant, photo_url")
+        .eq("user_id", user.id)
+        .eq("set_code", SET_CODE);
+
+      const map = {};
+      (entriesData || []).forEach((e) => {
+        map[e.card_number] = {
+          checked: e.checked,
+          variant: e.variant,
+          photo_url: e.photo_url,
+        };
+      });
+      setEntries(map);
+      setAuthChecked(true);
+    })();
+  }, [router, supabase]);
+
+  // Upsert helper — writes a single card's state to the DB
+  const upsertEntry = useCallback(
+    async (cardNumber, patch) => {
+      if (!user) return;
+      const current = entries[cardNumber] || {};
+      const next = { ...current, ...patch };
+      setEntries((prev) => ({ ...prev, [cardNumber]: next }));
+      await supabase.from("collection_entries").upsert(
+        {
+          user_id: user.id,
+          set_code: SET_CODE,
+          card_number: cardNumber,
+          checked: !!next.checked,
+          variant: next.variant ?? null,
+          photo_url: next.photo_url ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,set_code,card_number" }
+      );
+    },
+    [user, entries, supabase]
+  );
+
+  const toggle = (n) => {
+    const cur = entries[n] || {};
+    const willCheck = !cur.checked;
+    if (willCheck) {
+      upsertEntry(n, { checked: true });
+      if (isVariantEligible(n) && !cur.variant) setPicking(n);
+    } else {
+      upsertEntry(n, { checked: false, variant: null });
+    }
+  };
+
+  const setVariant = (n, v) => {
+    upsertEntry(n, { variant: v });
+    setPicking(null);
+  };
+
+  const triggerPhoto = (n, e) => {
+    e.stopPropagation();
+    photoTargetRef.current = n;
+    fileInputRef.current?.click();
+  };
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    const n = photoTargetRef.current;
+    if (!file || n === null || !user) return;
+    e.target.value = "";
+
+    // Resize on canvas before upload
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const img = new Image();
+      img.onload = async () => {
+        const maxW = 600;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          async (blob) => {
+            if (!blob) return;
+            const path = `${user.id}/${SET_CODE}-${n}-${Date.now()}.jpg`;
+            const { error: upErr } = await supabase.storage
+              .from("Card Photos")
+              .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+            if (upErr) {
+              alert("Upload failed: " + upErr.message);
+              return;
+            }
+            const { data: { publicUrl } } = supabase.storage
+              .from("Card Photos")
+              .getPublicUrl(path);
+            upsertEntry(n, { photo_url: publicUrl });
+          },
+          "image/jpeg",
+          0.7
+        );
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removePhoto = (n, e) => {
+    e.stopPropagation();
+    upsertEntry(n, { photo_url: null });
+  };
+
+  const reset = async () => {
+    if (!confirm("Clear all checks and photos?")) return;
+    await supabase
+      .from("collection_entries")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("set_code", SET_CODE);
+    setEntries({});
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500">
+        Loading…
+      </div>
+    );
+  }
+
+  const checkedCount = Object.values(entries).filter((e) => e.checked).length;
+  const remaining = TOTAL - checkedCount;
+  const totalValue = Object.keys(PRICES_USD).reduce(
+    (s, n) => s + valueOf(Number(n), currency),
+    0
+  );
+  const remainingValue = Array.from({ length: TOTAL }, (_, i) => i + 1)
+    .filter((n) => !entries[n]?.checked)
+    .reduce((s, n) => s + valueOf(n, currency), 0);
+  const ownedValue = totalValue - remainingValue;
+
+  const cards = Array.from({ length: TOTAL }, (_, i) => i + 1);
+
+  return (
+    <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
+      <header className="sticky top-0 z-20 bg-stone-50/95 backdrop-blur border-b border-stone-300 px-4 py-3">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h1 className="text-lg font-bold tracking-tight">Perfect Order</h1>
+            <p className="text-[10px] text-stone-500">
+              @{profile?.handle || "you"}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/friends"
+              className="text-stone-700 hover:text-stone-900"
+              aria-label="Friends"
+            >
+              <Users size={18} />
+            </Link>
+            <button
+              onClick={signOut}
+              className="text-stone-500 hover:text-stone-900"
+              aria-label="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
+            <button
+              onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
+              className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-stone-900 px-2 py-1 border border-stone-300 rounded"
+              aria-label="Switch currency"
+            >
+              {currency}
+            </button>
+            <button
+              onClick={reset}
+              className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-stone-900"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-3xl font-black tabular-nums leading-none">
+              {remaining}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+              cards to go · {checkedCount}/{TOTAL}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-black tabular-nums text-emerald-700 leading-none">
+              {fmtMoney(ownedValue, currency)}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+              owned · {fmtMoney(remainingValue, currency)} to go
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 h-1 w-full bg-stone-200 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-emerald-600 transition-all duration-300"
+            style={{ width: `${(checkedCount / TOTAL) * 100}%` }}
+          />
+        </div>
+      </header>
+
+      <main className="px-3 py-4 grid grid-cols-2 gap-3">
+        {cards.map((n) => {
+          const entry = entries[n] || {};
+          const isChecked = !!entry.checked;
+          const variant = entry.variant;
+          const photo = entry.photo_url;
+          const tier = tierFor(n);
+          const aud = valueOf(n, currency);
+          return (
+            <div key={n} className="flex flex-col">
+              <div
+                onClick={() => toggle(n)}
+                className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform"
+              >
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt={NAMES[n] || `Card ${n}`}
+                    className={`w-full h-full object-cover transition-all duration-300 ${
+                      isChecked ? "" : "grayscale opacity-30"
+                    }`}
+                  />
+                ) : (
+                  <CardArt
+                    n={n}
+                    isChecked={isChecked}
+                    name={NAMES[n]}
+                    tier={tier}
+                    tierStyles={TIER_STYLES}
+                    tierLabels={TIER_LABELS}
+                  />
+                )}
+
+                <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                  {String(n).padStart(3, "0")}
+                </div>
+
+                <button
+                  onClick={(e) =>
+                    photo ? removePhoto(n, e) : triggerPhoto(n, e)
+                  }
+                  className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  aria-label={photo ? "Remove photo" : "Add photo"}
+                >
+                  {photo ? <Trash2 size={13} /> : <Camera size={13} />}
+                </button>
+
+                {variant && (
+                  <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
+                    {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
+                  </div>
+                )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(n);
+                  }}
+                  className={`absolute ${
+                    variant ? "top-1 left-1" : "top-1 right-1"
+                  } w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                    isChecked
+                      ? "bg-emerald-600 text-white shadow-lg"
+                      : "bg-white/95 border-2 border-stone-700"
+                  }`}
+                  aria-label={isChecked ? "Uncheck" : "Check"}
+                >
+                  {isChecked && <Check size={16} strokeWidth={3} />}
+                </button>
+              </div>
+              <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${
+                aud >= 50 ? "text-amber-700" : aud >= 5 ? "text-stone-700" : "text-stone-500"
+              }`}>
+                {fmtMoney(aud, currency)}
+              </div>
+            </div>
+          );
+        })}
+      </main>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhoto}
+        className="hidden"
+      />
+
+      {picking !== null && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setPicking(null)}
+        >
+          <div
+            className="bg-stone-50 rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-stone-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-base font-bold">
+                Card #{String(picking).padStart(3, "0")} — which version?
+              </h2>
+              <button
+                onClick={() => setPicking(null)}
+                className="text-stone-500 hover:text-stone-900"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {VARIANTS.map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setVariant(picking, v)}
+                  className="w-full py-3 px-4 bg-white border border-stone-300 rounded-lg text-left font-semibold hover:bg-amber-50 hover:border-amber-700 transition"
+                >
+                  {v}
+                </button>
+              ))}
+              <button
+                onClick={() => setPicking(null)}
+                className="w-full py-2 text-xs text-stone-500 mt-1"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
