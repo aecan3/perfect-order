@@ -10,9 +10,8 @@ const supabase = createClient(
 );
 
 const SET_ID = "me3";
-const EX_NUMBERS = new Set([12, 16, 21, 22, 31, 47, 53, 55, 62]);
-const PRINTED_TOTAL = 88;
 
+// Hardcoded USD prices (placeholder until TCG API has me3 prices)
 const PRICES_USD = {
   1: 0.12, 2: 0.08, 3: 0.11, 4: 0.08, 5: 0.12, 6: 0.10, 7: 0.13, 8: 0.15,
   9: 0.13, 10: 0.13, 11: 0.13, 12: 0.48, 13: 0.09, 14: 0.16, 15: 0.13, 16: 0.52,
@@ -33,69 +32,60 @@ const PRICES_USD = {
   124: 165,
 };
 
+// Returns the array of printings for a card based on its rarity.
+// Each entry: { type, label, order, priceMultiplier }
+function printingsForRarity(rarity) {
+  const r = (rarity || "").toLowerCase();
+
+  // Common / Uncommon — Non-Holo + Reverse Holo
+  if (r === "common" || r === "uncommon") {
+    return [
+      { type: "normal", label: "Non-Holo", order: 0, priceMultiplier: 1 },
+      { type: "reverse_holofoil", label: "Reverse Holo", order: 2, priceMultiplier: 1.5 },
+    ];
+  }
+
+  // Rare (these are the "Rare Holo" cards in Perfect Order — Holo + Reverse Holo, no non-holo)
+  if (r === "rare") {
+    return [
+      { type: "holofoil", label: "Holo", order: 1, priceMultiplier: 1 },
+      { type: "reverse_holofoil", label: "Reverse Holo", order: 2, priceMultiplier: 1.3 },
+    ];
+  }
+
+  // Everything else (Double Rare/ex, Illustration Rare, Ultra Rare, Special Illustration Rare, Hyper Rare)
+  // — Holo only, single printing
+  return [{ type: "holofoil", label: "Holo", order: 1, priceMultiplier: 1 }];
+}
+
 async function main() {
   const { data: cards, error } = await supabase
     .from("cards")
-    .select("id, number")
+    .select("id, number, rarity")
     .eq("set_id", SET_ID)
     .order("number", { ascending: true });
 
   if (error) throw error;
   console.log(`Seeding printings for ${cards.length} Perfect Order cards...`);
 
+  // Clear existing me3 printings first
   await supabase.from("printings").delete().eq("set_id", SET_ID);
 
   const rows = [];
   for (const card of cards) {
-    const n = card.number;
-    const basePrice = PRICES_USD[n] || null;
-    const isEx = EX_NUMBERS.has(n);
-    const isSecretRare = n > PRINTED_TOTAL;
+    const basePrice = PRICES_USD[card.number] || null;
+    const printings = printingsForRarity(card.rarity);
 
-    if (isEx || isSecretRare) {
+    for (const p of printings) {
       rows.push({
-        id: `${card.id}-holofoil`,
+        id: `${card.id}-${p.type}`,
         card_id: card.id,
         set_id: SET_ID,
-        card_number: n,
-        printing_type: "holofoil",
-        printing_label: "Holo",
-        display_order: 1,
-        price_usd: basePrice,
-        updated_at: new Date().toISOString(),
-      });
-    } else {
-      rows.push({
-        id: `${card.id}-normal`,
-        card_id: card.id,
-        set_id: SET_ID,
-        card_number: n,
-        printing_type: "normal",
-        printing_label: "Common",
-        display_order: 0,
-        price_usd: basePrice,
-        updated_at: new Date().toISOString(),
-      });
-      rows.push({
-        id: `${card.id}-holofoil`,
-        card_id: card.id,
-        set_id: SET_ID,
-        card_number: n,
-        printing_type: "holofoil",
-        printing_label: "Holo",
-        display_order: 1,
-        price_usd: basePrice ? basePrice * 2.5 : null,
-        updated_at: new Date().toISOString(),
-      });
-      rows.push({
-        id: `${card.id}-reverse_holofoil`,
-        card_id: card.id,
-        set_id: SET_ID,
-        card_number: n,
-        printing_type: "reverse_holofoil",
-        printing_label: "Reverse Holo",
-        display_order: 2,
-        price_usd: basePrice ? basePrice * 1.5 : null,
+        card_number: card.number,
+        printing_type: p.type,
+        printing_label: p.label,
+        display_order: p.order,
+        price_usd: basePrice ? Number((basePrice * p.priceMultiplier).toFixed(2)) : null,
         updated_at: new Date().toISOString(),
       });
     }
@@ -108,38 +98,7 @@ async function main() {
   }
 
   console.log(`Inserted ${rows.length} printing rows for Perfect Order.`);
-
-  const { data: entries } = await supabase
-    .from("collection_entries")
-    .select("user_id, set_id, card_number, variant, printing_id")
-    .eq("set_id", SET_ID);
-
-  const variantMap = {
-    Common: "normal",
-    Holo: "holofoil",
-    "Reverse Holo": "reverse_holofoil",
-  };
-
-  console.log(`Re-linking ${entries.length} collection entries...`);
-  for (const e of entries) {
-    const targetType = variantMap[e.variant] || "holofoil";
-    const { data: matchingPrintings } = await supabase
-      .from("printings")
-      .select("id, printing_type")
-      .eq("set_id", SET_ID)
-      .eq("card_number", e.card_number)
-      .order("display_order", { ascending: true });
-    if (!matchingPrintings || matchingPrintings.length === 0) continue;
-    const match = matchingPrintings.find((p) => p.printing_type === targetType) || matchingPrintings[0];
-    await supabase
-      .from("collection_entries")
-      .update({ printing_id: match.id })
-      .eq("user_id", e.user_id)
-      .eq("set_id", SET_ID)
-      .eq("card_number", e.card_number);
-  }
-
-  console.log("Done.");
+  console.log("Note: any orphaned collection_entries will need to be re-entered or re-linked manually.");
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });
