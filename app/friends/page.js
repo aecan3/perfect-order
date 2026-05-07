@@ -158,7 +158,7 @@ export default function FriendsPage() {
   const otherOf = (f) => (f.user_a === user.id ? f.user_b : f.user_a);
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
+    <div className="min-h-screen bg-stone-50 text-stone-900">
       <header className="sticky top-0 z-10 bg-stone-50/95 backdrop-blur border-b border-stone-300 px-4 py-3 flex items-center gap-3">
         <Link href="/" className="text-stone-700 hover:text-stone-900">
           <ArrowLeft size={20} />
