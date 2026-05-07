@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import {
   TOTAL,
   SET_CODE,
   NAMES,
-  PRICES_USD,
   RATES,
   valueOf,
   fmtMoney,
@@ -17,6 +16,24 @@ import {
   TIER_STYLES,
   TIER_LABELS,
 } from "@/lib/cards";
+
+function range(a, b) {
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+}
+function rangeExcept(a, b, exclude) {
+  const ex = new Set(exclude);
+  return range(a, b).filter((n) => !ex.has(n));
+}
+
+const SECTIONS = [
+  { id: "base", label: "Base Pokémon", numbers: rangeExcept(1, 74, [12, 16, 21, 22, 31, 47, 53, 55, 62]), masterOnly: false },
+  { id: "ex", label: "ex / Mega ex", numbers: [12, 16, 21, 22, 31, 47, 53, 55, 62], masterOnly: false },
+  { id: "trainers", label: "Trainers", numbers: range(75, 85), masterOnly: false },
+  { id: "energies", label: "Energies", numbers: range(86, 88), masterOnly: false },
+  { id: "ir", label: "Illustration Rares", numbers: range(89, 99), masterOnly: true },
+  { id: "sir", label: "Special Illustration / Ultra Rares", numbers: range(100, 117), masterOnly: true },
+  { id: "hyper", label: "Hyper Rares", numbers: range(118, 124), masterOnly: true },
+];
 
 const officialImg = (n) =>
   `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_${String(n).padStart(3, "0")}_R_EN_LG.png`;
@@ -62,15 +79,32 @@ export default function FriendCollectionPage() {
   const [entries, setEntries] = useState({});
   const [status, setStatus] = useState("loading"); // loading | ok | not-friends | not-found
   const [currency, setCurrency] = useState("AUD");
+  const [masterSet, setMasterSet] = useState(false);
+  const [openSections, setOpenSections] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem("po:currency");
     if (saved && RATES[saved]) setCurrency(saved);
   }, []);
 
+  useEffect(() => {
+    const m = localStorage.getItem("po:friendMasterSet");
+    if (m !== null) setMasterSet(m === "true");
+  }, []);
+
   const switchCurrency = (c) => {
     setCurrency(c);
     localStorage.setItem("po:currency", c);
+  };
+
+  const toggleSection = (id) => {
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleMasterSet = () => {
+    const next = !masterSet;
+    setMasterSet(next);
+    localStorage.setItem("po:friendMasterSet", String(next));
   };
 
   useEffect(() => {
@@ -158,16 +192,54 @@ export default function FriendCollectionPage() {
     );
   }
 
-  const checkedCount = Object.values(entries).filter((e) => e.checked).length;
-  const ownedValue = Array.from({ length: TOTAL }, (_, i) => i + 1)
+  const allNumbers = SECTIONS.flatMap((s) => s.numbers);
+  const visibleTotal = allNumbers.length;
+  const checkedCount = allNumbers.filter((n) => entries[n]?.checked).length;
+  const totalValue = allNumbers.reduce((s, n) => s + valueOf(n, currency), 0);
+  const ownedValue = allNumbers
     .filter((n) => entries[n]?.checked)
     .reduce((s, n) => s + valueOf(n, currency), 0);
-  const totalValue = Object.keys(PRICES_USD).reduce(
-    (s, n) => s + valueOf(Number(n), currency),
-    0
-  );
   const remainingValue = totalValue - ownedValue;
-  const cards = Array.from({ length: TOTAL }, (_, i) => i + 1);
+
+  const renderCard = (n) => {
+    const entry = entries[n] || {};
+    const isChecked = !!entry.checked;
+    const variant = entry.variant;
+    const photo = entry.photo_url;
+    const tier = tierFor(n);
+    const v = valueOf(n, currency);
+    return (
+      <div key={n} className="flex flex-col">
+        <div className={`relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md ${photo ? "" : TIER_STYLES[tier]}`}>
+          {photo ? (
+            <img
+              src={photo}
+              alt={NAMES[n]}
+              className={`w-full h-full object-cover ${isChecked ? "" : "grayscale opacity-30"}`}
+            />
+          ) : (
+            <CardArt n={n} isChecked={isChecked} name={NAMES[n]} tier={tier} />
+          )}
+          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+            {String(n).padStart(3, "0")}
+          </div>
+          {variant && (
+            <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
+              {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
+            </div>
+          )}
+          {isChecked && (
+            <div className="absolute top-1 left-1 bg-emerald-600 text-white text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded font-bold shadow">
+              Owned
+            </div>
+          )}
+        </div>
+        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-700" : v >= 5 ? "text-stone-700" : "text-stone-500"}`}>
+          {fmtMoney(v, currency)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
@@ -193,7 +265,7 @@ export default function FriendCollectionPage() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <div className="text-2xl font-black tabular-nums leading-none">
-              {checkedCount}/{TOTAL}
+              {checkedCount}/{visibleTotal}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
               cards collected
@@ -211,63 +283,66 @@ export default function FriendCollectionPage() {
         <div className="mt-2 h-1 w-full bg-stone-200 rounded-full overflow-hidden">
           <div
             className="h-full bg-emerald-600 transition-all duration-300"
-            style={{ width: `${(checkedCount / TOTAL) * 100}%` }}
+            style={{ width: `${(checkedCount / visibleTotal) * 100}%` }}
           />
+        </div>
+        <div className="mt-3 flex gap-1 text-[10px] uppercase tracking-widest">
+          <button
+            onClick={() => masterSet && toggleMasterSet()}
+            className={`flex-1 py-1.5 rounded ${!masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+          >
+            Standard
+          </button>
+          <button
+            onClick={() => !masterSet && toggleMasterSet()}
+            className={`flex-1 py-1.5 rounded ${masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+          >
+            Master Set
+          </button>
         </div>
       </header>
 
-      <main className="px-3 py-4 grid grid-cols-2 gap-3">
-        {cards.map((n) => {
-          const entry = entries[n] || {};
-          const isChecked = !!entry.checked;
-          const variant = entry.variant;
-          const photo = entry.photo_url;
-          const tier = tierFor(n);
-          const aud = valueOf(n, currency);
-          return (
-            <div key={n} className="flex flex-col">
-              <div
-                className={`relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md ${photo ? "" : TIER_STYLES[tier]}`}
-              >
-                {photo ? (
-                  <img
-                    src={photo}
-                    alt={NAMES[n]}
-                    className={`w-full h-full object-cover ${isChecked ? "" : "grayscale opacity-30"}`}
-                  />
-                ) : (
-                  <CardArt
-                    n={n}
-                    isChecked={isChecked}
-                    name={NAMES[n]}
-                    tier={tier}
-                  />
-                )}
-
-                <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                  {String(n).padStart(3, "0")}
+      <main className="px-3 py-4">
+        {masterSet ? (
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: TOTAL }, (_, i) => i + 1).map(renderCard)}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {SECTIONS.map((section) => {
+              const isOpen = !!openSections[section.id];
+              const sectionChecked = section.numbers.filter((n) => entries[n]?.checked).length;
+              const sectionValue = section.numbers.reduce((s, n) => s + valueOf(n, currency), 0);
+              const sectionOwned = section.numbers
+                .filter((n) => entries[n]?.checked)
+                .reduce((s, n) => s + valueOf(n, currency), 0);
+              return (
+                <div key={section.id} className="border border-stone-300 rounded-lg overflow-hidden bg-white">
+                  <button
+                    onClick={() => toggleSection(section.id)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-stone-50"
+                  >
+                    <div className="text-left">
+                      <div className="font-bold text-sm">{section.label}</div>
+                      <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+                        {sectionChecked}/{section.numbers.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={`text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-stone-200">
+                      {section.numbers.map(renderCard)}
+                    </div>
+                  )}
                 </div>
-
-                {variant && (
-                  <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
-                    {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
-                  </div>
-                )}
-
-                {isChecked && (
-                  <div className="absolute top-1 left-1 bg-emerald-600 text-white text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded font-bold shadow">
-                    Owned
-                  </div>
-                )}
-              </div>
-              <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${
-                aud >= 50 ? "text-amber-700" : aud >= 5 ? "text-stone-700" : "text-stone-500"
-              }`}>
-                {fmtMoney(aud, currency)}
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </main>
     </div>
   );
