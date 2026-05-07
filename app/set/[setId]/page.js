@@ -21,10 +21,9 @@ const fmtMoney = (v, currency) => {
 function rarityBucket(rarity, supertype, subtypes) {
   const r = (rarity || "").toLowerCase();
   const subs = (subtypes || []).map((s) => s.toLowerCase());
-
   if (r.includes("hyper") || r.includes("rainbow")) return "hyper";
   if (r.includes("special illustration")) return "sir";
-  if (r.includes("illustration rare") || r === "illustration rare") return "illustration";
+  if (r.includes("illustration rare")) return "illustration";
   if (subs.some((s) => /(^|\s)(ex|gx|vmax|vstar|v)(\s|$)/.test(s)) || r.includes("double rare")) return "ex";
   if (r.includes("ultra")) return "ultra";
   if (r === "rare" || r === "rare holo" || r.startsWith("rare ")) return "rare";
@@ -37,34 +36,18 @@ function rarityBucket(rarity, supertype, subtypes) {
 
 const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "ultra", "illustration", "sir", "hyper", "trainer", "energy", "other"];
 const BUCKET_LABELS = {
-  common: "Common",
-  uncommon: "Uncommon",
-  rare: "Rare",
-  ex: "ex / Mega ex",
-  ultra: "Ultra Rare",
-  illustration: "Illustration Rare",
-  sir: "Special Illustration Rare",
-  hyper: "Hyper Rare",
-  trainer: "Trainer",
-  energy: "Energy",
-  other: "Other",
+  common: "Common", uncommon: "Uncommon", rare: "Rare",
+  ex: "ex / Mega ex", ultra: "Ultra Rare",
+  illustration: "Illustration Rare", sir: "Special Illustration Rare",
+  hyper: "Hyper Rare", trainer: "Trainer", energy: "Energy", other: "Other",
 };
 
-function isVariantEligible(rarity, subtypes) {
-  const r = (rarity || "").toLowerCase();
-  if (!["common", "uncommon", "rare", "rare holo"].includes(r) && !r.startsWith("rare ")) return false;
-  if ((subtypes || []).some((s) => /ex|gx|v|vmax|vstar/i.test(s))) return false;
-  return true;
-}
-
-const VARIANTS = ["Common", "Holo", "Reverse Holo"];
-
-function CardArt({ src, name, isChecked, themePrimary }) {
+function CardArt({ src, name, isOwned, themePrimary }) {
   const [failed, setFailed] = useState(false);
   if (failed || !src) {
     return (
       <div
-        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${isChecked ? "" : "grayscale opacity-30"}`}
+        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${isOwned ? "" : "grayscale opacity-30"}`}
         style={{ background: `linear-gradient(135deg, ${themePrimary}33, #0a0e0a)` }}
       >
         <div className="text-[11px] font-bold leading-tight line-clamp-3" style={{ color: themePrimary }}>
@@ -79,7 +62,7 @@ function CardArt({ src, name, isChecked, themePrimary }) {
       alt={name}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className={`w-full h-full object-cover transition-all duration-300 ${isChecked ? "" : "grayscale opacity-30"}`}
+      className={`w-full h-full object-cover transition-all duration-300 ${isOwned ? "" : "grayscale opacity-30"}`}
     />
   );
 }
@@ -94,11 +77,13 @@ export default function SetTrackerPage() {
   const [profile, setProfile] = useState(null);
   const [setRow, setSetRow] = useState(null);
   const [cards, setCards] = useState([]);
-  const [entries, setEntries] = useState({});
-  const [picking, setPicking] = useState(null);
+  const [printingsByCard, setPrintingsByCard] = useState({});
+  const [ownedPrintings, setOwnedPrintings] = useState({});
+  const [pickingCard, setPickingCard] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
   const [masterSet, setMasterSet] = useState(false);
+  const [collectionMode, setCollectionMode] = useState("highest_rarity");
   const [openSections, setOpenSections] = useState({});
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -108,9 +93,7 @@ export default function SetTrackerPage() {
     if (c && RATES[c]) setCurrency(c);
     const m = localStorage.getItem("po:masterSet");
     if (m !== null) setMasterSet(m === "true");
-    const last = localStorage.getItem(`po:lastSection:${setId}`);
-    if (last) setOpenSections({ [last]: true });
-  }, [setId]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -121,25 +104,40 @@ export default function SetTrackerPage() {
       }
       setUser(user);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: entriesData }] = await Promise.all([
+      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: prefData }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
+        supabase.from("printings").select("*").eq("set_id", setId).order("display_order", { ascending: true }),
         supabase
           .from("collection_entries")
-          .select("card_number, checked, variant, photo_url")
+          .select("printing_id, card_number, checked, photo_url")
           .eq("user_id", user.id)
           .eq("set_id", setId),
+        supabase.from("user_set_preferences").select("collection_mode").eq("user_id", user.id).eq("set_id", setId).maybeSingle(),
       ]);
 
       setProfile(prof);
       setSetRow(setData);
       setCards(cardData || []);
-      const map = {};
-      (entriesData || []).forEach((e) => {
-        map[e.card_number] = e;
+
+      const groupedPrintings = {};
+      (printingData || []).forEach((p) => {
+        if (!groupedPrintings[p.card_number]) groupedPrintings[p.card_number] = [];
+        groupedPrintings[p.card_number].push(p);
       });
-      setEntries(map);
+      setPrintingsByCard(groupedPrintings);
+
+      const ownedMap = {};
+      (entriesData || []).forEach((e) => {
+        if (e.printing_id) {
+          ownedMap[e.printing_id] = { checked: e.checked, photo_url: e.photo_url, card_number: e.card_number };
+        }
+      });
+      setOwnedPrintings(ownedMap);
+
+      if (prefData?.collection_mode) setCollectionMode(prefData.collection_mode);
+
       setAuthChecked(true);
     })();
   }, [setId, router, supabase]);
@@ -152,15 +150,12 @@ export default function SetTrackerPage() {
       grouped[b].push(c);
     }
     return BUCKET_ORDER.filter((b) => grouped[b]?.length).map((b) => ({
-      id: b,
-      label: BUCKET_LABELS[b],
-      cards: grouped[b],
+      id: b, label: BUCKET_LABELS[b], cards: grouped[b],
     }));
   }, [cards]);
 
   const toggleSection = (id) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-    localStorage.setItem(`po:lastSection:${setId}`, id);
   };
 
   const switchCurrency = (c) => {
@@ -174,54 +169,49 @@ export default function SetTrackerPage() {
     localStorage.setItem("po:masterSet", String(next));
   };
 
-  const upsertEntry = useCallback(
-    async (cardNumber, patch) => {
+  const switchCollectionMode = async (mode) => {
+    setCollectionMode(mode);
+    if (!user) return;
+    await supabase
+      .from("user_set_preferences")
+      .upsert({ user_id: user.id, set_id: setId, collection_mode: mode }, { onConflict: "user_id,set_id" });
+  };
+
+  const togglePrinting = useCallback(
+    async (printing) => {
       if (!user) return;
-      const current = entries[cardNumber] || {};
-      const next = { ...current, ...patch };
-      setEntries((prev) => ({ ...prev, [cardNumber]: next }));
+      const cur = ownedPrintings[printing.id] || {};
+      const willOwn = !cur.checked;
+      setOwnedPrintings((prev) => ({
+        ...prev,
+        [printing.id]: { ...cur, checked: willOwn, card_number: printing.card_number },
+      }));
       await supabase.from("collection_entries").upsert(
         {
           user_id: user.id,
           set_id: setId,
-          card_number: cardNumber,
-          checked: !!next.checked,
-          variant: next.variant ?? null,
-          photo_url: next.photo_url ?? null,
+          card_number: printing.card_number,
+          printing_id: printing.id,
+          checked: willOwn,
+          photo_url: cur.photo_url ?? null,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "user_id,set_id,card_number" }
+        { onConflict: "user_id,set_id,card_number,printing_id" }
       );
     },
-    [user, entries, supabase, setId]
+    [user, ownedPrintings, supabase, setId]
   );
 
-  const toggle = (card) => {
-    const cur = entries[card.number] || {};
-    const willCheck = !cur.checked;
-    if (willCheck) {
-      upsertEntry(card.number, { checked: true });
-      if (isVariantEligible(card.rarity, card.subtypes) && !cur.variant) setPicking(card);
-    } else {
-      upsertEntry(card.number, { checked: false, variant: null });
-    }
-  };
-
-  const setVariant = (card, v) => {
-    upsertEntry(card.number, { variant: v });
-    setPicking(null);
-  };
-
-  const triggerPhoto = (card, e) => {
+  const triggerPhoto = (printing, e) => {
     e.stopPropagation();
-    photoTargetRef.current = card;
+    photoTargetRef.current = printing;
     fileInputRef.current?.click();
   };
 
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
-    const card = photoTargetRef.current;
-    if (!file || !card || !user) return;
+    const printing = photoTargetRef.current;
+    if (!file || !printing || !user) return;
     e.target.value = "";
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -236,7 +226,7 @@ export default function SetTrackerPage() {
         canvas.toBlob(
           async (blob) => {
             if (!blob) return;
-            const path = `${user.id}/${setId}-${card.number}-${Date.now()}.jpg`;
+            const path = `${user.id}/${setId}-${printing.id}-${Date.now()}.jpg`;
             const { error: upErr } = await supabase.storage
               .from("Card Photos")
               .upload(path, blob, { contentType: "image/jpeg", upsert: true });
@@ -244,10 +234,24 @@ export default function SetTrackerPage() {
               alert("Upload failed: " + upErr.message);
               return;
             }
-            const { data: { publicUrl } } = supabase.storage
-              .from("Card Photos")
-              .getPublicUrl(path);
-            upsertEntry(card.number, { photo_url: publicUrl });
+            const { data: { publicUrl } } = supabase.storage.from("Card Photos").getPublicUrl(path);
+            const cur = ownedPrintings[printing.id] || {};
+            setOwnedPrintings((prev) => ({
+              ...prev,
+              [printing.id]: { ...cur, photo_url: publicUrl },
+            }));
+            await supabase.from("collection_entries").upsert(
+              {
+                user_id: user.id,
+                set_id: setId,
+                card_number: printing.card_number,
+                printing_id: printing.id,
+                checked: cur.checked || false,
+                photo_url: publicUrl,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,set_id,card_number,printing_id" }
+            );
           },
           "image/jpeg",
           0.7
@@ -258,19 +262,14 @@ export default function SetTrackerPage() {
     reader.readAsDataURL(file);
   };
 
-  const removePhoto = (card, e) => {
-    e.stopPropagation();
-    upsertEntry(card.number, { photo_url: null });
-  };
-
   const reset = async () => {
-    if (!confirm("Clear all checks and photos?")) return;
+    if (!confirm("Clear all checks and photos for this set?")) return;
     await supabase
       .from("collection_entries")
       .delete()
       .eq("user_id", user.id)
       .eq("set_id", setId);
-    setEntries({});
+    setOwnedPrintings({});
   };
 
   if (!authChecked) {
@@ -286,67 +285,115 @@ export default function SetTrackerPage() {
     );
   }
 
-  const total = cards.length;
-  const checkedCount = cards.filter((c) => entries[c.number]?.checked).length;
-  const remaining = total - checkedCount;
-  const totalValue = cards.reduce((s, c) => s + valueOf(c.price_usd, currency), 0);
-  const ownedValue = cards
-    .filter((c) => entries[c.number]?.checked)
-    .reduce((s, c) => s + valueOf(c.price_usd, currency), 0);
-  const remainingValue = totalValue - ownedValue;
+  const isCardOwned = (cardNumber) => {
+    const prints = printingsByCard[cardNumber] || [];
+    return prints.some((p) => ownedPrintings[p.id]?.checked);
+  };
+  const cardOwnedCount = (cardNumber) => {
+    const prints = printingsByCard[cardNumber] || [];
+    return prints.filter((p) => ownedPrintings[p.id]?.checked).length;
+  };
+
+  const allPrintings = cards.flatMap((c) => printingsByCard[c.number] || []);
+
+  const totalCards = cards.length;
+  const totalPrintings = allPrintings.length;
+  const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
+  const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
+
+  const totalCardValue = cards.reduce((s, c) => {
+    const prints = printingsByCard[c.number] || [];
+    const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
+    return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
+  }, 0);
+  const totalPrintingValue = allPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+
+  const ownedCardValue = cards
+    .filter((c) => isCardOwned(c.number))
+    .reduce((s, c) => {
+      const prints = printingsByCard[c.number] || [];
+      const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
+      return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
+    }, 0);
+  const ownedPrintingValue = allPrintings
+    .filter((p) => ownedPrintings[p.id]?.checked)
+    .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+
+  const isTM = collectionMode === "true_master";
+  const checkedDisplay = isTM ? ownedPrintingCount : ownedCardCount;
+  const totalDisplay = isTM ? totalPrintings : totalCards;
+  const remainingDisplay = totalDisplay - checkedDisplay;
+  const ownedValueDisplay = isTM ? ownedPrintingValue : ownedCardValue;
+  const totalValueDisplay = isTM ? totalPrintingValue : totalCardValue;
+  const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
-  const themeBg = setRow.theme_bg || "#0a0e0a";
 
   const renderCard = (card) => {
-    const entry = entries[card.number] || {};
-    const isChecked = !!entry.checked;
-    const variant = entry.variant;
-    const photo = entry.photo_url;
-    const v = valueOf(card.price_usd, currency);
+    const prints = printingsByCard[card.number] || [];
+    const ownedCount = cardOwnedCount(card.number);
+    const owned = isTM ? (ownedCount === prints.length && prints.length > 0) : (ownedCount > 0);
+    const artOwned = isTM ? owned : ownedCount > 0;
+    const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
+    const photo = photoEntry?.photo_url;
+
     return (
       <div key={card.id} className="flex flex-col">
         <div
-          onClick={() => toggle(card)}
+          onClick={() => setPickingCard(card)}
           className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform"
         >
           {photo ? (
             <img
               src={photo}
               alt={card.name}
-              className={`w-full h-full object-cover transition-all duration-300 ${isChecked ? "" : "grayscale opacity-30"}`}
+              className={`w-full h-full object-cover transition-all duration-300 ${artOwned ? "" : "grayscale opacity-30"}`}
             />
           ) : (
-            <CardArt src={card.image_large} name={card.name} isChecked={isChecked} themePrimary={themePrimary} />
+            <CardArt src={card.image_large} name={card.name} isOwned={artOwned} themePrimary={themePrimary} />
           )}
           <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
             {String(card.number).padStart(3, "0")}
           </div>
-          <button
-            onClick={(e) => (photo ? removePhoto(card, e) : triggerPhoto(card, e))}
-            className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
-            aria-label={photo ? "Remove photo" : "Add photo"}
-          >
-            {photo ? <Trash2 size={13} /> : <Camera size={13} />}
-          </button>
-          {variant && (
-            <div className="absolute top-1 right-1 bg-amber-300/90 border border-amber-600 text-amber-950 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
-              {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
+          {isTM && owned && (
+            <div
+              className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
+              style={{ background: themePrimary, color: "#000" }}
+            >
+              Full
             </div>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); toggle(card); }}
-            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "text-black" : "bg-white/10 border-2 border-[var(--po-border)]"}`}
-            style={isChecked ? { background: themePrimary, boxShadow: `0 0 8px ${themePrimary}80` } : {}}
-            aria-label={isChecked ? "Uncheck" : "Check"}
-          >
-            {isChecked && <Check size={16} strokeWidth={3} />}
-          </button>
+          {!isTM && owned && (
+            <div
+              className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ background: themePrimary, color: "#000", boxShadow: `0 0 8px ${themePrimary}80` }}
+            >
+              <Check size={16} strokeWidth={3} />
+            </div>
+          )}
         </div>
-        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-400" : v >= 5 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
-          {fmtMoney(v, currency)}
-        </div>
+        {prints.length > 0 && (
+          <div className="flex justify-center gap-1 mt-1">
+            {prints.map((p) => {
+              const isOwned = !!ownedPrintings[p.id]?.checked;
+              return (
+                <button
+                  key={p.id}
+                  onClick={(e) => { e.stopPropagation(); togglePrinting(p); }}
+                  className="w-3 h-3 rounded-full border transition"
+                  style={{
+                    background: isOwned ? themePrimary : "transparent",
+                    borderColor: isOwned ? themePrimary : "var(--po-text-dim)",
+                    boxShadow: isOwned ? `0 0 6px ${themePrimary}80` : "none",
+                  }}
+                  aria-label={`${p.printing_label} ${isOwned ? "owned" : "missing"}`}
+                  title={p.printing_label}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -384,10 +431,7 @@ export default function SetTrackerPage() {
             >
               {currency}
             </button>
-            <button
-              onClick={reset}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
-            >
+            <button onClick={reset} className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
               Reset
             </button>
           </div>
@@ -395,18 +439,18 @@ export default function SetTrackerPage() {
         <div className="mt-2 grid grid-cols-2 gap-3">
           <div>
             <div className="text-3xl font-black tabular-nums leading-none">
-              {checkedCount}<span className="text-[var(--po-text-dim)] text-xl">/{total}</span>
+              {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              {remaining} cards to go
+              {remainingDisplay} {isTM ? "printings" : "cards"} to go
             </div>
           </div>
           <div className="text-right">
             <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
-              {fmtMoney(ownedValue, currency)}
+              {fmtMoney(ownedValueDisplay, currency)}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              owned · {fmtMoney(remainingValue, currency)} to go
+              owned · {fmtMoney(remainingValueDisplay, currency)} to go
             </div>
           </div>
         </div>
@@ -414,27 +458,45 @@ export default function SetTrackerPage() {
           <div
             className="h-full transition-all duration-300"
             style={{
-              width: `${total > 0 ? (checkedCount / total) * 100 : 0}%`,
+              width: `${totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0}%`,
               background: `linear-gradient(90deg, ${themePrimary}, ${themeSecondary})`,
               boxShadow: `0 0 12px ${themePrimary}80`,
             }}
           />
         </div>
-        <div className="mt-3 flex gap-1 text-[10px] uppercase tracking-widest">
-          <button
-            onClick={() => masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded font-bold ${!masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-            style={!masterSet ? { background: themePrimary } : {}}
-          >
-            Standard
-          </button>
-          <button
-            onClick={() => !masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded font-bold ${masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-            style={masterSet ? { background: themePrimary } : {}}
-          >
-            Master Set
-          </button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="flex gap-1 text-[10px] uppercase tracking-widest">
+            <button
+              onClick={() => masterSet && toggleMasterSet()}
+              className={`flex-1 py-1.5 rounded font-bold ${!masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
+              style={!masterSet ? { background: themePrimary } : {}}
+            >
+              Standard
+            </button>
+            <button
+              onClick={() => !masterSet && toggleMasterSet()}
+              className={`flex-1 py-1.5 rounded font-bold ${masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
+              style={masterSet ? { background: themePrimary } : {}}
+            >
+              Master Set
+            </button>
+          </div>
+          <div className="flex gap-1 text-[10px] uppercase tracking-widest">
+            <button
+              onClick={() => switchCollectionMode("highest_rarity")}
+              className={`flex-1 py-1.5 rounded font-bold ${collectionMode === "highest_rarity" ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
+              style={collectionMode === "highest_rarity" ? { background: themeSecondary } : {}}
+            >
+              Highest
+            </button>
+            <button
+              onClick={() => switchCollectionMode("true_master")}
+              className={`flex-1 py-1.5 rounded font-bold ${collectionMode === "true_master" ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
+              style={collectionMode === "true_master" ? { background: themeSecondary } : {}}
+            >
+              True Master
+            </button>
+          </div>
         </div>
       </header>
 
@@ -445,11 +507,6 @@ export default function SetTrackerPage() {
           <div className="space-y-3">
             {sections.map((section) => {
               const isOpen = !!openSections[section.id];
-              const sectionChecked = section.cards.filter((c) => entries[c.number]?.checked).length;
-              const sectionValue = section.cards.reduce((s, c) => s + valueOf(c.price_usd, currency), 0);
-              const sectionOwned = section.cards
-                .filter((c) => entries[c.number]?.checked)
-                .reduce((s, c) => s + valueOf(c.price_usd, currency), 0);
               return (
                 <div key={section.id} className="border border-[var(--po-border)] rounded-lg overflow-hidden bg-[var(--po-bg-soft)]">
                   <button
@@ -459,7 +516,7 @@ export default function SetTrackerPage() {
                     <div className="text-left">
                       <div className="font-bold text-sm">{section.label}</div>
                       <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {sectionChecked}/{section.cards.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
+                        {section.cards.filter((c) => isCardOwned(c.number)).length}/{section.cards.length}
                       </div>
                     </div>
                     <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -478,31 +535,61 @@ export default function SetTrackerPage() {
 
       <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="hidden" />
 
-      {picking && (
-        <div className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPicking(null)}>
+      {pickingCard && (
+        <div className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPickingCard(null)}>
           <div className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold">
-                {picking.name} #{String(picking.number).padStart(3, "0")} — version?
+              <h2 className="text-base font-bold leading-tight">
+                {pickingCard.name}
+                <span className="text-[var(--po-text-dim)] font-normal ml-1">#{String(pickingCard.number).padStart(3, "0")}</span>
               </h2>
-              <button onClick={() => setPicking(null)} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
+              <button onClick={() => setPickingCard(null)} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
                 <X size={20} />
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-2">
-              {VARIANTS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVariant(picking, v)}
-                  className="w-full py-3 px-4 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-left font-semibold text-[var(--po-text)] hover:border-[var(--po-green)] hover:bg-[var(--po-border)]"
-                >
-                  {v}
-                </button>
-              ))}
-              <button onClick={() => setPicking(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
-                Skip for now
-              </button>
+            <div className="space-y-2">
+              {(printingsByCard[pickingCard.number] || []).map((p) => {
+                const isOwned = !!ownedPrintings[p.id]?.checked;
+                const v = valueOf(p.price_usd, currency);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => togglePrinting(p)}
+                    className="w-full flex items-center justify-between py-3 px-4 bg-[var(--po-bg)] border rounded-lg text-left transition"
+                    style={{
+                      borderColor: isOwned ? themePrimary : "var(--po-border)",
+                      boxShadow: isOwned ? `0 0 8px ${themePrimary}40` : "none",
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition"
+                        style={{
+                          background: isOwned ? themePrimary : "transparent",
+                          border: `2px solid ${isOwned ? themePrimary : "var(--po-border)"}`,
+                        }}
+                      >
+                        {isOwned && <Check size={12} strokeWidth={3} className="text-black" />}
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm">{p.printing_label}</div>
+                        <div className="text-[10px] text-[var(--po-text-dim)] tabular-nums">{fmtMoney(v, currency)}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => triggerPhoto(p, e)}
+                      className="w-8 h-8 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center"
+                      aria-label="Add photo"
+                    >
+                      <Camera size={14} />
+                    </button>
+                  </button>
+                );
+              })}
             </div>
+            <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-3">
+              Close
+            </button>
           </div>
         </div>
       )}

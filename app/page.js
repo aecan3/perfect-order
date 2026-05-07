@@ -45,12 +45,16 @@ export default function HomePage() {
 
       const { data: entries } = await supabase
         .from("collection_entries")
-        .select("set_id, checked")
+        .select("set_id, card_number, checked")
         .eq("user_id", user.id)
         .eq("checked", true);
 
       const counts = {};
+      const seen = new Set();
       (entries || []).forEach((e) => {
+        const key = `${e.set_id}::${e.card_number}`;
+        if (seen.has(key)) return;
+        seen.add(key);
         counts[e.set_id] = (counts[e.set_id] || 0) + 1;
       });
 
