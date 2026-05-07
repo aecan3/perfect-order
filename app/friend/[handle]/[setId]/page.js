@@ -18,26 +18,35 @@ const fmtMoney = (v, currency) => {
   return `${sym}${v.toFixed(2)}`;
 };
 
-function rarityBucket(rarity) {
-  if (!rarity) return "other";
-  const r = rarity.toLowerCase();
-  if (r.includes("hyper")) return "hyper";
-  if (r.includes("special illustration") || r.includes("illustration rare")) return "illustration";
+function rarityBucket(rarity, supertype, subtypes) {
+  const r = (rarity || "").toLowerCase();
+  const subs = (subtypes || []).map((s) => s.toLowerCase());
+
+  if (r.includes("hyper") || r.includes("rainbow")) return "hyper";
+  if (r.includes("special illustration")) return "sir";
+  if (r.includes("illustration rare") || r === "illustration rare") return "illustration";
+  if (subs.some((s) => /(^|\s)(ex|gx|vmax|vstar|v)(\s|$)/.test(s)) || r.includes("double rare")) return "ex";
   if (r.includes("ultra")) return "ultra";
   if (r === "rare" || r === "rare holo" || r.startsWith("rare ")) return "rare";
   if (r === "uncommon") return "uncommon";
   if (r === "common") return "common";
+  if (supertype === "Energy") return "energy";
+  if (supertype === "Trainer") return "trainer";
   return "other";
 }
 
-const BUCKET_ORDER = ["common", "uncommon", "rare", "ultra", "illustration", "hyper", "other"];
+const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "ultra", "illustration", "sir", "hyper", "trainer", "energy", "other"];
 const BUCKET_LABELS = {
   common: "Common",
   uncommon: "Uncommon",
   rare: "Rare",
-  ultra: "Ultra Rare / ex",
+  ex: "ex / Mega ex",
+  ultra: "Ultra Rare",
   illustration: "Illustration Rare",
+  sir: "Special Illustration Rare",
   hyper: "Hyper Rare",
+  trainer: "Trainer",
+  energy: "Energy",
   other: "Other",
 };
 
@@ -136,7 +145,7 @@ export default function FriendSetPage() {
   const sections = useMemo(() => {
     const grouped = {};
     for (const c of cards) {
-      const b = rarityBucket(c.rarity);
+      const b = rarityBucket(c.rarity, c.supertype, c.subtypes);
       if (!grouped[b]) grouped[b] = [];
       grouped[b].push(c);
     }

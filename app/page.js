@@ -36,7 +36,8 @@ export default function HomePage() {
           added_at,
           set:sets (
             id, code, name, series, total, total_with_secrets,
-            logo_url, theme_primary, theme_secondary, theme_bg
+            logo_url, theme_primary, theme_secondary, theme_bg,
+            cards(count)
           )
         `)
         .eq("user_id", user.id)
@@ -119,7 +120,7 @@ export default function HomePage() {
           </div>
         ) : (
           userSets.map((set) => {
-            const total = set.total_with_secrets || set.total;
+            const total = set.cards?.[0]?.count || 0;
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";
