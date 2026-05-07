@@ -345,7 +345,7 @@ export default function SetTrackerPage() {
     return (
       <div key={card.id} className="flex flex-col">
         <div
-          onClick={() => setPickingCard(card)}
+          onClick={() => prints.length === 1 ? togglePrinting(prints[0]) : setPickingCard(card)}
           className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform"
         >
           {photo ? (
