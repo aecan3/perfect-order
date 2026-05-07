@@ -55,7 +55,15 @@ async function main() {
 
   console.log(`Seeding printings for ${cards.length} cards in ${setId}...`);
 
-  await supabase.from("printings").delete().eq("set_id", setId);
+  // Null out printing_id FK on collection_entries first so the delete below
+  // doesn't fail silently due to foreign key constraints.
+  await supabase
+    .from("collection_entries")
+    .update({ printing_id: null })
+    .eq("set_id", setId);
+
+  const { error: delErr } = await supabase.from("printings").delete().eq("set_id", setId);
+  if (delErr) throw new Error(`Failed to delete existing printings for ${setId}: ${delErr.message}`);
 
   const rows = [];
   for (const card of cards) {
