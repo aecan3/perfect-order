@@ -377,7 +377,7 @@ export default function SetTrackerPage() {
             </div>
           )}
         </div>
-        {prints.length > 0 && (
+        {prints.length > 1 && (
           <div className="flex justify-center gap-1 mt-1">
             {prints.map((p) => {
               const isOwned = !!ownedPrintings[p.id]?.checked;
