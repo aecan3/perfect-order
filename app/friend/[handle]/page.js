@@ -52,18 +52,22 @@ export default function FriendOverviewPage() {
       const [{ data: sets }, { data: entries }] = await Promise.all([
         supabase
           .from("user_sets")
-          .select(`added_at, set:sets (id, code, name, series, total, total_with_secrets, logo_url, theme_primary, theme_secondary, theme_bg)`)
+          .select(`added_at, set:sets (id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, cards(count))`)
           .eq("user_id", friendProfile.id)
           .order("added_at", { ascending: false }),
         supabase
           .from("collection_entries")
-          .select("set_id, checked")
+          .select("set_id, card_number, checked")
           .eq("user_id", friendProfile.id)
           .eq("checked", true),
       ]);
 
       const countMap = {};
+      const seen = new Set();
       (entries || []).forEach((e) => {
+        const key = `${e.set_id}::${e.card_number}`;
+        if (seen.has(key)) return;
+        seen.add(key);
         countMap[e.set_id] = (countMap[e.set_id] || 0) + 1;
       });
 
@@ -116,7 +120,7 @@ export default function FriendOverviewPage() {
           </div>
         ) : (
           friendSets.map((set) => {
-            const total = set.total_with_secrets || set.total;
+            const total = set.cards?.[0]?.count || 0;
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";
