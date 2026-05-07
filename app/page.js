@@ -77,7 +77,7 @@ export default function HomePage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [entries, setEntries] = useState({}); // { [card_number]: { checked, variant, photo_url } }
+  const [entries, setEntries] = useState({});
   const [picking, setPicking] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
@@ -108,10 +108,7 @@ export default function HomePage() {
   };
 
   const toggleSection = (id) => {
-    setOpenSections((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      return next;
-    });
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
     if (!openSections[id]) {
       setLastUsedSection(id);
       localStorage.setItem("po:lastSection", id);
@@ -269,7 +266,7 @@ export default function HomePage() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500">
+      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
         Loading…
       </div>
     );
@@ -318,7 +315,7 @@ export default function HomePage() {
             {photo ? <Trash2 size={13} /> : <Camera size={13} />}
           </button>
           {variant && (
-            <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
+            <div className="absolute top-1 right-1 bg-amber-300/90 border border-amber-600 text-amber-950 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
               {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
             </div>
           )}
@@ -327,13 +324,13 @@ export default function HomePage() {
               e.stopPropagation();
               toggle(n);
             }}
-            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "bg-emerald-600 text-white shadow-lg" : "bg-white/95 border-2 border-stone-700"}`}
+            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "bg-[var(--po-green)] text-black po-glow-green" : "bg-white/10 border-2 border-[var(--po-border)]"}`}
             aria-label={isChecked ? "Uncheck" : "Check"}
           >
             {isChecked && <Check size={16} strokeWidth={3} />}
           </button>
         </div>
-        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-700" : v >= 5 ? "text-stone-700" : "text-stone-500"}`}>
+        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-400" : v >= 5 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
           {fmtMoney(v, currency)}
         </div>
       </div>
@@ -341,40 +338,40 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
-      <header className="sticky top-0 z-20 bg-stone-50/95 backdrop-blur border-b border-stone-300 px-4 py-3">
+    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+      <header className="sticky top-0 z-20 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-baseline justify-between">
           <div>
-            <h1 className="text-lg font-bold tracking-tight">Perfect Order</h1>
-            <p className="text-[10px] text-stone-500">
+            <h1 className="po-wordmark text-xl">Perfect Order</h1>
+            <p className="text-[10px] text-[var(--po-text-dim)]">
               @{profile?.handle || "you"}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Link
               href="/friends"
-              className="text-stone-700 hover:text-stone-900"
+              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
               aria-label="Friends"
             >
               <Users size={18} />
             </Link>
             <button
               onClick={signOut}
-              className="text-stone-500 hover:text-stone-900"
+              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
               aria-label="Sign out"
             >
               <LogOut size={18} />
             </button>
             <button
               onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
-              className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-stone-900 px-2 py-1 border border-stone-300 rounded"
+              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
               aria-label="Switch currency"
             >
               {currency}
             </button>
             <button
               onClick={reset}
-              className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-stone-900"
+              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
             >
               Reset
             </button>
@@ -385,35 +382,35 @@ export default function HomePage() {
             <div className="text-3xl font-black tabular-nums leading-none">
               {remaining}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               cards to go · {checkedCount}/{visibleTotal}
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black tabular-nums text-emerald-700 leading-none">
+            <div className="text-2xl font-black tabular-nums text-[var(--po-green)] leading-none">
               {fmtMoney(ownedValue, currency)}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               owned · {fmtMoney(remainingValue, currency)} to go
             </div>
           </div>
         </div>
-        <div className="mt-2 h-1 w-full bg-stone-200 rounded-full overflow-hidden">
+        <div className="mt-2 h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden">
           <div
-            className="h-full bg-emerald-600 transition-all duration-300"
+            className="h-full bg-[var(--po-green)] po-glow-green transition-all duration-300"
             style={{ width: `${(checkedCount / visibleTotal) * 100}%` }}
           />
         </div>
         <div className="mt-3 flex gap-1 text-[10px] uppercase tracking-widest">
           <button
             onClick={() => masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded ${!masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+            className={`flex-1 py-1.5 rounded ${!masterSet ? "bg-[var(--po-green)] text-black font-bold" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
           >
             Standard
           </button>
           <button
             onClick={() => !masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded ${masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+            className={`flex-1 py-1.5 rounded ${masterSet ? "bg-[var(--po-green)] text-black font-bold" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
           >
             Master Set
           </button>
@@ -435,24 +432,24 @@ export default function HomePage() {
                 .filter((n) => entries[n]?.checked)
                 .reduce((s, n) => s + valueOf(n, currency), 0);
               return (
-                <div key={section.id} className="border border-stone-300 rounded-lg overflow-hidden bg-white">
+                <div key={section.id} className="border border-[var(--po-border)] rounded-lg overflow-hidden bg-[var(--po-bg-soft)]">
                   <button
                     onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-stone-50"
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-[var(--po-border)]"
                   >
                     <div className="text-left">
-                      <div className="font-bold text-sm">{section.label}</div>
-                      <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+                      <div className="font-bold text-sm text-[var(--po-text)]">{section.label}</div>
+                      <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
                         {sectionChecked}/{section.numbers.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
                       </div>
                     </div>
                     <ChevronDown
                       size={18}
-                      className={`text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                      className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`}
                     />
                   </button>
                   {isOpen && (
-                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-stone-200">
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-[var(--po-border)]">
                       {section.numbers.map(renderCard)}
                     </div>
                   )}
@@ -474,20 +471,20 @@ export default function HomePage() {
 
       {picking !== null && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4"
+          className="fixed inset-0 z-30 bg-black/70 flex items-end sm:items-center justify-center p-4"
           onClick={() => setPicking(null)}
         >
           <div
-            className="bg-stone-50 rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-stone-300"
+            className="bg-[var(--po-bg-soft)] rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-[var(--po-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold">
+              <h2 className="text-base font-bold text-[var(--po-text)]">
                 Card #{String(picking).padStart(3, "0")} — which version?
               </h2>
               <button
                 onClick={() => setPicking(null)}
-                className="text-stone-500 hover:text-stone-900"
+                className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
               >
                 <X size={20} />
               </button>
@@ -497,14 +494,14 @@ export default function HomePage() {
                 <button
                   key={v}
                   onClick={() => setVariant(picking, v)}
-                  className="w-full py-3 px-4 bg-white border border-stone-300 rounded-lg text-left font-semibold hover:bg-amber-50 hover:border-amber-700 transition"
+                  className="w-full py-3 px-4 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg text-left font-semibold hover:bg-[var(--po-border)] hover:border-[var(--po-green)] transition"
                 >
                   {v}
                 </button>
               ))}
               <button
                 onClick={() => setPicking(null)}
-                className="w-full py-2 text-xs text-stone-500 mt-1"
+                className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1"
               >
                 Skip for now
               </button>

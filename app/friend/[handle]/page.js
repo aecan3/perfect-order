@@ -77,7 +77,7 @@ export default function FriendCollectionPage() {
   const [me, setMe] = useState(null);
   const [friend, setFriend] = useState(null);
   const [entries, setEntries] = useState({});
-  const [status, setStatus] = useState("loading"); // loading | ok | not-friends | not-found
+  const [status, setStatus] = useState("loading");
   const [currency, setCurrency] = useState("AUD");
   const [masterSet, setMasterSet] = useState(false);
   const [openSections, setOpenSections] = useState({});
@@ -162,7 +162,7 @@ export default function FriendCollectionPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500">
+      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
         Loading…
       </div>
     );
@@ -170,9 +170,9 @@ export default function FriendCollectionPage() {
 
   if (status === "not-found") {
     return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center px-4">
-        <p className="text-stone-700 mb-3">No user with handle @{handle}.</p>
-        <Link href="/friends" className="text-stone-900 underline text-sm">
+      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4">
+        <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
+        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">
           Back to friends
         </Link>
       </div>
@@ -181,11 +181,11 @@ export default function FriendCollectionPage() {
 
   if (status === "not-friends") {
     return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-stone-700 mb-3">
+      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
+        <p className="text-[var(--po-text)] mb-3">
           You're not friends with @{handle} yet.
         </p>
-        <Link href="/friends" className="text-stone-900 underline text-sm">
+        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">
           Send them a request
         </Link>
       </div>
@@ -224,17 +224,17 @@ export default function FriendCollectionPage() {
             {String(n).padStart(3, "0")}
           </div>
           {variant && (
-            <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
+            <div className="absolute top-1 right-1 bg-amber-300/90 border border-amber-600 text-amber-950 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
               {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
             </div>
           )}
           {isChecked && (
-            <div className="absolute top-1 left-1 bg-emerald-600 text-white text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded font-bold shadow">
+            <div className="absolute top-1 left-1 bg-[var(--po-green)] text-black text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded font-bold shadow">
               Owned
             </div>
           )}
         </div>
-        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-700" : v >= 5 ? "text-stone-700" : "text-stone-500"}`}>
+        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-400" : v >= 5 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
           {fmtMoney(v, currency)}
         </div>
       </div>
@@ -242,21 +242,21 @@ export default function FriendCollectionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
-      <header className="sticky top-0 z-10 bg-stone-50/95 backdrop-blur border-b border-stone-300 px-4 py-3">
+    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center gap-3 mb-2">
-          <Link href="/friends" className="text-stone-700 hover:text-stone-900">
+          <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
             <ArrowLeft size={20} />
           </Link>
           <div className="flex-1">
-            <h1 className="text-lg font-bold leading-none">
+            <h1 className="text-lg font-bold leading-none text-[var(--po-text)]">
               {friend.display_name || friend.handle}
             </h1>
-            <p className="text-[10px] text-stone-500">@{friend.handle}</p>
+            <p className="text-[10px] text-[var(--po-text-dim)]">@{friend.handle}</p>
           </div>
           <button
             onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
-            className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-stone-900 px-2 py-1 border border-stone-300 rounded"
+            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
             aria-label="Switch currency"
           >
             {currency}
@@ -267,35 +267,35 @@ export default function FriendCollectionPage() {
             <div className="text-2xl font-black tabular-nums leading-none">
               {checkedCount}/{visibleTotal}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               cards collected
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xl font-black tabular-nums text-emerald-700 leading-none">
+            <div className="text-xl font-black tabular-nums text-[var(--po-green)] leading-none">
               {fmtMoney(ownedValue, currency)}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               owned · {fmtMoney(remainingValue, currency)} to go
             </div>
           </div>
         </div>
-        <div className="mt-2 h-1 w-full bg-stone-200 rounded-full overflow-hidden">
+        <div className="mt-2 h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden">
           <div
-            className="h-full bg-emerald-600 transition-all duration-300"
+            className="h-full bg-[var(--po-green)] po-glow-green transition-all duration-300"
             style={{ width: `${(checkedCount / visibleTotal) * 100}%` }}
           />
         </div>
         <div className="mt-3 flex gap-1 text-[10px] uppercase tracking-widest">
           <button
             onClick={() => masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded ${!masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+            className={`flex-1 py-1.5 rounded ${!masterSet ? "bg-[var(--po-green)] text-black font-bold" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
           >
             Standard
           </button>
           <button
             onClick={() => !masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded ${masterSet ? "bg-stone-900 text-white" : "bg-stone-200 text-stone-600"}`}
+            className={`flex-1 py-1.5 rounded ${masterSet ? "bg-[var(--po-green)] text-black font-bold" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
           >
             Master Set
           </button>
@@ -317,24 +317,24 @@ export default function FriendCollectionPage() {
                 .filter((n) => entries[n]?.checked)
                 .reduce((s, n) => s + valueOf(n, currency), 0);
               return (
-                <div key={section.id} className="border border-stone-300 rounded-lg overflow-hidden bg-white">
+                <div key={section.id} className="border border-[var(--po-border)] rounded-lg overflow-hidden bg-[var(--po-bg-soft)]">
                   <button
                     onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-stone-50"
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-[var(--po-border)]"
                   >
                     <div className="text-left">
-                      <div className="font-bold text-sm">{section.label}</div>
-                      <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+                      <div className="font-bold text-sm text-[var(--po-text)]">{section.label}</div>
+                      <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
                         {sectionChecked}/{section.numbers.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
                       </div>
                     </div>
                     <ChevronDown
                       size={18}
-                      className={`text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                      className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`}
                     />
                   </button>
                   {isOpen && (
-                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-stone-200">
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-[var(--po-border)]">
                       {section.numbers.map(renderCard)}
                     </div>
                   )}

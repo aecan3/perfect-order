@@ -84,10 +84,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
+    <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-black mb-1 text-stone-900">Perfect Order</h1>
-        <p className="text-sm text-stone-500 mb-6">
+        <h1 className="po-wordmark text-4xl mb-1">Perfect Order</h1>
+        <p className="text-sm text-[var(--po-text-dim)] mb-6">
           {mode === "signup" ? "Create your collection" : "Sign in to your collection"}
         </p>
 
@@ -95,7 +95,7 @@ export default function LoginPage() {
           {mode === "signup" && (
             <>
               <div>
-                <label className="block text-xs uppercase tracking-widest text-stone-500 mb-1">
+                <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
                   Handle
                 </label>
                 <input
@@ -104,14 +104,14 @@ export default function LoginPage() {
                   onChange={(e) => setHandle(e.target.value.toLowerCase())}
                   placeholder="alex_c"
                   required
-                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-700"
+                  className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
                 />
-                <p className="text-[10px] text-stone-400 mt-1">
+                <p className="text-[10px] text-[var(--po-text-dim)] mt-1">
                   Your friend will use this to add you.
                 </p>
               </div>
               <div>
-                <label className="block text-xs uppercase tracking-widest text-stone-500 mb-1">
+                <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
                   Display name
                 </label>
                 <input
@@ -119,13 +119,13 @@ export default function LoginPage() {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Alex"
-                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-700"
+                  className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
                 />
               </div>
             </>
           )}
           <div>
-            <label className="block text-xs uppercase tracking-widest text-stone-500 mb-1">
+            <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
               Email
             </label>
             <input
@@ -133,11 +133,11 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-700"
+              className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
             />
           </div>
           <div>
-            <label className="block text-xs uppercase tracking-widest text-stone-500 mb-1">
+            <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
               Password
             </label>
             <input
@@ -146,12 +146,12 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-700"
+              className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
             />
           </div>
 
           {error && (
-            <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+            <div className="text-sm text-rose-300 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
@@ -159,7 +159,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-stone-900 text-white rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50"
+            className="w-full py-3 bg-[var(--po-green)] text-black rounded-lg font-black uppercase tracking-widest text-xs disabled:opacity-50 po-glow-green"
           >
             {loading ? "..." : mode === "signup" ? "Create account" : "Sign in"}
           </button>
@@ -170,7 +170,7 @@ export default function LoginPage() {
             setMode(mode === "signup" ? "signin" : "signup");
             setError(null);
           }}
-          className="w-full mt-4 text-xs text-stone-500 hover:text-stone-900"
+          className="w-full mt-4 text-xs text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
         >
           {mode === "signup"
             ? "Already have an account? Sign in"
