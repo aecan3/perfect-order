@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import Vibrant from "node-vibrant";
+import { Vibrant } from "node-vibrant/node";
 
 dotenv.config({ path: ".env.local" });
 
@@ -53,7 +53,7 @@ async function extractTheme(logoUrl) {
     if (swatches.length === 0) return null;
 
     const ranked = swatches
-      .map((sw) => ({ rgb: sw.getRgb(), score: vividnessScore(sw.getRgb()), pop: sw.getPopulation() }))
+      .map((sw) => ({ rgb: sw.rgb, score: vividnessScore(sw.rgb), pop: sw.population }))
       .sort((a, b) => b.score - a.score);
 
     const primary = ranked[0];
@@ -65,7 +65,7 @@ async function extractTheme(logoUrl) {
     }) || ranked[1] || primary;
 
     const dark = swatches
-      .map((sw) => ({ rgb: sw.getRgb(), l: rgbToHsl(...sw.getRgb())[2] }))
+      .map((sw) => ({ rgb: sw.rgb, l: rgbToHsl(...sw.rgb)[2] }))
       .sort((a, b) => a.l - b.l)[0];
     const bgMix = dark.rgb.map((c) => Math.round(c * 0.15 + 10));
 
