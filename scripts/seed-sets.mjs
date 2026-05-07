@@ -1,0 +1,139 @@
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+
+dotenv.config({ path: ".env.local" });
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const TCG_KEY = process.env.POKEMON_TCG_API_KEY;
+
+if (!SUPABASE_URL || !SERVICE_KEY || !TCG_KEY) {
+  console.error("Missing env vars. Need NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, POKEMON_TCG_API_KEY.");
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+const headers = { "X-Api-Key": TCG_KEY };
+
+async function fetchAllSets() {
+  const res = await fetch("https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250", { headers });
+  if (!res.ok) throw new Error(`Sets fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.data;
+}
+
+async function fetchCardsForSet(setId) {
+  const all = [];
+  let page = 1;
+  while (true) {
+    const res = await fetch(
+      `https://api.pokemontcg.io/v2/cards?q=set.id:${setId}&page=${page}&pageSize=250&orderBy=number`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`Cards fetch failed for ${setId}: ${res.status}`);
+    const data = await res.json();
+    all.push(...data.data);
+    if (data.data.length < 250) break;
+    page++;
+  }
+  return all;
+}
+
+function parseCardNumber(numStr, fallbackIndex) {
+  const m = String(numStr).match(/\d+/);
+  if (m) return parseInt(m[0], 10);
+  return fallbackIndex + 1;
+}
+
+function priceFromCard(card) {
+  const tcg = card.tcgplayer?.prices;
+  if (!tcg) return null;
+  const candidates = [
+    tcg.normal?.market,
+    tcg.holofoil?.market,
+    tcg.reverseHolofoil?.market,
+    tcg.firstEditionHolofoil?.market,
+    tcg["1stEditionNormal"]?.market,
+    tcg.unlimitedHolofoil?.market,
+  ];
+  for (const p of candidates) {
+    if (typeof p === "number" && p > 0) return p;
+  }
+  return null;
+}
+
+async function upsertSet(set) {
+  const row = {
+    id: set.id,
+    code: (set.ptcgoCode || set.id).toUpperCase().slice(0, 8),
+    name: set.name,
+    series: set.series,
+    total: set.printedTotal || set.total || 0,
+    total_with_secrets: set.total || set.printedTotal || 0,
+    release_date: set.releaseDate ? set.releaseDate.replaceAll("/", "-") : null,
+    logo_url: set.images?.logo || null,
+    symbol_url: set.images?.symbol || null,
+  };
+  const { error } = await supabase.from("sets").upsert(row, { onConflict: "id" });
+  if (error) throw new Error(`Failed to upsert set ${set.id}: ${error.message}`);
+}
+
+async function upsertCards(setId, cards) {
+  const rows = cards.map((c, i) => ({
+    id: c.id,
+    set_id: setId,
+    number: parseCardNumber(c.number, i),
+    name: c.name,
+    rarity: c.rarity || null,
+    supertype: c.supertype || null,
+    subtypes: c.subtypes || null,
+    image_small: c.images?.small || null,
+    image_large: c.images?.large || null,
+    price_usd: priceFromCard(c),
+    updated_at: new Date().toISOString(),
+  }));
+
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    const { error } = await supabase.from("cards").upsert(chunk, { onConflict: "id" });
+    if (error) throw new Error(`Failed to upsert cards for ${setId} chunk ${i}: ${error.message}`);
+  }
+}
+
+async function main() {
+  console.log("Fetching all sets...");
+  const sets = await fetchAllSets();
+  console.log(`Found ${sets.length} sets.`);
+
+  const onlySet = process.argv[2];
+  const targets = onlySet ? sets.filter((s) => s.id === onlySet) : sets;
+
+  if (onlySet && targets.length === 0) {
+    console.error(`No set found with id "${onlySet}".`);
+    process.exit(1);
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    const set = targets[i];
+    try {
+      await upsertSet(set);
+      console.log(`[${i + 1}/${targets.length}] ${set.name} (${set.id}) — set row done, fetching cards...`);
+      const cards = await fetchCardsForSet(set.id);
+      await upsertCards(set.id, cards);
+      console.log(`    ✓ ${cards.length} cards inserted/updated`);
+    } catch (err) {
+      console.error(`    ✗ ${set.id} failed: ${err.message}`);
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  console.log("Done.");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
