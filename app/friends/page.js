@@ -11,8 +11,8 @@ export default function FriendsPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [friendships, setFriendships] = useState([]); // raw friendship rows
-  const [profilesById, setProfilesById] = useState({}); // id -> profile
+  const [friendships, setFriendships] = useState([]);
+  const [profilesById, setProfilesById] = useState({});
   const [searchHandle, setSearchHandle] = useState("");
   const [searchError, setSearchError] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -26,7 +26,6 @@ export default function FriendsPage() {
 
     setFriendships(rows || []);
 
-    // Collect all the other-party IDs to fetch their profiles
     const otherIds = (rows || []).map((r) =>
       r.user_a === uid ? r.user_b : r.user_a
     );
@@ -39,9 +38,7 @@ export default function FriendsPage() {
       .select("*")
       .in("id", otherIds);
     const map = {};
-    (profs || []).forEach((p) => {
-      map[p.id] = p;
-    });
+    (profs || []).forEach((p) => { map[p.id] = p; });
     setProfilesById(map);
   }, [supabase]);
 
@@ -70,17 +67,13 @@ export default function FriendsPage() {
     setSearchLoading(true);
 
     const handle = searchHandle.trim().toLowerCase();
-    if (!handle) {
-      setSearchLoading(false);
-      return;
-    }
+    if (!handle) { setSearchLoading(false); return; }
     if (handle === profile?.handle) {
       setSearchError("That's you!");
       setSearchLoading(false);
       return;
     }
 
-    // Find the user by handle
     const { data: target } = await supabase
       .from("profiles")
       .select("id, handle, display_name")
@@ -93,7 +86,6 @@ export default function FriendsPage() {
       return;
     }
 
-    // Check if a friendship already exists in either direction
     const existing = friendships.find(
       (f) =>
         (f.user_a === user.id && f.user_b === target.id) ||
@@ -101,9 +93,7 @@ export default function FriendsPage() {
     );
     if (existing) {
       setSearchError(
-        existing.status === "accepted"
-          ? "You're already friends."
-          : "A request already exists."
+        existing.status === "accepted" ? "You're already friends." : "A request already exists."
       );
       setSearchLoading(false);
       return;
@@ -126,10 +116,7 @@ export default function FriendsPage() {
   };
 
   const accept = async (friendshipId) => {
-    await supabase
-      .from("friendships")
-      .update({ status: "accepted" })
-      .eq("id", friendshipId);
+    await supabase.from("friendships").update({ status: "accepted" }).eq("id", friendshipId);
     await loadFriendships(user.id);
   };
 
@@ -140,27 +127,21 @@ export default function FriendsPage() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500">
+      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
         Loading…
       </div>
     );
   }
 
-  // Bucket the friendships
   const accepted = friendships.filter((f) => f.status === "accepted");
-  const incoming = friendships.filter(
-    (f) => f.status === "pending" && f.user_b === user.id
-  );
-  const outgoing = friendships.filter(
-    (f) => f.status === "pending" && f.user_a === user.id
-  );
-
+  const incoming = friendships.filter((f) => f.status === "pending" && f.user_b === user.id);
+  const outgoing = friendships.filter((f) => f.status === "pending" && f.user_a === user.id);
   const otherOf = (f) => (f.user_a === user.id ? f.user_b : f.user_a);
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
-      <header className="sticky top-0 z-10 bg-stone-50/95 backdrop-blur border-b border-stone-300 px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="text-stone-700 hover:text-stone-900">
+    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3 flex items-center gap-3">
+        <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-lg font-bold">Friends</h1>
@@ -168,19 +149,19 @@ export default function FriendsPage() {
 
       <main className="px-4 py-4 space-y-6 max-w-md mx-auto">
         {/* Your handle */}
-        <section className="bg-white border border-stone-200 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-widest text-stone-500">
+        <section className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3">
+          <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
             Your handle
           </div>
-          <div className="text-lg font-bold">@{profile?.handle}</div>
-          <p className="text-xs text-stone-500 mt-1">
+          <div className="text-lg font-bold text-[var(--po-green)]">@{profile?.handle}</div>
+          <p className="text-xs text-[var(--po-text-dim)] mt-1">
             Share this with your mate so they can add you.
           </p>
         </section>
 
         {/* Add friend */}
         <section>
-          <h2 className="text-xs uppercase tracking-widest text-stone-500 mb-2">
+          <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
             Add a friend
           </h2>
           <form onSubmit={sendRequest} className="flex gap-2">
@@ -189,26 +170,26 @@ export default function FriendsPage() {
               value={searchHandle}
               onChange={(e) => setSearchHandle(e.target.value.toLowerCase())}
               placeholder="their_handle"
-              className="flex-1 px-3 py-2 bg-white border border-stone-300 rounded-lg focus:outline-none focus:border-stone-700"
+              className="flex-1 px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)] placeholder:text-[var(--po-text-dim)]"
             />
             <button
               type="submit"
               disabled={searchLoading || !searchHandle.trim()}
-              className="px-4 py-2 bg-stone-900 text-white rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex items-center gap-1"
+              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex items-center gap-1"
             >
               <UserPlus size={14} />
               Send
             </button>
           </form>
           {searchError && (
-            <div className="mt-2 text-sm text-rose-700">{searchError}</div>
+            <div className="mt-2 text-sm text-rose-300">{searchError}</div>
           )}
         </section>
 
         {/* Incoming requests */}
         {incoming.length > 0 && (
           <section>
-            <h2 className="text-xs uppercase tracking-widest text-stone-500 mb-2">
+            <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
               Requests for you
             </h2>
             <div className="space-y-2">
@@ -217,27 +198,23 @@ export default function FriendsPage() {
                 return (
                   <div
                     key={f.id}
-                    className="flex items-center justify-between bg-white border border-stone-200 rounded-lg p-3"
+                    className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
                   >
                     <div>
-                      <div className="font-bold">
-                        {p?.display_name || p?.handle || "Someone"}
-                      </div>
-                      <div className="text-xs text-stone-500">
-                        @{p?.handle}
-                      </div>
+                      <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
+                      <div className="text-xs text-[var(--po-text-dim)]">@{p?.handle}</div>
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => accept(f.id)}
-                        className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center"
+                        className="w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"
                         aria-label="Accept"
                       >
                         <Check size={16} />
                       </button>
                       <button
                         onClick={() => remove(f.id)}
-                        className="w-8 h-8 rounded-full bg-stone-300 text-stone-700 flex items-center justify-center"
+                        className="w-8 h-8 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center hover:border-rose-700 hover:text-rose-400"
                         aria-label="Reject"
                       >
                         <X size={16} />
@@ -252,11 +229,11 @@ export default function FriendsPage() {
 
         {/* Friends */}
         <section>
-          <h2 className="text-xs uppercase tracking-widest text-stone-500 mb-2">
+          <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
             Friends ({accepted.length})
           </h2>
           {accepted.length === 0 ? (
-            <p className="text-sm text-stone-500">No friends yet.</p>
+            <p className="text-sm text-[var(--po-text-dim)]">No friends yet.</p>
           ) : (
             <div className="space-y-2">
               {accepted.map((f) => {
@@ -265,29 +242,23 @@ export default function FriendsPage() {
                 return (
                   <div
                     key={f.id}
-                    className="flex items-center justify-between bg-white border border-stone-200 rounded-lg p-3"
+                    className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
                   >
                     <div>
-                      <div className="font-bold">
-                        {p.display_name || p.handle}
-                      </div>
-                      <div className="text-xs text-stone-500">
-                        @{p.handle}
-                      </div>
+                      <div className="font-bold">{p.display_name || p.handle}</div>
+                      <div className="text-xs text-[var(--po-text-dim)]">@{p.handle}</div>
                     </div>
                     <div className="flex gap-2">
                       <Link
                         href={`/friend/${p.handle}`}
-                        className="px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1"
+                        className="px-3 py-1.5 bg-[var(--po-green)] text-black rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1"
                       >
                         <Eye size={12} />
                         View
                       </Link>
                       <button
-                        onClick={() => {
-                          if (confirm(`Unfriend ${p.handle}?`)) remove(f.id);
-                        }}
-                        className="px-3 py-1.5 bg-stone-200 text-stone-600 rounded-lg text-xs font-bold uppercase tracking-widest"
+                        onClick={() => { if (confirm(`Unfriend ${p.handle}?`)) remove(f.id); }}
+                        className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
                       >
                         Remove
                       </button>
@@ -302,7 +273,7 @@ export default function FriendsPage() {
         {/* Outgoing requests */}
         {outgoing.length > 0 && (
           <section>
-            <h2 className="text-xs uppercase tracking-widest text-stone-500 mb-2">
+            <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
               Pending (sent)
             </h2>
             <div className="space-y-2">
@@ -311,19 +282,17 @@ export default function FriendsPage() {
                 return (
                   <div
                     key={f.id}
-                    className="flex items-center justify-between bg-white border border-stone-200 rounded-lg p-3 opacity-70"
+                    className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3 opacity-60"
                   >
                     <div>
-                      <div className="font-bold">
-                        {p?.display_name || p?.handle || "Someone"}
-                      </div>
-                      <div className="text-xs text-stone-500">
+                      <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
+                      <div className="text-xs text-[var(--po-text-dim)]">
                         @{p?.handle} · awaiting response
                       </div>
                     </div>
                     <button
                       onClick={() => remove(f.id)}
-                      className="px-3 py-1.5 bg-stone-200 text-stone-600 rounded-lg text-xs font-bold uppercase tracking-widest"
+                      className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
                     >
                       Cancel
                     </button>
