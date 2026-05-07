@@ -149,7 +149,7 @@ export default function FriendCollectionPage() {
         .from("collection_entries")
         .select("card_number, checked, variant, photo_url")
         .eq("user_id", friendProfile.id)
-        .eq("set_code", SET_CODE);
+        .eq("set_id", "me3");
 
       const map = {};
       (entriesData || []).forEach((e) => {
@@ -265,10 +265,10 @@ export default function FriendCollectionPage() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <div className="text-2xl font-black tabular-nums leading-none">
-              {checkedCount}/{visibleTotal}
+              {checkedCount}<span className="text-[var(--po-text-dim)] text-lg">/{visibleTotal}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              cards collected
+              {visibleTotal - checkedCount} cards to go
             </div>
           </div>
           <div className="text-right">

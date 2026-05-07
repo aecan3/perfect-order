@@ -141,7 +141,7 @@ export default function SetTrackerPage() {
         .from("collection_entries")
         .select("card_number, checked, variant, photo_url")
         .eq("user_id", user.id)
-        .eq("set_code", SET_CODE);
+        .eq("set_id", "me3");
 
       const map = {};
       (entriesData || []).forEach((e) => {
@@ -165,14 +165,14 @@ export default function SetTrackerPage() {
       await supabase.from("collection_entries").upsert(
         {
           user_id: user.id,
-          set_code: SET_CODE,
+          set_id: "me3",
           card_number: cardNumber,
           checked: !!next.checked,
           variant: next.variant ?? null,
           photo_url: next.photo_url ?? null,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "user_id,set_code,card_number" }
+        { onConflict: "user_id,set_id,card_number" }
       );
     },
     [user, entries, supabase]
@@ -252,7 +252,7 @@ export default function SetTrackerPage() {
       .from("collection_entries")
       .delete()
       .eq("user_id", user.id)
-      .eq("set_code", SET_CODE);
+      .eq("set_id", "me3");
     setEntries({});
   };
 
@@ -382,10 +382,10 @@ export default function SetTrackerPage() {
         <div className="mt-1 grid grid-cols-2 gap-3">
           <div>
             <div className="text-3xl font-black tabular-nums leading-none">
-              {remaining}
+              {checkedCount}<span className="text-[var(--po-text-dim)] text-xl">/{visibleTotal}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              cards to go · {checkedCount}/{visibleTotal}
+              {remaining} cards to go
             </div>
           </div>
           <div className="text-right">
