@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "seed:sets": "node scripts/seed-sets.mjs",
-    "extract:themes": "node scripts/extract-themes.mjs"
+    "extract:themes": "node scripts/extract-themes.mjs",
+    "seed:printings": "node scripts/seed-printings.mjs",
+    "migrate:entries": "node scripts/migrate-entries.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
