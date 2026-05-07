@@ -81,7 +81,7 @@ export default function HomePage() {
   const [picking, setPicking] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
-  const [masterSet, setMasterSet] = useState(true);
+  const [masterSet, setMasterSet] = useState(false);
   const [openSections, setOpenSections] = useState({});
   const [lastUsedSection, setLastUsedSection] = useState(null);
   const fileInputRef = useRef(null);
@@ -275,17 +275,70 @@ export default function HomePage() {
     );
   }
 
-  const visibleNumbers = SECTIONS
-    .filter((s) => masterSet || !s.masterOnly)
-    .flatMap((s) => s.numbers);
-  const visibleTotal = visibleNumbers.length;
-  const checkedCount = visibleNumbers.filter((n) => entries[n]?.checked).length;
+  const allNumbers = SECTIONS.flatMap((s) => s.numbers);
+  const visibleTotal = allNumbers.length;
+  const checkedCount = allNumbers.filter((n) => entries[n]?.checked).length;
   const remaining = visibleTotal - checkedCount;
-  const totalValue = visibleNumbers.reduce((s, n) => s + valueOf(n, currency), 0);
-  const ownedValue = visibleNumbers
+  const totalValue = allNumbers.reduce((s, n) => s + valueOf(n, currency), 0);
+  const ownedValue = allNumbers
     .filter((n) => entries[n]?.checked)
     .reduce((s, n) => s + valueOf(n, currency), 0);
   const remainingValue = totalValue - ownedValue;
+
+  const renderCard = (n) => {
+    const entry = entries[n] || {};
+    const isChecked = !!entry.checked;
+    const variant = entry.variant;
+    const photo = entry.photo_url;
+    const tier = tierFor(n);
+    const v = valueOf(n, currency);
+    return (
+      <div key={n} className="flex flex-col">
+        <div
+          onClick={() => toggle(n)}
+          className={`relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform ${photo ? "" : TIER_STYLES[tier]}`}
+        >
+          {photo ? (
+            <img
+              src={photo}
+              alt={NAMES[n] || `Card ${n}`}
+              className={`w-full h-full object-cover transition-all duration-300 ${isChecked ? "" : "grayscale opacity-30"}`}
+            />
+          ) : (
+            <CardArt n={n} isChecked={isChecked} name={NAMES[n]} tier={tier} tierStyles={TIER_STYLES} tierLabels={TIER_LABELS} />
+          )}
+          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+            {String(n).padStart(3, "0")}
+          </div>
+          <button
+            onClick={(e) => (photo ? removePhoto(n, e) : triggerPhoto(n, e))}
+            className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+            aria-label={photo ? "Remove photo" : "Add photo"}
+          >
+            {photo ? <Trash2 size={13} /> : <Camera size={13} />}
+          </button>
+          {variant && (
+            <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
+              {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
+            </div>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle(n);
+            }}
+            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "bg-emerald-600 text-white shadow-lg" : "bg-white/95 border-2 border-stone-700"}`}
+            aria-label={isChecked ? "Uncheck" : "Check"}
+          >
+            {isChecked && <Check size={16} strokeWidth={3} />}
+          </button>
+        </div>
+        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-700" : v >= 5 ? "text-stone-700" : "text-stone-500"}`}>
+          {fmtMoney(v, currency)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900" style={{ fontFamily: "Georgia, 'Iowan Old Style', serif" }}>
@@ -367,92 +420,47 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="px-3 py-4 space-y-3">
-        {SECTIONS.filter((s) => masterSet || !s.masterOnly).map((section) => {
-          const isOpen = !!openSections[section.id];
-          const sectionChecked = section.numbers.filter((n) => entries[n]?.checked).length;
-          const sectionValue = section.numbers.reduce((s, n) => s + valueOf(n, currency), 0);
-          const sectionOwned = section.numbers
-            .filter((n) => entries[n]?.checked)
-            .reduce((s, n) => s + valueOf(n, currency), 0);
-          return (
-            <div key={section.id} className="border border-stone-300 rounded-lg overflow-hidden bg-white">
-              <button
-                onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-stone-50"
-              >
-                <div className="text-left">
-                  <div className="font-bold text-sm">{section.label}</div>
-                  <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
-                    {sectionChecked}/{section.numbers.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
-                  </div>
-                </div>
-                <ChevronDown
-                  size={18}
-                  className={`text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                />
-              </button>
-              {isOpen && (
-                <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-stone-200">
-                  {section.numbers.map((n) => {
-                    const entry = entries[n] || {};
-                    const isChecked = !!entry.checked;
-                    const variant = entry.variant;
-                    const photo = entry.photo_url;
-                    const tier = tierFor(n);
-                    const v = valueOf(n, currency);
-                    return (
-                      <div key={n} className="flex flex-col">
-                        <div
-                          onClick={() => toggle(n)}
-                          className={`relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform ${photo ? "" : TIER_STYLES[tier]}`}
-                        >
-                          {photo ? (
-                            <img
-                              src={photo}
-                              alt={NAMES[n] || `Card ${n}`}
-                              className={`w-full h-full object-cover transition-all duration-300 ${isChecked ? "" : "grayscale opacity-30"}`}
-                            />
-                          ) : (
-                            <CardArt n={n} isChecked={isChecked} name={NAMES[n]} tier={tier} tierStyles={TIER_STYLES} tierLabels={TIER_LABELS} />
-                          )}
-                          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                            {String(n).padStart(3, "0")}
-                          </div>
-                          <button
-                            onClick={(e) => (photo ? removePhoto(n, e) : triggerPhoto(n, e))}
-                            className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
-                            aria-label={photo ? "Remove photo" : "Add photo"}
-                          >
-                            {photo ? <Trash2 size={13} /> : <Camera size={13} />}
-                          </button>
-                          {variant && (
-                            <div className="absolute top-1 right-1 bg-amber-100 border border-amber-700 text-amber-900 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
-                              {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
-                            </div>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggle(n);
-                            }}
-                            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "bg-emerald-600 text-white shadow-lg" : "bg-white/95 border-2 border-stone-700"}`}
-                            aria-label={isChecked ? "Uncheck" : "Check"}
-                          >
-                            {isChecked && <Check size={16} strokeWidth={3} />}
-                          </button>
-                        </div>
-                        <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-700" : v >= 5 ? "text-stone-700" : "text-stone-500"}`}>
-                          {fmtMoney(v, currency)}
-                        </div>
+      <main className="px-3 py-4">
+        {masterSet ? (
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: TOTAL }, (_, i) => i + 1).map(renderCard)}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {SECTIONS.map((section) => {
+              const isOpen = !!openSections[section.id];
+              const sectionChecked = section.numbers.filter((n) => entries[n]?.checked).length;
+              const sectionValue = section.numbers.reduce((s, n) => s + valueOf(n, currency), 0);
+              const sectionOwned = section.numbers
+                .filter((n) => entries[n]?.checked)
+                .reduce((s, n) => s + valueOf(n, currency), 0);
+              return (
+                <div key={section.id} className="border border-stone-300 rounded-lg overflow-hidden bg-white">
+                  <button
+                    onClick={() => toggleSection(section.id)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-stone-50"
+                  >
+                    <div className="text-left">
+                      <div className="font-bold text-sm">{section.label}</div>
+                      <div className="text-[10px] uppercase tracking-widest text-stone-500 mt-0.5">
+                        {sectionChecked}/{section.numbers.length} · {fmtMoney(sectionOwned, currency)} of {fmtMoney(sectionValue, currency)}
                       </div>
-                    );
-                  })}
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={`text-stone-500 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-stone-200">
+                      {section.numbers.map(renderCard)}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </main>
 
       <input
