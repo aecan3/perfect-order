@@ -96,10 +96,28 @@ async function upsertCards(setId, cards) {
     updated_at: new Date().toISOString(),
   }));
 
+  // Deduplicate by number — some sets have promos/trainer-gallery cards whose
+  // raw numbers (e.g. "TG1") parse to the same integer as a base card ("1").
+  // Keep the first occurrence and renumber extras sequentially after the max.
+  const seenNumbers = new Map();
+  let maxNum = rows.reduce((m, r) => Math.max(m, r.number), 0);
+  for (const row of rows) {
+    if (seenNumbers.has(row.number)) {
+      maxNum += 1;
+      row.number = maxNum;
+    } else {
+      seenNumbers.set(row.number, true);
+    }
+  }
+
+  // Delete existing rows first to avoid (set_id, number) unique constraint conflicts
+  // when re-seeding a set whose card IDs may have changed.
+  await supabase.from("cards").delete().eq("set_id", setId);
+
   for (let i = 0; i < rows.length; i += 100) {
     const chunk = rows.slice(i, i + 100);
-    const { error } = await supabase.from("cards").upsert(chunk, { onConflict: "id" });
-    if (error) throw new Error(`Failed to upsert cards for ${setId} chunk ${i}: ${error.message}`);
+    const { error } = await supabase.from("cards").insert(chunk);
+    if (error) throw new Error(`Failed to insert cards for ${setId} chunk ${i}: ${error.message}`);
   }
 }
 
