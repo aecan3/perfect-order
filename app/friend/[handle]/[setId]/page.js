@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -41,15 +41,6 @@ const BUCKET_LABELS = {
   other: "Other",
 };
 
-function isVariantEligible(rarity, subtypes) {
-  const r = (rarity || "").toLowerCase();
-  if (!["common", "uncommon", "rare", "rare holo"].includes(r) && !r.startsWith("rare ")) return false;
-  if ((subtypes || []).some((s) => /ex|gx|v|vmax|vstar/i.test(s))) return false;
-  return true;
-}
-
-const VARIANTS = ["Common", "Holo", "Reverse Holo"];
-
 function CardArt({ src, name, isChecked, themePrimary }) {
   const [failed, setFailed] = useState(false);
   if (failed || !src) {
@@ -75,33 +66,27 @@ function CardArt({ src, name, isChecked, themePrimary }) {
   );
 }
 
-export default function SetTrackerPage() {
+export default function FriendSetPage() {
   const router = useRouter();
   const params = useParams();
   const supabase = createClient();
-  const setId = params.setId;
+  const { handle, setId } = params;
 
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [friend, setFriend] = useState(null);
   const [setRow, setSetRow] = useState(null);
   const [cards, setCards] = useState([]);
   const [entries, setEntries] = useState({});
-  const [picking, setPicking] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [status, setStatus] = useState("loading");
   const [currency, setCurrency] = useState("AUD");
   const [masterSet, setMasterSet] = useState(false);
   const [openSections, setOpenSections] = useState({});
-  const fileInputRef = useRef(null);
-  const photoTargetRef = useRef(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
-    const m = localStorage.getItem("po:masterSet");
+    const m = localStorage.getItem("po:friendMasterSet");
     if (m !== null) setMasterSet(m === "true");
-    const last = localStorage.getItem(`po:lastSection:${setId}`);
-    if (last) setOpenSections({ [last]: true });
-  }, [setId]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -110,30 +95,43 @@ export default function SetTrackerPage() {
         router.replace("/login");
         return;
       }
-      setUser(user);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: entriesData }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      const { data: friendProfile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("handle", handle)
+        .maybeSingle();
+
+      if (!friendProfile) { setStatus("not-found"); return; }
+      setFriend(friendProfile);
+
+      const { data: friendship } = await supabase
+        .from("friendships")
+        .select("*")
+        .or(`and(user_a.eq.${user.id},user_b.eq.${friendProfile.id}),and(user_a.eq.${friendProfile.id},user_b.eq.${user.id})`)
+        .eq("status", "accepted")
+        .maybeSingle();
+
+      if (!friendship) { setStatus("not-friends"); return; }
+
+      const [{ data: setData }, { data: cardData }, { data: entriesData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         supabase
           .from("collection_entries")
           .select("card_number, checked, variant, photo_url")
-          .eq("user_id", user.id)
+          .eq("user_id", friendProfile.id)
           .eq("set_id", setId),
       ]);
 
-      setProfile(prof);
       setSetRow(setData);
       setCards(cardData || []);
       const map = {};
-      (entriesData || []).forEach((e) => {
-        map[e.card_number] = e;
-      });
+      (entriesData || []).forEach((e) => { map[e.card_number] = e; });
       setEntries(map);
-      setAuthChecked(true);
+      setStatus("ok");
     })();
-  }, [setId, router, supabase]);
+  }, [handle, setId, router, supabase]);
 
   const sections = useMemo(() => {
     const grouped = {};
@@ -149,11 +147,6 @@ export default function SetTrackerPage() {
     }));
   }, [cards]);
 
-  const toggleSection = (id) => {
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-    localStorage.setItem(`po:lastSection:${setId}`, id);
-  };
-
   const switchCurrency = (c) => {
     setCurrency(c);
     localStorage.setItem("po:currency", c);
@@ -162,120 +155,37 @@ export default function SetTrackerPage() {
   const toggleMasterSet = () => {
     const next = !masterSet;
     setMasterSet(next);
-    localStorage.setItem("po:masterSet", String(next));
+    localStorage.setItem("po:friendMasterSet", String(next));
   };
 
-  const upsertEntry = useCallback(
-    async (cardNumber, patch) => {
-      if (!user) return;
-      const current = entries[cardNumber] || {};
-      const next = { ...current, ...patch };
-      setEntries((prev) => ({ ...prev, [cardNumber]: next }));
-      await supabase.from("collection_entries").upsert(
-        {
-          user_id: user.id,
-          set_id: setId,
-          card_number: cardNumber,
-          checked: !!next.checked,
-          variant: next.variant ?? null,
-          photo_url: next.photo_url ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,set_id,card_number" }
-      );
-    },
-    [user, entries, supabase, setId]
-  );
-
-  const toggle = (card) => {
-    const cur = entries[card.number] || {};
-    const willCheck = !cur.checked;
-    if (willCheck) {
-      upsertEntry(card.number, { checked: true });
-      if (isVariantEligible(card.rarity, card.subtypes) && !cur.variant) setPicking(card);
-    } else {
-      upsertEntry(card.number, { checked: false, variant: null });
-    }
+  const toggleSection = (id) => {
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const setVariant = (card, v) => {
-    upsertEntry(card.number, { variant: v });
-    setPicking(null);
-  };
-
-  const triggerPhoto = (card, e) => {
-    e.stopPropagation();
-    photoTargetRef.current = card;
-    fileInputRef.current?.click();
-  };
-
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0];
-    const card = photoTargetRef.current;
-    if (!file || !card || !user) return;
-    e.target.value = "";
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const img = new Image();
-      img.onload = async () => {
-        const maxW = 600;
-        const scale = Math.min(1, maxW / img.width);
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          async (blob) => {
-            if (!blob) return;
-            const path = `${user.id}/${setId}-${card.number}-${Date.now()}.jpg`;
-            const { error: upErr } = await supabase.storage
-              .from("Card Photos")
-              .upload(path, blob, { contentType: "image/jpeg", upsert: true });
-            if (upErr) {
-              alert("Upload failed: " + upErr.message);
-              return;
-            }
-            const { data: { publicUrl } } = supabase.storage
-              .from("Card Photos")
-              .getPublicUrl(path);
-            upsertEntry(card.number, { photo_url: publicUrl });
-          },
-          "image/jpeg",
-          0.7
-        );
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removePhoto = (card, e) => {
-    e.stopPropagation();
-    upsertEntry(card.number, { photo_url: null });
-  };
-
-  const reset = async () => {
-    if (!confirm("Clear all checks and photos?")) return;
-    await supabase
-      .from("collection_entries")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("set_id", setId);
-    setEntries({});
-  };
-
-  if (!authChecked) {
+  if (status === "loading") {
     return <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">Loading…</div>;
   }
 
-  if (!setRow) {
+  if (status === "not-found") {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text-dim)] mb-3">Set not found.</p>
-        <Link href="/" className="text-[var(--po-green)] underline text-sm">Back to my sets</Link>
+        <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
+        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
       </div>
     );
   }
+
+  if (status === "not-friends") {
+    return (
+      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
+        <p className="text-[var(--po-text)] mb-3">You're not friends with @{handle} yet.</p>
+        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
+      </div>
+    );
+  }
+
+  const themePrimary = setRow?.theme_primary || "#b9ff3c";
+  const themeSecondary = setRow?.theme_secondary || "#c084fc";
 
   const total = cards.length;
   const checkedCount = cards.filter((c) => entries[c.number]?.checked).length;
@@ -286,10 +196,6 @@ export default function SetTrackerPage() {
     .reduce((s, c) => s + valueOf(c.price_usd, currency), 0);
   const remainingValue = totalValue - ownedValue;
 
-  const themePrimary = setRow.theme_primary || "#b9ff3c";
-  const themeSecondary = setRow.theme_secondary || "#c084fc";
-  const themeBg = setRow.theme_bg || "#0a0e0a";
-
   const renderCard = (card) => {
     const entry = entries[card.number] || {};
     const isChecked = !!entry.checked;
@@ -298,10 +204,7 @@ export default function SetTrackerPage() {
     const v = valueOf(card.price_usd, currency);
     return (
       <div key={card.id} className="flex flex-col">
-        <div
-          onClick={() => toggle(card)}
-          className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform"
-        >
+        <div className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md">
           {photo ? (
             <img
               src={photo}
@@ -314,26 +217,19 @@ export default function SetTrackerPage() {
           <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
             {String(card.number).padStart(3, "0")}
           </div>
-          <button
-            onClick={(e) => (photo ? removePhoto(card, e) : triggerPhoto(card, e))}
-            className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"
-            aria-label={photo ? "Remove photo" : "Add photo"}
-          >
-            {photo ? <Trash2 size={13} /> : <Camera size={13} />}
-          </button>
           {variant && (
             <div className="absolute top-1 right-1 bg-amber-300/90 border border-amber-600 text-amber-950 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold shadow">
               {variant === "Reverse Holo" ? "RH" : variant === "Holo" ? "Holo" : "Com"}
             </div>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); toggle(card); }}
-            className={`absolute ${variant ? "top-1 left-1" : "top-1 right-1"} w-7 h-7 rounded-full flex items-center justify-center transition-all ${isChecked ? "text-black" : "bg-white/10 border-2 border-[var(--po-border)]"}`}
-            style={isChecked ? { background: themePrimary, boxShadow: `0 0 8px ${themePrimary}80` } : {}}
-            aria-label={isChecked ? "Uncheck" : "Check"}
-          >
-            {isChecked && <Check size={16} strokeWidth={3} />}
-          </button>
+          {isChecked && (
+            <div
+              className="absolute top-1 left-1 text-black text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded font-bold shadow"
+              style={{ background: themePrimary }}
+            >
+              Owned
+            </div>
+          )}
         </div>
         <div className={`text-center text-[11px] mt-1 tabular-nums font-semibold ${v >= 50 ? "text-amber-400" : v >= 5 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
           {fmtMoney(v, currency)}
@@ -345,55 +241,37 @@ export default function SetTrackerPage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
       <header
-        className="sticky top-0 z-20 bg-[var(--po-bg)]/90 backdrop-blur border-b px-4 py-3"
+        className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b px-4 py-3"
         style={{ borderBottomColor: `${themePrimary}40` }}
       >
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-center gap-2">
-            <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-              <ArrowLeft size={20} />
-            </Link>
-            <div>
-              <h1
-                className="font-extrabold uppercase tracking-wider text-lg leading-none"
-                style={{
-                  background: `linear-gradient(180deg, #ffffff 0%, ${themePrimary} 100%)`,
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                {setRow.name}
-              </h1>
-              <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{profile?.handle}</p>
-            </div>
+        <div className="flex items-center gap-3 mb-2">
+          <Link href={`/friend/${handle}`} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
+            <ArrowLeft size={20} />
+          </Link>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold leading-none" style={{ color: themePrimary }}>
+              {setRow?.name}
+            </h1>
+            <p className="text-[10px] text-[var(--po-text-dim)]">@{friend?.handle}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
-            >
-              {currency}
-            </button>
-            <button
-              onClick={reset}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
-            >
-              Reset
-            </button>
-          </div>
+          <button
+            onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
+            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
+          >
+            {currency}
+          </button>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="text-3xl font-black tabular-nums leading-none">
-              {checkedCount}<span className="text-[var(--po-text-dim)] text-xl">/{total}</span>
+            <div className="text-2xl font-black tabular-nums leading-none">
+              {checkedCount}<span className="text-[var(--po-text-dim)] text-lg">/{total}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               {remaining} cards to go
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
+            <div className="text-xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
               {fmtMoney(ownedValue, currency)}
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
@@ -466,37 +344,6 @@ export default function SetTrackerPage() {
           </div>
         )}
       </main>
-
-      <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="hidden" />
-
-      {picking && (
-        <div className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPicking(null)}>
-          <div className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-base font-bold">
-                {picking.name} #{String(picking.number).padStart(3, "0")} — version?
-              </h2>
-              <button onClick={() => setPicking(null)} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              {VARIANTS.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVariant(picking, v)}
-                  className="w-full py-3 px-4 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-left font-semibold text-[var(--po-text)] hover:border-[var(--po-green)] hover:bg-[var(--po-border)]"
-                >
-                  {v}
-                </button>
-              ))}
-              <button onClick={() => setPicking(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
-                Skip for now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
