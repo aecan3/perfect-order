@@ -38,20 +38,33 @@ function detectPatternPrinting(card) {
   return null;
 }
 
+async function fetchAllCards(filterSetId) {
+  const all = [];
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    let q = supabase
+      .from("cards")
+      .select("id, set_id, number, name, image_large, price_usd")
+      .order("set_id", { ascending: true })
+      .order("number", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (filterSetId) q = q.eq("set_id", filterSetId);
+    const { data, error } = await q;
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+    console.log(`  Loaded ${all.length} cards so far...`);
+  }
+  return all;
+}
+
 async function main() {
   const onlySet = process.argv[2];
 
-  let query = supabase
-    .from("cards")
-    .select("id, set_id, number, name, image_large, price_usd")
-    .order("set_id", { ascending: true })
-    .order("number", { ascending: true });
-  if (onlySet) query = query.eq("set_id", onlySet);
-
-  const { data: cards, error } = await query;
-  if (error) throw error;
-
-  console.log(`Processing ${cards.length} cards...`);
+  const cards = await fetchAllCards(onlySet);
+  console.log(`Loaded ${cards.length} cards total.`);
 
   const byKey = {};
   for (const c of cards) {
@@ -62,6 +75,8 @@ async function main() {
 
   const headers = { "X-Api-Key": TCG_KEY };
   const printingsToInsert = [];
+  let processedCount = 0;
+  const totalGroups = Object.keys(byKey).length;
 
   for (const [key, cardGroup] of Object.entries(byKey)) {
     const [setId, numStr] = key.split("::");
@@ -130,6 +145,12 @@ async function main() {
       } catch (err) {
         console.error(`  ${card.id} error: ${err.message}`);
       }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    processedCount++;
+    if (processedCount % 50 === 0) {
+      console.log(`  ${processedCount}/${totalGroups} card groups processed (${printingsToInsert.length} printings queued)`);
     }
   }
 
