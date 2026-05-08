@@ -35,7 +35,12 @@ function rarityBucket(rarity, subtypes, cardNumber, setPrintedTotal) {
   if (r === "promo")     return "promo";
 
   // ── SCARLET & VIOLET + MEGA EVOLUTION ────────────────────
-  if (r === "double rare")               return "double_rare";
+  if (r === "double rare") {
+    if (subs.includes("mega")) return "mega_ex";
+    if (subs.includes("tera")) return "tera_ex";
+    if (subs.includes("ex"))   return "ex";
+    return "double_rare";
+  }
   if (r === "ultra rare")                return "ultra_rare";
   if (r === "illustration rare")         return "illustration_rare";
   if (r === "special illustration rare") return "sir";
@@ -80,7 +85,7 @@ const BUCKET_ORDER = [
   "gx", "v", "vmax", "vstar",
   "full_art", "prism_star", "shining",
   "v_full_art", "amazing_rare", "trainer_gallery", "shiny",
-  "double_rare", "illustration_rare", "ace_spec",
+  "double_rare", "ex", "tera_ex", "mega_ex", "illustration_rare", "ace_spec",
   "rainbow_rare", "ultra_rare",
   "alt_art", "secret_rare", "gold_rare",
   "mega_attack_rare", "sir",
@@ -94,7 +99,7 @@ const BUCKET_LABELS = {
   v: "V", vmax: "VMAX", vstar: "VSTAR", v_full_art: "Full Art V",
   alt_art: "Alt Art", gold_rare: "Gold Rare", amazing_rare: "Amazing Rare",
   trainer_gallery: "Trainer Gallery", shiny: "Shiny",
-  double_rare: "Double Rare", illustration_rare: "Illustration Rare",
+  double_rare: "Double Rare", ex: "ex", tera_ex: "Tera ex", mega_ex: "Mega ex", illustration_rare: "Illustration Rare",
   ultra_rare: "Full Art", ace_spec: "ACE SPEC", mega_attack_rare: "Mega Attack Rare",
   sir: "Special Illustration Rare", hyper_rare: "Hyper Rare",
   mega_hyper_rare: "Mega Hyper Rare", shiny_rare: "Shiny Rare",
@@ -104,6 +109,9 @@ const RARITY_TINT = {
   gx:                "rgba(59,130,246,0.38)",
   v:                 "rgba(59,130,246,0.38)",
   double_rare:       "rgba(59,130,246,0.38)",
+  ex:                "rgba(59,130,246,0.38)",
+  tera_ex:           "rgba(20,184,166,0.38)",
+  mega_ex:           "rgba(139,92,246,0.38)",
   vmax:              "rgba(139,92,246,0.38)",
   vstar:             "rgba(139,92,246,0.38)",
   illustration_rare: "rgba(34,197,94,0.38)",
