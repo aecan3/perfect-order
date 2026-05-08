@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Users, LogOut, EyeOff, Trash2, MoreHorizontal } from "lucide-react";
+import { Plus, Users, LogOut, EyeOff, Eye, Trash2, MoreHorizontal, ChevronDown, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -25,6 +25,8 @@ export default function HomePage() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [userSets, setUserSets] = useState([]);
+  const [hiddenSets, setHiddenSets] = useState([]);
+  const [showHidden, setShowHidden] = useState(false);
   const [setValues, setSetValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("AUD");
@@ -58,7 +60,7 @@ export default function HomePage() {
         supabase
           .from("user_sets")
           .select(`
-            added_at,
+            added_at, hidden_at,
             set:sets (
               id, code, name, series, total, total_with_secrets,
               logo_url, theme_primary, theme_secondary, theme_bg,
@@ -66,7 +68,6 @@ export default function HomePage() {
             )
           `)
           .eq("user_id", user.id)
-          .is("hidden_at", null)
           .order("added_at", { ascending: false }),
         supabase
           .from("collection_entries")
@@ -92,8 +93,11 @@ export default function HomePage() {
         .map((row) => ({
           ...row.set,
           checkedCount: counts[row.set.id] || 0,
+          isHidden: row.hidden_at != null,
         }));
-      setUserSets(enriched);
+
+      setUserSets(enriched.filter((s) => !s.isHidden));
+      setHiddenSets(enriched.filter((s) => s.isHidden));
       setSetValues(vals);
       setLoading(false);
     })();
@@ -117,7 +121,11 @@ export default function HomePage() {
       .update({ hidden_at: new Date().toISOString() })
       .eq("user_id", user.id)
       .eq("set_id", setId);
-    setUserSets((prev) => prev.filter((s) => s.id !== setId));
+    const moving = userSets.find((s) => s.id === setId);
+    if (moving) {
+      setUserSets((prev) => prev.filter((s) => s.id !== setId));
+      setHiddenSets((prev) => [{ ...moving, isHidden: true }, ...prev]);
+    }
   };
 
   const executeRemove = async (setId) => {
@@ -131,6 +139,20 @@ export default function HomePage() {
     setUserSets((prev) => prev.filter((s) => s.id !== setId));
   };
 
+  const executeUnhide = async (setId) => {
+    await supabase
+      .from("user_sets")
+      .update({ hidden_at: null })
+      .eq("user_id", user.id)
+      .eq("set_id", setId);
+    const moving = hiddenSets.find((s) => s.id === setId);
+    if (moving) {
+      setHiddenSets((prev) => prev.filter((s) => s.id !== setId));
+      const { isHidden: _, ...setData } = moving;
+      setUserSets((prev) => [setData, ...prev]);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
@@ -138,6 +160,154 @@ export default function HomePage() {
       </div>
     );
   }
+
+  const renderSetCard = (set) => {
+    const total = set.cards?.[0]?.count || 0;
+    const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
+    const primary = set.theme_primary || "#b9ff3c";
+    const secondary = set.theme_secondary || "#c084fc";
+    const bg = set.theme_bg || "#0a0e0a";
+    const val = (setValues[set.id] || 0) * (RATES[currency]?.rate || 1);
+
+    return (
+      <div
+        key={set.id}
+        className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
+        style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
+      >
+        {/* Desktop ··· menu — outside the sliding track so it doesn't move */}
+        <div
+          className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setMenuState((prev) => ({ ...prev, [set.id]: !prev[set.id] }))}
+            className="w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80"
+            aria-label="More options"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          {menuState[set.id] && (
+            <div className="absolute right-0 top-full mt-1 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg shadow-xl overflow-hidden min-w-[130px]">
+              <button
+                onClick={() => { setMenuState({}); setConfirmAction({ type: "hide", setId: set.id, setName: set.name }); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-[var(--po-border)] flex items-center gap-2"
+              >
+                <EyeOff size={14} /> Hide
+              </button>
+              <button
+                onClick={() => { setMenuState({}); setConfirmAction({ type: "remove", setId: set.id, setName: set.name }); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-rose-400 hover:bg-[var(--po-border)] flex items-center gap-2"
+              >
+                <Trash2 size={14} /> Remove
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Sliding inner — contains the card link; action buttons are anchored to its right edge
+            via left-full so they start outside the overflow-hidden boundary and are
+            only revealed when the track translates left. */}
+        <div
+          className="relative transition-transform duration-300 ease-out"
+          style={{ transform: swipeState[set.id] ? "translateX(-160px)" : "translateX(0)" }}
+          onTouchStart={(e) => { touchStartRef.current[set.id] = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            const startX = touchStartRef.current[set.id];
+            if (startX == null) return;
+            const dx = e.changedTouches[0].clientX - startX;
+            if (dx < -60) setSwipeState((prev) => ({ ...prev, [set.id]: true }));
+            else if (dx > 60) setSwipeState((prev) => ({ ...prev, [set.id]: false }));
+            delete touchStartRef.current[set.id];
+          }}
+        >
+          <Link
+            href={`/set/${set.id}`}
+            className="block"
+            onClick={(e) => {
+              if (swipeState[set.id]) {
+                e.preventDefault();
+                setSwipeState((prev) => ({ ...prev, [set.id]: false }));
+              }
+            }}
+          >
+            <div className="p-4 flex items-center gap-3">
+              {set.logo_url ? (
+                <img
+                  src={set.logo_url}
+                  alt={set.name}
+                  className="w-20 h-20 object-contain flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-20 h-20 rounded-lg flex items-center justify-center font-black text-2xl flex-shrink-0"
+                  style={{ background: primary, color: bg }}
+                >
+                  {set.code}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div
+                  className="font-extrabold text-base leading-tight truncate"
+                  style={{ color: primary }}
+                >
+                  {set.name}
+                </div>
+                {set.series && (
+                  <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
+                    {set.series}
+                  </div>
+                )}
+                <div className="mt-2 flex items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black tabular-nums">
+                      {set.checkedCount}
+                    </span>
+                    <span className="text-xs text-[var(--po-text-dim)]">
+                      / {total} · {pct}%
+                    </span>
+                  </div>
+                  {val > 0 && (
+                    <span className="text-xs tabular-nums font-bold" style={{ color: primary }}>
+                      {fmtMoney(val, currency)}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${pct}%`,
+                      background: `linear-gradient(90deg, ${primary}, ${secondary})`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          {/* Action buttons — left-full positions them just past the card's right edge,
+              hidden by the outer overflow-hidden until the track slides left */}
+          <div className="absolute inset-y-0 left-full flex">
+            <button
+              onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
+              className="w-20 bg-amber-600 hover:bg-amber-500 flex flex-col items-center justify-center gap-1 text-white"
+            >
+              <EyeOff size={16} />
+              <span className="text-[10px] uppercase tracking-widest font-bold">Hide</span>
+            </button>
+            <button
+              onClick={() => setConfirmAction({ type: "remove", setId: set.id, setName: set.name })}
+              className="w-20 bg-rose-700 hover:bg-rose-600 flex flex-col items-center justify-center gap-1 text-white"
+            >
+              <Trash2 size={16} />
+              <span className="text-[10px] uppercase tracking-widest font-bold">Remove</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]" onClick={() => setMenuState({})}>
@@ -186,155 +356,79 @@ export default function HomePage() {
           Add a set
         </Link>
 
-        {userSets.length === 0 ? (
+        {userSets.length === 0 && hiddenSets.length === 0 ? (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
             No sets yet — tap above to start collecting.
           </div>
         ) : (
-          userSets.map((set) => {
-            const total = set.cards?.[0]?.count || 0;
-            const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
-            const primary = set.theme_primary || "#b9ff3c";
-            const secondary = set.theme_secondary || "#c084fc";
-            const bg = set.theme_bg || "#0a0e0a";
-            const val = (setValues[set.id] || 0) * (RATES[currency]?.rate || 1);
+          userSets.map((set) => renderSetCard(set))
+        )}
 
-            return (
-              <div
-                key={set.id}
-                className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
-                style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
-              >
-                {/* Action panel revealed by swipe */}
-                <div className="absolute inset-y-0 right-0 flex">
-                  <button
-                    onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
-                    className="w-20 bg-amber-600 hover:bg-amber-500 flex flex-col items-center justify-center gap-1 text-white"
-                  >
-                    <EyeOff size={16} />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">Hide</span>
-                  </button>
-                  <button
-                    onClick={() => setConfirmAction({ type: "remove", setId: set.id, setName: set.name })}
-                    className="w-20 bg-rose-700 hover:bg-rose-600 flex flex-col items-center justify-center gap-1 text-white"
-                  >
-                    <Trash2 size={16} />
-                    <span className="text-[10px] uppercase tracking-widest font-bold">Remove</span>
-                  </button>
-                </div>
+        {hiddenSets.length > 0 && (
+          <div className="pt-2">
+            <button
+              onClick={() => setShowHidden((v) => !v)}
+              className="w-full flex items-center justify-between px-1 py-2 text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+            >
+              <span className="text-xs uppercase tracking-widest font-bold">
+                Hidden Sets ({hiddenSets.length})
+              </span>
+              {showHidden ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
 
-                {/* Desktop ··· menu */}
-                <div
-                  className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => setMenuState((prev) => ({ ...prev, [set.id]: !prev[set.id] }))}
-                    className="w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80"
-                    aria-label="More options"
-                  >
-                    <MoreHorizontal size={14} />
-                  </button>
-                  {menuState[set.id] && (
-                    <div className="absolute right-0 top-full mt-1 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg shadow-xl overflow-hidden min-w-[130px]">
-                      <button
-                        onClick={() => { setMenuState({}); setConfirmAction({ type: "hide", setId: set.id, setName: set.name }); }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-[var(--po-border)] flex items-center gap-2"
-                      >
-                        <EyeOff size={14} /> Hide
-                      </button>
-                      <button
-                        onClick={() => { setMenuState({}); setConfirmAction({ type: "remove", setId: set.id, setName: set.name }); }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-rose-400 hover:bg-[var(--po-border)] flex items-center gap-2"
-                      >
-                        <Trash2 size={14} /> Remove
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Inner card — slides left on swipe */}
-                <div
-                  className="relative transition-transform duration-300 ease-out"
-                  style={{ transform: swipeState[set.id] ? "translateX(-160px)" : "translateX(0)" }}
-                  onTouchStart={(e) => { touchStartRef.current[set.id] = e.touches[0].clientX; }}
-                  onTouchEnd={(e) => {
-                    const startX = touchStartRef.current[set.id];
-                    if (startX == null) return;
-                    const dx = e.changedTouches[0].clientX - startX;
-                    if (dx < -60) setSwipeState((prev) => ({ ...prev, [set.id]: true }));
-                    else if (dx > 60) setSwipeState((prev) => ({ ...prev, [set.id]: false }));
-                    delete touchStartRef.current[set.id];
-                  }}
-                >
-                  <Link
-                    href={`/set/${set.id}`}
-                    className="block"
-                    onClick={(e) => {
-                      if (swipeState[set.id]) {
-                        e.preventDefault();
-                        setSwipeState((prev) => ({ ...prev, [set.id]: false }));
-                      }
-                    }}
-                  >
-                    <div className="p-4 flex items-center gap-3">
-                      {set.logo_url ? (
-                        <img
-                          src={set.logo_url}
-                          alt={set.name}
-                          className="w-20 h-20 object-contain flex-shrink-0"
-                        />
-                      ) : (
-                        <div
-                          className="w-20 h-20 rounded-lg flex items-center justify-center font-black text-2xl flex-shrink-0"
-                          style={{ background: primary, color: bg }}
-                        >
-                          {set.code}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="font-extrabold text-base leading-tight truncate"
-                          style={{ color: primary }}
-                        >
-                          {set.name}
-                        </div>
-                        {set.series && (
-                          <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                            {set.series}
+            {showHidden && (
+              <div className="space-y-2 mt-1">
+                {hiddenSets.map((set) => {
+                  const primary = set.theme_primary || "#b9ff3c";
+                  const bg = set.theme_bg || "#0a0e0a";
+                  return (
+                    <div
+                      key={set.id}
+                      className="rounded-2xl overflow-hidden border border-[var(--po-border)] opacity-50"
+                      style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
+                    >
+                      <div className="p-3 flex items-center gap-3">
+                        {set.logo_url ? (
+                          <img
+                            src={set.logo_url}
+                            alt={set.name}
+                            className="w-12 h-12 object-contain flex-shrink-0"
+                          />
+                        ) : (
+                          <div
+                            className="w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0"
+                            style={{ background: primary, color: bg }}
+                          >
+                            {set.code}
                           </div>
                         )}
-                        <div className="mt-2 flex items-baseline justify-between gap-2">
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-black tabular-nums">
-                              {set.checkedCount}
-                            </span>
-                            <span className="text-xs text-[var(--po-text-dim)]">
-                              / {total} · {pct}%
-                            </span>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className="font-bold text-sm leading-tight truncate"
+                            style={{ color: primary }}
+                          >
+                            {set.name}
                           </div>
-                          {val > 0 && (
-                            <span className="text-xs tabular-nums font-bold" style={{ color: primary }}>
-                              {fmtMoney(val, currency)}
-                            </span>
+                          {set.series && (
+                            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
+                              {set.series}
+                            </div>
                           )}
                         </div>
-                        <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
-                          <div
-                            className="h-full transition-all"
-                            style={{
-                              width: `${pct}%`,
-                              background: `linear-gradient(90deg, ${primary}, ${secondary})`,
-                            }}
-                          />
-                        </div>
+                        <button
+                          onClick={() => executeUnhide(set.id)}
+                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] text-xs font-bold uppercase tracking-widest transition-colors"
+                        >
+                          <Eye size={12} />
+                          Unhide
+                        </button>
                       </div>
                     </div>
-                  </Link>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })
+            )}
+          </div>
         )}
       </main>
 
