@@ -6,6 +6,18 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
+const RATES = {
+  AUD: { rate: 1.53, symbol: "A$" },
+  USD: { rate: 1.0,  symbol: "$"  },
+  GBP: { rate: 0.79, symbol: "£"  },
+};
+const fmtMoney = (v, currency) => {
+  const sym = RATES[currency]?.symbol || "$";
+  if (v >= 100) return `${sym}${v.toFixed(0)}`;
+  if (v >= 10)  return `${sym}${v.toFixed(1)}`;
+  return `${sym}${v.toFixed(2)}`;
+};
+
 export default function FriendOverviewPage() {
   const router = useRouter();
   const params = useParams();
@@ -14,8 +26,13 @@ export default function FriendOverviewPage() {
 
   const [friend, setFriend] = useState(null);
   const [friendSets, setFriendSets] = useState([]);
-  const [counts, setCounts] = useState({});
+  const [currency, setCurrency] = useState("AUD");
   const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    const c = localStorage.getItem("po:currency");
+    if (c && RATES[c]) setCurrency(c);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -52,27 +69,27 @@ export default function FriendOverviewPage() {
       const [{ data: sets }, { data: entries }] = await Promise.all([
         supabase
           .from("user_sets")
-          .select(`added_at, set:sets (id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, cards(count))`)
+          .select(`added_at, set:sets (id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count))`)
           .eq("user_id", friendProfile.id)
           .order("added_at", { ascending: false }),
         supabase
           .from("collection_entries")
-          .select("set_id, card_number, checked")
+          .select("set_id, printing:printings(price_usd)")
           .eq("user_id", friendProfile.id)
           .eq("checked", true),
       ]);
 
-      const countMap = {};
-      const seen = new Set();
+      const countMap = {}, vals = {};
       (entries || []).forEach((e) => {
-        const key = `${e.set_id}::${e.card_number}`;
-        if (seen.has(key)) return;
-        seen.add(key);
         countMap[e.set_id] = (countMap[e.set_id] || 0) + 1;
+        vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
-      setFriendSets((sets || []).map((row) => ({ ...row.set, checkedCount: countMap[row.set.id] || 0 })));
-      setCounts(countMap);
+      setFriendSets((sets || []).map((row) => ({
+        ...row.set,
+        checkedCount: countMap[row.set.id] || 0,
+        collectionValue: vals[row.set.id] || 0,
+      })));
       setStatus("ok");
     })();
   }, [handle, router, supabase]);
@@ -120,11 +137,12 @@ export default function FriendOverviewPage() {
           </div>
         ) : (
           friendSets.map((set) => {
-            const total = set.cards?.[0]?.count || 0;
+            const total = set.printings?.[0]?.count || 0;
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";
             const bg = set.theme_bg || "#0a0e0a";
+            const val = (set.collectionValue || 0) * (RATES[currency]?.rate || 1);
             return (
               <Link
                 key={set.id}
@@ -152,9 +170,16 @@ export default function FriendOverviewPage() {
                         {set.series}
                       </div>
                     )}
-                    <div className="mt-2 flex items-baseline gap-2">
-                      <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
-                      <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
+                        <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
+                      </div>
+                      {val > 0 && (
+                        <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color: primary }}>
+                          {fmtMoney(val, currency)}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
                       <div
