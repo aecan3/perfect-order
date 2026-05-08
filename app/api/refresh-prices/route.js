@@ -183,7 +183,9 @@ async function tryPpt(setId, allPrintings) {
           requestsUsed++;
           if (!res.ok) return;
           const json = await res.json();
-          const market = json.prices?.tcgplayer?.market_price ?? null;
+          // PPT returns data as object (valid ID) or empty array (unknown ID)
+          const cardData = Array.isArray(json.data) ? json.data[0] : json.data;
+          const market = cardData?.prices?.tcgplayer?.market_price ?? null;
           if (market == null || market <= 0) return;
           for (const pid of byCardId.get(cardId)) {
             priceMap.set(pid, { price_usd: market });
