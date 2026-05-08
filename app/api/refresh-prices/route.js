@@ -2,10 +2,44 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-const PTCG = "https://api.pokemontcg.io/v2/cards";
+const POKETRACE_BASE = "https://api.poketrace.com/v1";
 
-// camelCase → snake_case  (reverseHolofoil → reverse_holofoil)
-const toSnake = (s) => s.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
+// Module-level slug cache: set_name.toLowerCase() → poketrace slug
+// Built once per serverless instance lifetime by paginating GET /sets.
+// 27 pages × 1 req each = 27 of 250 daily requests on first call only.
+let _slugCache = null;
+let _slugCachePromise = null;
+
+async function getSlugCache() {
+  if (_slugCache) return _slugCache;
+  if (_slugCachePromise) return _slugCachePromise;
+
+  _slugCachePromise = (async () => {
+    const map = {};
+    let cursor = null;
+    do {
+      const url =
+        POKETRACE_BASE +
+        "/sets" +
+        (cursor ? "?cursor=" + encodeURIComponent(cursor) : "");
+      const res = await fetch(url, {
+        headers: { "X-API-Key": process.env.POKETRACE_API_KEY },
+      });
+      if (!res.ok) break;
+      const json = await res.json();
+      for (const s of json.data ?? []) {
+        map[s.name.toLowerCase()] = s.slug;
+      }
+      cursor = json.pagination?.hasMore ? json.pagination.nextCursor : null;
+      // Respect burst rate limit
+      if (cursor) await new Promise((r) => setTimeout(r, 500));
+    } while (cursor);
+    _slugCache = map;
+    return map;
+  })();
+
+  return _slugCachePromise;
+}
 
 export async function POST(request) {
   // ── Auth ────────────────────────────────────────────────────────────────
@@ -20,7 +54,9 @@ export async function POST(request) {
       },
     }
   );
-  const { data: { user } } = await authClient.auth.getUser();
+  const {
+    data: { user },
+  } = await authClient.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   // ── Parse body ──────────────────────────────────────────────────────────
@@ -40,82 +76,168 @@ export async function POST(request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
+  // ── Build slug cache (cheap after first call) ───────────────────────────
+  const slugMap = await getSlugCache();
+
   // ── Process sets sequentially ───────────────────────────────────────────
   const results = [];
+  let totalRequests = 0;
+
   for (const setId of setIds) {
     try {
-      results.push(await processSet(admin, user.id, setId));
+      const r = await processSet(admin, user.id, setId, slugMap);
+      totalRequests += r.requestsUsed ?? 0;
+      results.push(r);
     } catch (err) {
       results.push({ setId, error: err.message });
     }
   }
 
-  return Response.json({ results });
+  console.log(`[PokeTrace] Session total requests used: ${totalRequests}`);
+  return Response.json({ results, totalRequests });
 }
 
-async function processSet(admin, userId, setId) {
-  // 1. Load existing printings + user's owned set for this set in parallel
-  const [{ data: allPrintings, error: pErr }, { data: owned, error: oErr }] = await Promise.all([
-    admin.from("printings").select("id, price_usd").eq("set_id", setId),
+async function processSet(admin, userId, setId, slugMap) {
+  // 1. Load printings + owned entries + set name in parallel
+  const [
+    { data: allPrintings, error: pErr },
+    { data: owned, error: oErr },
+    { data: setRow },
+  ] = await Promise.all([
+    admin
+      .from("printings")
+      .select("id, card_number, printing_label, price_usd")
+      .eq("set_id", setId),
     admin
       .from("collection_entries")
       .select("printing_id")
       .eq("user_id", userId)
       .eq("set_id", setId)
       .eq("checked", true),
+    admin.from("sets").select("name").eq("id", setId).maybeSingle(),
   ]);
   if (pErr) throw new Error(pErr.message);
   if (oErr) throw new Error(oErr.message);
 
-  const existingIds = new Set((allPrintings || []).map((p) => p.id));
-  const ownedIds = new Set((owned || []).map((e) => e.printing_id));
-
-  // Previous collection value (USD) = sum of current prices for owned printings
-  const previousValue = (allPrintings || [])
+  const ownedIds = new Set((owned ?? []).map((e) => e.printing_id));
+  const previousValue = (allPrintings ?? [])
     .filter((p) => ownedIds.has(p.id))
     .reduce((s, p) => s + (Number(p.price_usd) || 0), 0);
 
-  // 2. Fetch cards from pokemontcg.io (paginated)
-  const priceMap = new Map(); // printingId → market price
-  let page = 1, fetched = 0, totalCount = Infinity;
+  // 2. Resolve PokeTrace slug by set name
+  const setName = setRow?.name ?? "";
+  const slug = slugMap[setName.toLowerCase()];
 
-  while (fetched < totalCount) {
-    const res = await fetch(
-      `${PTCG}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,tcgplayer`,
-      {
-        headers: {
-          "X-Api-Key": process.env.POKEMON_TCG_API_KEY,
-          "Accept": "application/json",
-        },
-      }
+  if (!slug) {
+    console.log(
+      `[PokeTrace] No slug for "${setName}" (${setId}) — skipping price refresh`
     );
-    if (!res.ok) throw new Error(`TCG API ${res.status}`);
-    const json = await res.json();
+    return {
+      setId,
+      cardsUpdated: 0,
+      previousValue,
+      newValue: previousValue,
+      requestsUsed: 0,
+      note: "No PokeTrace slug found for this set",
+    };
+  }
 
-    totalCount = json.totalCount ?? json.count ?? 0;
-    const cards = json.data || [];
-    fetched += cards.length;
+  // 3. Fetch cards from PokeTrace (paginated by cursor)
+  // Builds: card_number (int) → { usd: number|null, eur: number|null }
+  const priceByNumber = new Map();
+  let cursor = null;
+  let requestsUsed = 0;
+  let totalItems = 0;
+  let singlesFound = 0;
+
+  do {
+    const url =
+      POKETRACE_BASE +
+      "/cards?set=" +
+      encodeURIComponent(slug) +
+      "&limit=100" +
+      (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+
+    const res = await fetch(url, {
+      headers: { "X-API-Key": process.env.POKETRACE_API_KEY },
+    });
+    requestsUsed++;
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.warn(`[PokeTrace] ${res.status} for ${slug}: ${body.slice(0, 120)}`);
+      break;
+    }
+
+    const json = await res.json();
+    const cards = json.data ?? [];
+    totalItems += cards.length;
 
     for (const card of cards) {
-      const prices = card.tcgplayer?.prices || {};
-      for (const [tcgType, data] of Object.entries(prices)) {
-        const market = data?.market;
-        if (!market || market <= 0) continue;
-        const pid = `${card.id}-${toSnake(tcgType)}`;
-        if (existingIds.has(pid)) priceMap.set(pid, market);
+      // Skip sealed products (boosters, boxes, blisters)
+      if (card.productType === "sealed" || card.cardNumber == null) continue;
+      singlesFound++;
+
+      // Parse "037/186" → 37
+      const num = parseInt(String(card.cardNumber).split("/")[0], 10);
+      if (isNaN(num)) continue;
+
+      const usd = card.prices?.tcgplayer?.NEAR_MINT?.avg ?? null;
+      const eur = card.prices?.cardmarket?.AGGREGATED?.avg ?? null;
+
+      // First-seen wins per card number (multiple variants may share a number)
+      if (!priceByNumber.has(num)) {
+        priceByNumber.set(num, { usd, eur });
       }
     }
 
-    if (!cards.length || fetched >= totalCount) break;
-    page++;
+    cursor = json.pagination?.hasMore ? json.pagination.nextCursor : null;
+    if (cursor) await new Promise((r) => setTimeout(r, 400));
+  } while (cursor);
+
+  console.log(
+    `[PokeTrace] ${setId} (${slug}): ${requestsUsed} req, ` +
+      `${totalItems} items fetched, ${singlesFound} singles, ` +
+      `${priceByNumber.size} unique card numbers with prices`
+  );
+
+  if (priceByNumber.size === 0) {
+    // Log a few of the items so we can diagnose (sealed-only sets, tier limits, etc.)
+    console.log(
+      `[PokeTrace] No individual card pricing for ${setId} — ` +
+        `${totalItems} total items were all sealed products or missing card numbers`
+    );
+    return {
+      setId,
+      cardsUpdated: 0,
+      previousValue,
+      newValue: previousValue,
+      requestsUsed,
+      note: "No individual card pricing data available for this set",
+    };
   }
 
-  // 3. Bulk-update printings in batches of 200
-  const updates = Array.from(priceMap.entries()).map(([id, price_usd]) => ({
-    id,
-    price_usd,
-    updated_at: new Date().toISOString(),
-  }));
+  // 4. Build upsert rows for printings that matched a card number
+  const updates = [];
+  for (const p of allPrintings ?? []) {
+    const prices = priceByNumber.get(p.card_number);
+    if (!prices || (prices.usd == null && prices.eur == null)) continue;
+
+    const row = { id: p.id, updated_at: new Date().toISOString() };
+    if (prices.usd != null) row.price_usd = prices.usd;
+    if (prices.eur != null) row.price_eur = prices.eur;
+    updates.push(row);
+  }
+
+  // Log first 5 for visibility
+  if (updates.length > 0) {
+    console.log(`[PokeTrace] ${setId} first 5 price updates:`);
+    updates.slice(0, 5).forEach((u) =>
+      console.log(`  ${u.id}: USD ${u.price_usd ?? "—"} / EUR ${u.price_eur ?? "—"}`)
+    );
+  }
+
+  // 5. Bulk-upsert in batches of 200
   const BATCH = 200;
   for (let i = 0; i < updates.length; i += BATCH) {
     const { error: uErr } = await admin
@@ -124,15 +246,16 @@ async function processSet(admin, userId, setId) {
     if (uErr) throw new Error(uErr.message);
   }
 
-  // 4. New collection value = sum of refreshed prices for owned printings
-  const newValue = Array.from(ownedIds).reduce((s, pid) => {
-    const price = priceMap.has(pid)
-      ? priceMap.get(pid)
-      : Number((allPrintings || []).find((p) => p.id === pid)?.price_usd || 0);
-    return s + price;
-  }, 0);
+  // 6. New collection value
+  const updatedMap = new Map(updates.map((u) => [u.id, u]));
+  const newValue = (allPrintings ?? [])
+    .filter((p) => ownedIds.has(p.id))
+    .reduce((s, p) => {
+      const upd = updatedMap.get(p.id);
+      return s + (upd?.price_usd ?? Number(p.price_usd) ?? 0);
+    }, 0);
 
-  // 5. Stamp user_sets with previous_value + prices_updated_at
+  // 7. Stamp user_sets
   await admin
     .from("user_sets")
     .update({
@@ -142,5 +265,5 @@ async function processSet(admin, userId, setId) {
     .eq("user_id", userId)
     .eq("set_id", setId);
 
-  return { setId, cardsUpdated: updates.length, previousValue, newValue };
+  return { setId, cardsUpdated: updates.length, previousValue, newValue, requestsUsed };
 }
