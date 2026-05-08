@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Plus, Users, LogOut, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
-  RefreshCw, ArrowUp, ArrowDown, Clock,
+  RefreshCw, Clock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -15,11 +15,23 @@ const RATES = {
   USD: { rate: 1.0,  symbol: "$"  },
   GBP: { rate: 0.79, symbol: "£"  },
 };
+
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
   if (v >= 100) return `${sym}${v.toFixed(0)}`;
   if (v >= 10)  return `${sym}${v.toFixed(1)}`;
   return `${sym}${v.toFixed(2)}`;
+};
+
+const fmtMoneyBig = (v, currency) => {
+  const sym = RATES[currency]?.symbol || "$";
+  return `${sym}${v.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+// Compact diff for inline trend: "↑44" or "↓2.5"
+const formatDiff = (diffUsd, currency) => {
+  const v = Math.abs(diffUsd) * (RATES[currency]?.rate || 1);
+  return v >= 10 ? v.toFixed(0) : v.toFixed(1);
 };
 
 const daysSince = (ts) =>
@@ -28,9 +40,9 @@ const daysSince = (ts) =>
 const pricesLabel = (ts) => {
   if (!ts) return null;
   const d = daysSince(ts);
-  if (d === 0) return "Prices updated today";
-  if (d === 1) return "Prices updated 1 day ago";
-  return `Prices updated ${d} days ago`;
+  if (d === 0) return "Updated today";
+  if (d === 1) return "Updated 1 day ago";
+  return `Updated ${d} days ago`;
 };
 
 const isStale = (ts) => ts && daysSince(ts) > 7;
@@ -57,9 +69,18 @@ export default function HomePage() {
 
   // Price refresh state
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshDone, setRefreshDone] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState("");
-  const [toast, setToast] = useState(null);
+  const [refreshProgressPct, setRefreshProgressPct] = useState(0);
+  const refreshTimerRef = useRef(null);
+
+  // Trend state: { [setId]: { dir: "up"|"down", diff: number (USD) } }
   const [trends, setTrends] = useState({});
+  const [portfolioTrend, setPortfolioTrend] = useState(null); // { diff (USD), pct }
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+  const [totalFlash, setTotalFlash] = useState(false);
+
+  // Animation state
   const [displayValues, setDisplayValues] = useState({});
   const rafRef = useRef(null);
   const animTargetsRef = useRef({});
@@ -122,8 +143,10 @@ export default function HomePage() {
     })();
   }, [router, supabase]);
 
-  // Clean up any running animation on unmount
-  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  }, []);
 
   // ── Animation ────────────────────────────────────────────────────────────
   const startAnimations = (targets) => {
@@ -137,7 +160,7 @@ export default function HomePage() {
       const updates = {};
       for (const [sid, anim] of Object.entries(animTargetsRef.current)) {
         const t = Math.min((ts - anim.startTime) / anim.duration, 1);
-        const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out
+        const eased = 1 - Math.pow(1 - t, 3);
         updates[sid] = anim.from + (anim.to - anim.from) * eased;
         if (t < 1) hasActive = true;
         else delete animTargetsRef.current[sid];
@@ -151,70 +174,91 @@ export default function HomePage() {
   // ── Price refresh ────────────────────────────────────────────────────────
   const handleRefresh = async () => {
     if (refreshing || !user) return;
+
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setRefreshing(true);
-    setToast(null);
+    setRefreshDone(false);
+    setPortfolioTrend(null);
+    setRefreshProgressPct(0);
 
-    const visible = userSets; // only visible (not hidden) sets
-    const allResults = [];
+    const visible = userSets;
+    const total = visible.length;
+    if (total === 0) { setRefreshing(false); return; }
 
-    for (let i = 0; i < visible.length; i++) {
-      setRefreshProgress(
-        `Updating ${i + 1} of ${visible.length} set${visible.length !== 1 ? "s" : ""}…`
-      );
+    let allPreviousTotal = 0;
+    let allNewTotal = 0;
+    const newTrendsMap = {};
+
+    for (let i = 0; i < total; i++) {
+      const set = visible[i];
+      setRefreshProgress(`Updating ${set.name}… (${i + 1} of ${total})`);
+      setRefreshProgressPct((i / total) * 100);
+
       try {
         const res = await fetch("/api/refresh-prices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setIds: [visible[i].id] }),
+          body: JSON.stringify({ setIds: [set.id] }),
         });
         const data = await res.json();
-        allResults.push(...(data.results || []));
+
+        for (const r of (data.results || [])) {
+          if (r.error) continue;
+          const { setId, previousValue, newValue } = r;
+
+          // Start this set's animation immediately (real-time count-up)
+          const oldDisplay =
+            animTargetsRef.current[setId]?.to ??
+            displayValues[setId] ??
+            setValues[setId] ??
+            0;
+          if (Math.abs(newValue - oldDisplay) > 0.005) {
+            startAnimations({ [setId]: { from: oldDisplay, to: newValue } });
+          }
+          setSetValues((prev) => ({ ...prev, [setId]: newValue }));
+
+          const prev = previousValue ?? 0;
+          const diff = newValue - prev;
+          if (Math.abs(diff) > 0.005) {
+            newTrendsMap[setId] = { dir: diff > 0 ? "up" : "down", diff: Math.abs(diff) };
+          }
+          allPreviousTotal += prev;
+          allNewTotal += newValue;
+        }
       } catch {
         // silent per-set failure — continue
       }
-    }
 
-    // Process results
-    const newTrends = {};
-    const animTargets = {};
-    const valueUpdates = {};
-
-    for (const r of allResults) {
-      if (r.error) continue;
-      const { setId, previousValue, newValue } = r;
-      const prev = previousValue ?? 0;
-      if (newValue > prev + 0.005) newTrends[setId] = "up";
-      else if (newValue < prev - 0.005) newTrends[setId] = "down";
-
-      // Animate from whatever was being displayed to the new USD value
-      const oldDisplay = animTargetsRef.current[setId]
-        ? animTargetsRef.current[setId].to  // mid-animation: animate from current target
-        : (displayValues[setId] ?? setValues[setId] ?? 0);
-      if (Math.abs(newValue - oldDisplay) > 0.005) {
-        animTargets[setId] = { from: oldDisplay, to: newValue };
-      }
-      valueUpdates[setId] = newValue;
-    }
-
-    // Batch state updates
-    if (Object.keys(valueUpdates).length > 0) {
-      setSetValues((prev) => ({ ...prev, ...valueUpdates }));
+      setRefreshProgressPct(((i + 1) / total) * 100);
     }
 
     const now = new Date().toISOString();
-    const refreshedIds = new Set(Object.keys(valueUpdates));
+    const refreshedIds = new Set(visible.map((s) => s.id));
     const stampUpdatedAt = (s) =>
       refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
     setUserSets((prev) => prev.map(stampUpdatedAt));
     setHiddenSets((prev) => prev.map(stampUpdatedAt));
 
-    setTrends(newTrends);
-    if (Object.keys(animTargets).length > 0) startAnimations(animTargets);
+    setTrends(newTrendsMap);
+    setLastRefreshedAt(now);
+
+    if (allPreviousTotal > 0.01) {
+      const diff = allNewTotal - allPreviousTotal;
+      setPortfolioTrend({ diff, pct: (diff / allPreviousTotal) * 100 });
+    }
+
+    // Brief flash on total value
+    setTotalFlash(true);
+    setTimeout(() => setTotalFlash(false), 600);
 
     setRefreshing(false);
     setRefreshProgress("");
-    setToast("✓ Prices updated");
-    setTimeout(() => setToast(null), 3000);
+    setRefreshProgressPct(100);
+    setRefreshDone(true);
+    refreshTimerRef.current = setTimeout(() => {
+      setRefreshDone(false);
+      setRefreshProgressPct(0);
+    }, 3000);
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -314,6 +358,23 @@ export default function HomePage() {
     );
   }
 
+  // ── Computed portfolio values ─────────────────────────────────────────────
+  const allSets = [...userSets, ...hiddenSets];
+  const totalUsd = allSets.reduce(
+    (s, set) => s + (displayValues[set.id] ?? setValues[set.id] ?? 0),
+    0
+  );
+  const bannerTotal = totalUsd * (RATES[currency]?.rate || 1);
+
+  // Freshest pricesUpdatedAt across all sets (shown before user refreshes in session)
+  const portfolioUpdatedAt =
+    lastRefreshedAt ||
+    allSets.reduce((latest, s) => {
+      if (!s.pricesUpdatedAt) return latest;
+      if (!latest) return s.pricesUpdatedAt;
+      return new Date(s.pricesUpdatedAt) > new Date(latest) ? s.pricesUpdatedAt : latest;
+    }, null);
+
   const renderSetCard = (set) => {
     const total = set.cards?.[0]?.count || 0;
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
@@ -321,9 +382,9 @@ export default function HomePage() {
     const secondary = set.theme_secondary || "#c084fc";
     const bg = set.theme_bg || "#0a0e0a";
 
-    // Use animated display value (USD) if available, else fall back to setValues
     const dispUsd = displayValues[set.id] ?? (setValues[set.id] || 0);
     const val = dispUsd * (RATES[currency]?.rate || 1);
+    const trend = trends[set.id];
 
     const touch = makeTouchHandlers(set.id);
 
@@ -411,14 +472,18 @@ export default function HomePage() {
                     <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
                   </div>
                   {val > 0 && (
-                    <span
-                      className="flex items-center gap-0.5 text-xs tabular-nums font-bold flex-shrink-0"
-                      style={{ color: primary }}
-                    >
-                      {fmtMoney(val, currency)}
-                      {trends[set.id] === "up"   && <ArrowUp   size={10} className="text-green-400" />}
-                      {trends[set.id] === "down" && <ArrowDown size={10} className="text-red-400"   />}
-                    </span>
+                    <div className="flex items-center gap-1 text-xs tabular-nums flex-shrink-0">
+                      <span className="font-bold" style={{ color: primary }}>
+                        {fmtMoney(val, currency)}
+                      </span>
+                      {trend && (
+                        <span
+                          className={`font-bold ${trend.dir === "up" ? "text-green-400" : "text-red-400"}`}
+                        >
+                          {trend.dir === "up" ? "↑" : "↓"}{formatDiff(trend.diff, currency)}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
@@ -430,17 +495,6 @@ export default function HomePage() {
                     }}
                   />
                 </div>
-                {/* Price staleness */}
-                {set.pricesUpdatedAt && (
-                  <div
-                    className={`mt-1 flex items-center gap-0.5 text-[10px] ${
-                      isStale(set.pricesUpdatedAt) ? "text-amber-400" : "text-[var(--po-text-dim)]"
-                    }`}
-                  >
-                    {isStale(set.pricesUpdatedAt) && <Clock size={9} />}
-                    {pricesLabel(set.pricesUpdatedAt)}
-                  </div>
-                )}
               </div>
             </div>
           </Link>
@@ -467,18 +521,108 @@ export default function HomePage() {
     );
   };
 
+  // ── Portfolio banner ──────────────────────────────────────────────────────
+  const renderBanner = () => {
+    const totalSets = allSets.length;
+    const stale = isStale(portfolioUpdatedAt);
+    const updatedLabel = pricesLabel(portfolioUpdatedAt);
+
+    return (
+      <div className="relative rounded-2xl overflow-hidden border border-[var(--po-border)] bg-[var(--po-bg-soft)]">
+        {/* 2px shimmer accent line */}
+        <div className="absolute top-0 left-0 right-0 h-0.5 po-banner-shimmer" />
+
+        <div className="px-4 pt-5 pb-4">
+          {/* Label */}
+          <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
+            Total Collection Value
+          </div>
+
+          {/* Big value */}
+          <div
+            className="mt-1 text-3xl font-black tabular-nums font-mono leading-none transition-colors duration-300"
+            style={{ color: totalFlash ? "#ffffff" : "var(--po-green)" }}
+          >
+            {fmtMoneyBig(bannerTotal, currency)}
+          </div>
+
+          {/* Trend line — hidden until first refresh */}
+          {portfolioTrend && (
+            <div
+              className={`mt-1.5 text-xs font-bold ${
+                portfolioTrend.diff >= 0 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {portfolioTrend.diff >= 0 ? "↑" : "↓"}{" "}
+              {fmtMoneyBig(
+                Math.abs(portfolioTrend.diff) * (RATES[currency]?.rate || 1),
+                currency
+              )}
+              {" · "}
+              {portfolioTrend.diff >= 0 ? "+" : ""}
+              {portfolioTrend.pct.toFixed(1)}% since last refresh
+            </div>
+          )}
+
+          {/* Meta: set count + staleness */}
+          <div
+            className={`mt-1.5 flex items-center gap-1 text-[10px] ${
+              stale ? "text-amber-400" : "text-[var(--po-text-dim)]"
+            }`}
+          >
+            {stale && <Clock size={9} />}
+            <span>
+              Across {totalSets} set{totalSets !== 1 ? "s" : ""}
+              {updatedLabel ? ` · ${updatedLabel}` : ""}
+            </span>
+          </div>
+        </div>
+
+        {/* Refresh button — becomes a progress bar during refresh */}
+        <div className="relative mx-4 mb-4 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
+          {/* Progress fill */}
+          <div
+            className="absolute inset-y-0 left-0 transition-all duration-500"
+            style={{
+              width: `${refreshProgressPct}%`,
+              background: refreshDone
+                ? "rgba(185,255,60,0.18)"
+                : "rgba(185,255,60,0.12)",
+            }}
+          />
+          <button
+            onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
+            disabled={refreshing}
+            className="relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"
+            style={{
+              color: refreshDone
+                ? "var(--po-green)"
+                : refreshing
+                ? "var(--po-text)"
+                : "var(--po-text-dim)",
+            }}
+          >
+            {refreshDone ? (
+              "✓ Prices updated"
+            ) : refreshing ? (
+              refreshProgress || "Refreshing…"
+            ) : (
+              <>
+                <RefreshCw size={12} />
+                Refresh Prices
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]"
       onClick={() => { closeAllSwipes(); setMenuState({}); }}
     >
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[var(--po-green)] text-black text-xs font-bold px-4 py-2 rounded-full shadow-lg whitespace-nowrap pointer-events-none">
-          {toast}
-        </div>
-      )}
-
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
@@ -495,14 +639,6 @@ export default function HomePage() {
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
-              disabled={refreshing}
-              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)] disabled:opacity-40 transition-opacity"
-              aria-label="Refresh prices"
-            >
-              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-            </button>
             <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Friends">
               <Users size={18} />
             </Link>
@@ -511,14 +647,12 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-        {refreshing && (
-          <p className="text-[10px] text-[var(--po-text-dim)] text-center mt-1.5">
-            {refreshProgress}
-          </p>
-        )}
       </header>
 
       <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
+        {/* Portfolio banner — only shown when user has sets */}
+        {allSets.length > 0 && renderBanner()}
+
         <Link
           href="/sets"
           className="block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"

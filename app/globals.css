@@ -52,6 +52,17 @@ body {
   box-shadow: 0 0 12px rgba(185, 255, 60, 0.3), 0 0 4px rgba(185, 255, 60, 0.5);
 }
 
+@keyframes po-banner-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.po-banner-shimmer {
+  background: linear-gradient(90deg, transparent 0%, var(--po-green) 50%, transparent 100%);
+  background-size: 50% 100%;
+  animation: po-banner-shimmer 2.5s linear infinite;
+}
+
 .po-wordmark {
   font-family: var(--font-baloo), system-ui, sans-serif;
   font-weight: 800;
