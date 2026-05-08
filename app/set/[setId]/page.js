@@ -24,6 +24,8 @@ function rarityBucket(rarity, supertype, subtypes) {
   if (r.includes("hyper") || r.includes("rainbow")) return "hyper";
   if (r.includes("special illustration")) return "sir";
   if (r.includes("illustration rare")) return "illustration";
+  if (subs.includes("mega") && subs.some((s) => /(^|\s)(ex|gx)(\s|$)/.test(s))) return "mega_ex";
+  if (subs.includes("tera") && subs.some((s) => /(^|\s)(ex|gx)(\s|$)/.test(s))) return "tera_ex";
   if (subs.some((s) => /(^|\s)(ex|gx|vmax|vstar|v)(\s|$)/.test(s)) || r.includes("double rare")) return "ex";
   if (r.includes("mega attack")) return "mega_attack";
   if (r.includes("ultra")) return "ultra";
@@ -35,10 +37,11 @@ function rarityBucket(rarity, supertype, subtypes) {
   return "other";
 }
 
-const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "ultra", "mega_attack", "illustration", "sir", "hyper", "trainer", "energy", "other"];
+const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "tera_ex", "mega_ex", "ultra", "mega_attack", "illustration", "sir", "hyper", "trainer", "energy", "other"];
 const BUCKET_LABELS = {
   common: "Common", uncommon: "Uncommon", rare: "Rare",
-  ex: "ex / Mega ex", ultra: "Ultra Rare",
+  ex: "ex", tera_ex: "Tera ex", mega_ex: "Mega ex",
+  ultra: "Ultra Rare",
   mega_attack: "Mega Attack Rare",
   illustration: "Illustration Rare", sir: "Special Illustration Rare",
   hyper: "Hyper Rare", trainer: "Trainer", energy: "Energy", other: "Other",
