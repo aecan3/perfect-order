@@ -149,30 +149,81 @@ async function tryPtcgio(setId, allPrintings) {
 
 // ── Source 3: PokemonPriceTracker ────────────────────────────────────────────
 // Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
-// One request per unique card ID (set_id-cardNumber), batched 20 in parallel.
+// PPT requires numeric TCGPlayer product IDs. Resolution flow per card:
+//   pokemontcg.io tcgplayer.url → prices.pokemontcg.io proxy 302 → product/{numericId}
+// One PPT call per card covers all printing variants via prices.variants map.
 async function tryPpt(setId, allPrintings) {
   if (!process.env.POKEMON_PRICE_TRACKER_KEY) return null;
 
-  // Group printings by TCG card ID so we can map prices back to all variants
-  const byCardId = new Map(); // "${setId}-${cardNumber}" → [printingId, ...]
-  for (const p of allPrintings) {
-    const cardId = `${setId}-${p.card_number}`;
-    if (!byCardId.has(cardId)) byCardId.set(cardId, []);
-    byCardId.get(cardId).push(p.id);
+  // Step 1: fetch pokemontcg.io cards to get tcgplayer.url per card
+  const tcgCards = [];
+  let page = 1, fetched = 0, totalCount = Infinity, requestsUsed = 0;
+
+  while (fetched < totalCount) {
+    const res = await fetch(
+      `${PTCG_BASE}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,number,tcgplayer`,
+      {
+        headers: { "X-Api-Key": process.env.POKEMON_TCG_API_KEY, Accept: "application/json" },
+      }
+    );
+    requestsUsed++;
+    if (!res.ok) break;
+    const json = await res.json();
+    totalCount = json.totalCount ?? json.count ?? 0;
+    const cards = json.data ?? [];
+    fetched += cards.length;
+    tcgCards.push(...cards);
+    if (!cards.length || fetched >= totalCount) break;
+    page++;
   }
 
-  const priceMap = new Map();
-  let requestsUsed = 0;
-  const cardIds = [...byCardId.keys()];
-  const PARALLEL = 20;
+  if (!tcgCards.length) return null;
 
-  for (let i = 0; i < cardIds.length; i += PARALLEL) {
-    const batch = cardIds.slice(i, i + PARALLEL);
+  // Step 2: follow pokemontcg.io proxy redirects to resolve numeric product IDs
+  const productIdByNumber = new Map(); // cardNumber(str) → numericId(str)
+  const PARALLEL = 20;
+  const cardsWithUrl = tcgCards.filter((c) => c.tcgplayer?.url);
+
+  for (let i = 0; i < cardsWithUrl.length; i += PARALLEL) {
+    const batch = cardsWithUrl.slice(i, i + PARALLEL);
     await Promise.all(
-      batch.map(async (cardId) => {
+      batch.map(async (card) => {
         try {
           const res = await fetch(
-            `${PPT_BASE}/cards?tcgPlayerId=${encodeURIComponent(cardId)}&includeHistory=false`,
+            `https://prices.pokemontcg.io/tcgplayer/${card.id}`,
+            { redirect: "manual" }
+          );
+          requestsUsed++;
+          const location = res.headers.get("location") ?? "";
+          const match = location.match(/product\/(\d+)/);
+          if (match) productIdByNumber.set(card.number, match[1]);
+        } catch {}
+      })
+    );
+    if (i + PARALLEL < cardsWithUrl.length) await sleep(200);
+  }
+
+  if (!productIdByNumber.size) return null;
+
+  // Step 3: group printings by card_number for price mapping
+  const printingsByNumber = new Map();
+  for (const p of allPrintings) {
+    const num = String(p.card_number);
+    if (!printingsByNumber.has(num)) printingsByNumber.set(num, []);
+    printingsByNumber.get(num).push(p);
+  }
+
+  // Step 4: call PPT per card, apply per-variant prices to each printing
+  const priceMap = new Map();
+  const entries = [...productIdByNumber.entries()];
+
+  for (let i = 0; i < entries.length; i += PARALLEL) {
+    const batch = entries.slice(i, i + PARALLEL);
+    await Promise.all(
+      batch.map(async ([cardNumber, productId]) => {
+        try {
+          const res = await fetch(
+            `${PPT_BASE}/cards?tcgPlayerId=${encodeURIComponent(productId)}&includeHistory=false`,
             {
               headers: {
                 Authorization: `Bearer ${process.env.POKEMON_PRICE_TRACKER_KEY}`,
@@ -183,22 +234,34 @@ async function tryPpt(setId, allPrintings) {
           requestsUsed++;
           if (!res.ok) return;
           const json = await res.json();
-          // PPT returns data as object (valid ID) or empty array (unknown ID)
-          const cardData = Array.isArray(json.data) ? json.data[0] : json.data;
-          const market = cardData?.prices?.tcgplayer?.market_price ?? null;
-          if (market == null || market <= 0) return;
-          for (const pid of byCardId.get(cardId)) {
-            priceMap.set(pid, { price_usd: market });
+          const prices = (Array.isArray(json.data) ? null : json.data)?.prices;
+          if (!prices) return;
+
+          for (const p of printingsByNumber.get(cardNumber) ?? []) {
+            const price = pptVariantPrice(p.id, setId, cardNumber, prices);
+            if (price != null && price > 0) priceMap.set(p.id, { price_usd: price });
           }
-        } catch {
-          // silent per-card failure — continue
-        }
+        } catch {}
       })
     );
-    if (i + PARALLEL < cardIds.length) await sleep(200);
+    if (i + PARALLEL < entries.length) await sleep(200);
   }
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
+}
+
+// Extract per-printing price from a PPT prices object.
+// Printing type is derived from the printing ID suffix (after setId-cardNumber-).
+function pptVariantPrice(printingId, setId, cardNumber, prices) {
+  const prefix = `${setId}-${cardNumber}-`;
+  const type = printingId.startsWith(prefix) ? printingId.slice(prefix.length) : "";
+  const v = prices.variants ?? {};
+  switch (type) {
+    case "normal":           return v["Normal"]?.["Near Mint"]?.price           ?? prices.market ?? null;
+    case "holofoil":         return v["Holofoil"]?.["Near Mint Holofoil"]?.price ?? prices.market ?? null;
+    case "reverse_holofoil": return v["Reverse Holofoil"]?.["Near Mint Reverse Holofoil"]?.price ?? prices.market ?? null;
+    default:                 return prices.market ?? null;
+  }
 }
 
 // ── POST handler ─────────────────────────────────────────────────────────────
