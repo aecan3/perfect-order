@@ -108,7 +108,7 @@ export default function HomePage() {
             set:sets (
               id, code, name, series, total, total_with_secrets,
               logo_url, theme_primary, theme_secondary, theme_bg,
-              cards(count)
+              cards(count), printings(count)
             )
           `)
           .eq("user_id", user.id)
@@ -120,10 +120,9 @@ export default function HomePage() {
           .eq("checked", true),
       ]);
 
-      const counts = {}, vals = {}, seen = new Set();
+      const counts = {}, vals = {};
       (entries || []).forEach((e) => {
-        const key = `${e.set_id}::${e.card_number}`;
-        if (!seen.has(key)) { seen.add(key); counts[e.set_id] = (counts[e.set_id] || 0) + 1; }
+        counts[e.set_id] = (counts[e.set_id] || 0) + 1;
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
@@ -376,7 +375,7 @@ export default function HomePage() {
     }, null);
 
   const renderSetCard = (set) => {
-    const total = set.cards?.[0]?.count || 0;
+    const total = set.printings?.[0]?.count || set.cards?.[0]?.count || 0;
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
     const primary = set.theme_primary || "#b9ff3c";
     const secondary = set.theme_secondary || "#c084fc";

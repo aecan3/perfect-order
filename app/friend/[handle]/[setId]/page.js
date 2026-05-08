@@ -133,12 +133,16 @@ const RARITY_TINT = {
   prism_star:        "rgba(99,102,241,0.38)",
 };
 
-function CardArt({ src, name, isOwned, themePrimary }) {
+function CardArt({ src, name, ownershipState, themePrimary }) {
   const [failed, setFailed] = useState(false);
+  const imgClass =
+    ownershipState === "complete" ? "" :
+    ownershipState === "partial"  ? "opacity-60" :
+    "grayscale opacity-30";
   if (failed || !src) {
     return (
       <div
-        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${isOwned ? "" : "grayscale opacity-30"}`}
+        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${imgClass}`}
         style={{ background: `linear-gradient(135deg, ${themePrimary}33, #0a0e0a)` }}
       >
         <div className="text-[11px] font-bold leading-tight line-clamp-3" style={{ color: themePrimary }}>
@@ -153,7 +157,7 @@ function CardArt({ src, name, isOwned, themePrimary }) {
       alt={name}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className={`w-full h-full object-cover transition-all duration-300 ${isOwned ? "" : "grayscale opacity-30"}`}
+      className={`w-full h-full object-cover transition-all duration-300 ${imgClass}`}
     />
   );
 }
@@ -343,10 +347,10 @@ export default function FriendSetTrackerPage() {
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  const checkedDisplay = ownedCardCount;
-  const totalDisplay = totalCards;
-  const ownedValueDisplay = ownedCardValue;
-  const totalValueDisplay = totalCardValue;
+  const checkedDisplay = ownedPrintingCount;
+  const totalDisplay = totalPrintings;
+  const ownedValueDisplay = ownedPrintingValue;
+  const totalValueDisplay = totalPrintingValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
@@ -354,13 +358,19 @@ export default function FriendSetTrackerPage() {
 
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
-    const ownedCount = cardOwnedCount(card.number);
-    const owned = ownedCount > 0;
-    const artOwned = ownedCount > 0;
+    const checkedCount = prints.filter((p) => ownedPrintings[p.id]?.checked).length;
+    const completionState =
+      prints.length === 0 || checkedCount === 0 ? "uncollected"
+      : checkedCount === prints.length ? "complete"
+      : "partial";
     const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total);
     const tint = RARITY_TINT[bucket];
     const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
     const photo = photoEntry?.photo_url;
+    const photoImgClass =
+      completionState === "complete" ? "" :
+      completionState === "partial"  ? "opacity-60" :
+      "grayscale opacity-30";
 
     return (
       <div key={card.id} className="flex flex-col">
@@ -372,23 +382,31 @@ export default function FriendSetTrackerPage() {
             <img
               src={photo}
               alt={card.name}
-              className={`w-full h-full object-cover transition-all duration-300 ${artOwned ? "" : "grayscale opacity-30"}`}
+              className={`w-full h-full object-cover transition-all duration-300 ${photoImgClass}`}
             />
           ) : (
-            <CardArt src={card.image_large} name={card.name} isOwned={artOwned} themePrimary={themePrimary} />
+            <CardArt src={card.image_large} name={card.name} ownershipState={completionState} themePrimary={themePrimary} />
           )}
-          {!owned && tint && (
+          {completionState !== "complete" && tint && (
             <div className="absolute inset-0 pointer-events-none" style={{ background: tint }} />
           )}
           <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
             {String(card.number).padStart(3, "0")}
           </div>
-          {owned && (
+          {completionState === "complete" && (
             <div
-              className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
-              style={{ background: themePrimary, color: "#000" }}
+              className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
+              style={{ background: themePrimary, color: "#000", boxShadow: `0 0 8px ${themePrimary}80` }}
             >
-              Owned
+              <Check size={16} strokeWidth={3} />
+            </div>
+          )}
+          {completionState === "partial" && (
+            <div
+              className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
+              style={{ background: `${themePrimary}30`, color: themePrimary, border: `1px solid ${themePrimary}80` }}
+            >
+              {checkedCount}/{prints.length}
             </div>
           )}
         </div>
@@ -457,7 +475,7 @@ export default function FriendSetTrackerPage() {
               {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              cards collected
+              printings collected
             </div>
           </div>
           <div className="text-right">
@@ -506,7 +524,7 @@ export default function FriendSetTrackerPage() {
                     <div className="text-left">
                       <div className="font-bold text-sm">{section.label}</div>
                       <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {section.cards.filter((c) => isCardOwned(c.number)).length}/{section.cards.length}
+                        {section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0)}/{section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0)}
                       </div>
                     </div>
                     <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
