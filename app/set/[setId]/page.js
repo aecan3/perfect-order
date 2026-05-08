@@ -25,6 +25,7 @@ function rarityBucket(rarity, supertype, subtypes) {
   if (r.includes("special illustration")) return "sir";
   if (r.includes("illustration rare")) return "illustration";
   if (subs.some((s) => /(^|\s)(ex|gx|vmax|vstar|v)(\s|$)/.test(s)) || r.includes("double rare")) return "ex";
+  if (r.includes("mega attack")) return "mega_attack";
   if (r.includes("ultra")) return "ultra";
   if (r === "rare" || r === "rare holo" || r.startsWith("rare ")) return "rare";
   if (r === "uncommon") return "uncommon";
@@ -34,10 +35,11 @@ function rarityBucket(rarity, supertype, subtypes) {
   return "other";
 }
 
-const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "ultra", "illustration", "sir", "hyper", "trainer", "energy", "other"];
+const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "ultra", "mega_attack", "illustration", "sir", "hyper", "trainer", "energy", "other"];
 const BUCKET_LABELS = {
   common: "Common", uncommon: "Uncommon", rare: "Rare",
   ex: "ex / Mega ex", ultra: "Ultra Rare",
+  mega_attack: "Mega Attack Rare",
   illustration: "Illustration Rare", sir: "Special Illustration Rare",
   hyper: "Hyper Rare", trainer: "Trainer", energy: "Energy", other: "Other",
 };
