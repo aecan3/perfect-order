@@ -12,7 +12,8 @@
     "seed:printings": "node scripts/seed-printings.mjs",
     "migrate:entries": "node scripts/migrate-entries.mjs",
     "seed:manual": "node scripts/seed-manual-printings.mjs",
-    "seed:priceless": "node scripts/seed-priceless-sets.mjs"
+    "seed:priceless": "node scripts/seed-priceless-sets.mjs",
+    "reseed:empty": "node scripts/reseed-empty-sets.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
