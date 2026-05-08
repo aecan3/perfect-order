@@ -596,6 +596,13 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* ME sets slow-pricing notice */}
+        {!refreshing && userSets.some((s) => ["me1", "me2", "me2pt5", "me3"].includes(s.id)) && (
+          <p className="mx-4 mb-2 text-[10px] text-[var(--po-text-dim)] text-center">
+            Pricing ME sets (me2pt5 / me3) may take a few minutes
+          </p>
+        )}
+
         {/* Refresh button — becomes a progress bar during refresh */}
         <div className="relative mx-4 mb-4 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
           {/* Progress fill */}

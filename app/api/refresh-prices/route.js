@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 const POKETRACE_BASE  = "https://api.poketrace.com/v1";
 const PTCG_BASE       = "https://api.pokemontcg.io/v2/cards";
 const PPT_BASE        = "https://www.pokemonpricetracker.com/api/v2";
-const POKESCOPE_BASE  = "https://pokescope.app/api/cards";
+const POKESCOPE_BASE  = "https://pokescope.app/card";
 
 // ME sets have no PokeTrace individual card data — skip source 1 for these
 const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
@@ -266,14 +266,10 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
 }
 
 // ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
-// Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
-// API: GET /api/cards/{setId}-{cardNumber} → { prices: [{type, market}] }
-const POKESCOPE_TYPE_MAP = {
-  normal:          "normal",
-  holofoil:        "holofoil",
-  reverseHolofoil: "reverse_holofoil",
-};
-
+// Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
+// Page contains text like "Market Price (TCG holofoil) $1.11".
+// Rate limit: 1 req/second (sequential, no batching).
+// Variant pricing: holofoil = market, normal = market × 0.6, reverse = market × 0.4
 async function tryPokeScope(setId, allPrintings) {
   const printingsByNumber = new Map();
   for (const p of allPrintings) {
@@ -282,35 +278,61 @@ async function tryPokeScope(setId, allPrintings) {
     printingsByNumber.get(num).push(p);
   }
 
-  const PARALLEL = 20;
   const numbers = [...printingsByNumber.keys()];
   const priceMap = new Map();
   let requestsUsed = 0;
 
-  for (let i = 0; i < numbers.length; i += PARALLEL) {
-    const batch = numbers.slice(i, i + PARALLEL);
-    await Promise.all(
-      batch.map(async (cardNumber) => {
-        try {
-          const res = await fetch(`${POKESCOPE_BASE}/${setId}-${cardNumber}`);
-          requestsUsed++;
-          if (!res.ok) return;
-          const json = await res.json();
-          const byType = {};
-          for (const entry of json.prices ?? []) {
-            const ourType = POKESCOPE_TYPE_MAP[entry.type];
-            if (ourType) byType[ourType] = parseFloat(entry.market);
-          }
-          for (const printing of printingsByNumber.get(cardNumber) ?? []) {
-            const prefix = `${setId}-${cardNumber}-`;
-            const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
-            const price = byType[type];
-            if (price != null && price > 0) priceMap.set(printing.id, { price_usd: price });
-          }
-        } catch {}
-      })
-    );
-    if (i + PARALLEL < numbers.length) await sleep(200);
+  for (const cardNumber of numbers) {
+    try {
+      const url = `${POKESCOPE_BASE}/${setId}-${cardNumber}`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; perfect-order-price-bot/1.0)" },
+      });
+      requestsUsed++;
+
+      if (!res.ok) {
+        console.warn(`[PokeScope] ${res.status} for ${setId}-${cardNumber}`);
+        await sleep(1000);
+        continue;
+      }
+
+      const html = await res.text();
+      // Find "Market Price" then extract the first $ amount within the next 500 chars
+      const mpIdx = html.toLowerCase().indexOf("market price");
+      if (mpIdx === -1) {
+        console.warn(`[PokeScope] No "Market Price" found for ${setId}-${cardNumber}`);
+        await sleep(1000);
+        continue;
+      }
+
+      const segment = html.slice(mpIdx, mpIdx + 500);
+      const amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+      if (!amtMatch) {
+        console.warn(`[PokeScope] No $ amount found near "Market Price" for ${setId}-${cardNumber}`);
+        await sleep(1000);
+        continue;
+      }
+
+      const marketPrice = parseFloat(amtMatch[1].replace(/,/g, ""));
+      console.log(`[PokeScope] ${setId}-${cardNumber}: market=$${marketPrice}`);
+
+      for (const printing of printingsByNumber.get(cardNumber) ?? []) {
+        const prefix = `${setId}-${cardNumber}-`;
+        const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
+        let price;
+        switch (type) {
+          case "holofoil":         price = marketPrice;           break;
+          case "normal":           price = marketPrice * 0.6;     break;
+          case "reverse_holofoil": price = marketPrice * 0.4;     break;
+          default:                 price = marketPrice;           break;
+        }
+        if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+      }
+    } catch (err) {
+      console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
+    }
+
+    await sleep(1000); // 1 req/second — be respectful to a small site
   }
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
