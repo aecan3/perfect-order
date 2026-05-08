@@ -29,7 +29,7 @@ export default function SetBrowserPage() {
       const [{ data: sets }, { data: userSets }] = await Promise.all([
         supabase
           .from("sets")
-          .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, cards(count)")
+          .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
           .order("release_date", { ascending: false }),
         supabase.from("user_sets").select("set_id").eq("user_id", user.id),
       ]);
@@ -125,7 +125,7 @@ export default function SetBrowserPage() {
           </div>
         ) : (
           filteredSets.map((set) => {
-            const total = set.cards?.[0]?.count || 0;
+            const total = set.printings?.[0]?.count || 0;
             const isActive = activeSetIds.has(set.id);
             const isAdding = adding === set.id;
             const primary = set.theme_primary || "#b9ff3c";
