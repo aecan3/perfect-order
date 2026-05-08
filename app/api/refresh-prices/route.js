@@ -3,9 +3,10 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 // ── API bases ────────────────────────────────────────────────────────────────
-const POKETRACE_BASE = "https://api.poketrace.com/v1";
-const PTCG_BASE      = "https://api.pokemontcg.io/v2/cards";
-const PPT_BASE       = "https://www.pokemonpricetracker.com/api/v2";
+const POKETRACE_BASE  = "https://api.poketrace.com/v1";
+const PTCG_BASE       = "https://api.pokemontcg.io/v2/cards";
+const PPT_BASE        = "https://www.pokemonpricetracker.com/api/v2";
+const POKESCOPE_BASE  = "https://pokescope.app/api/cards";
 
 // ME sets have no PokeTrace individual card data — skip source 1 for these
 const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
@@ -264,6 +265,57 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
   }
 }
 
+// ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
+// Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
+// API: GET /api/cards/{setId}-{cardNumber} → { prices: [{type, market}] }
+const POKESCOPE_TYPE_MAP = {
+  normal:          "normal",
+  holofoil:        "holofoil",
+  reverseHolofoil: "reverse_holofoil",
+};
+
+async function tryPokeScope(setId, allPrintings) {
+  const printingsByNumber = new Map();
+  for (const p of allPrintings) {
+    const num = String(p.card_number);
+    if (!printingsByNumber.has(num)) printingsByNumber.set(num, []);
+    printingsByNumber.get(num).push(p);
+  }
+
+  const PARALLEL = 20;
+  const numbers = [...printingsByNumber.keys()];
+  const priceMap = new Map();
+  let requestsUsed = 0;
+
+  for (let i = 0; i < numbers.length; i += PARALLEL) {
+    const batch = numbers.slice(i, i + PARALLEL);
+    await Promise.all(
+      batch.map(async (cardNumber) => {
+        try {
+          const res = await fetch(`${POKESCOPE_BASE}/${setId}-${cardNumber}`);
+          requestsUsed++;
+          if (!res.ok) return;
+          const json = await res.json();
+          const byType = {};
+          for (const entry of json.prices ?? []) {
+            const ourType = POKESCOPE_TYPE_MAP[entry.type];
+            if (ourType) byType[ourType] = parseFloat(entry.market);
+          }
+          for (const printing of printingsByNumber.get(cardNumber) ?? []) {
+            const prefix = `${setId}-${cardNumber}-`;
+            const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
+            const price = byType[type];
+            if (price != null && price > 0) priceMap.set(printing.id, { price_usd: price });
+          }
+        } catch {}
+      })
+    );
+    if (i + PARALLEL < numbers.length) await sleep(200);
+  }
+
+  return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
+}
+
 // ── POST handler ─────────────────────────────────────────────────────────────
 export async function POST(request) {
   const cookieStore = await cookies();
@@ -342,7 +394,7 @@ async function processSet(admin, userId, setId, slugMap) {
     .filter((p) => ownedIds.has(p.id))
     .reduce((s, p) => s + (Number(p.price_usd) || 0), 0);
 
-  // 2. Waterfall — PokeTrace → pokemontcg.io → PokemonPriceTracker
+  // 2. Waterfall — PokeTrace → pokemontcg.io → PPT → PokeScope (ME only)
   const setName = setRow?.name ?? "";
   // ME sets: no PokeTrace singles data — start at source 2
   const slug = ME_SETS.has(setId) ? null : (slugMap[setName.toLowerCase()] ?? null);
@@ -371,6 +423,14 @@ async function processSet(admin, userId, setId, slugMap) {
     result = await tryPpt(setId, printings);
     if (result) {
       priceSource = "ppt";
+      requestsUsed += result.requestsUsed;
+    }
+  }
+
+  if (!result && ME_SETS.has(setId)) {
+    result = await tryPokeScope(setId, printings);
+    if (result) {
+      priceSource = "pokescope";
       requestsUsed += result.requestsUsed;
     }
   }
