@@ -135,10 +135,23 @@ export default function HomePage() {
           pricesUpdatedAt: row.prices_updated_at,
         }));
 
+      // Pre-zero displayValues so banner starts at $0 (no flash of real values)
+      const initDisplay = {};
+      enriched.forEach((s) => { initDisplay[s.id] = 0; });
+
       setUserSets(enriched.filter((s) => !s.isHidden));
       setHiddenSets(enriched.filter((s) => s.isHidden));
       setSetValues(vals);
+      setDisplayValues(initDisplay);
       setLoading(false);
+
+      // Staggered count-up from zero — fires on every page load / navigate-back
+      const loadTargets = {};
+      enriched.forEach((set, i) => {
+        const target = vals[set.id] || 0;
+        if (target > 0) loadTargets[set.id] = { from: 0, to: target, delay: i * 100, duration: 1500 };
+      });
+      if (Object.keys(loadTargets).length > 0) startAnimations(loadTargets);
     })();
   }, [router, supabase]);
 
@@ -148,16 +161,22 @@ export default function HomePage() {
   }, []);
 
   // ── Animation ────────────────────────────────────────────────────────────
+  // targets: { [setId]: { from, to, delay? (ms), duration? (ms) } }
   const startAnimations = (targets) => {
     const now = performance.now();
-    for (const [sid, { from, to }] of Object.entries(targets)) {
-      animTargetsRef.current[sid] = { from, to, startTime: now, duration: 1200 };
+    for (const [sid, { from, to, delay = 0, duration = 1200 }] of Object.entries(targets)) {
+      animTargetsRef.current[sid] = { from, to, startTime: now + delay, duration };
     }
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const tick = (ts) => {
       let hasActive = false;
       const updates = {};
       for (const [sid, anim] of Object.entries(animTargetsRef.current)) {
+        if (ts < anim.startTime) {
+          updates[sid] = anim.from;
+          hasActive = true;
+          continue;
+        }
         const t = Math.min((ts - anim.startTime) / anim.duration, 1);
         const eased = 1 - Math.pow(1 - t, 3);
         updates[sid] = anim.from + (anim.to - anim.from) * eased;
