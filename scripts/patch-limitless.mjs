@@ -98,11 +98,14 @@ async function scrapeCard(setCode, num) {
 }
 
 async function main() {
-  const [setId, setCode, startStr, endStr] = process.argv.slice(2);
+  // Optional 5th arg: alphanumeric prefix for card numbers (e.g. "RC" → RC1, RC2…)
+  // Usage with prefix: node scripts/patch-limitless.mjs bw11 LTR 1 25 RC
+  const [setId, setCode, startStr, endStr, numPrefix = ""] = process.argv.slice(2);
 
   if (!setId || !setCode || !startStr || !endStr) {
-    console.error("Usage: node scripts/patch-limitless.mjs <setId> <setCode> <start> <end>");
-    console.error("Example: node scripts/patch-limitless.mjs me2pt5 ASC 252 295");
+    console.error("Usage: node scripts/patch-limitless.mjs <setId> <setCode> <start> <end> [numPrefix]");
+    console.error("Example (integers):  node scripts/patch-limitless.mjs me2pt5 ASC 252 295");
+    console.error("Example (prefixed):  node scripts/patch-limitless.mjs bw11 LTR 1 25 RC");
     process.exit(1);
   }
 
@@ -113,22 +116,44 @@ async function main() {
     process.exit(1);
   }
 
-  // Check which numbers in range are already in DB
-  const { data: existing, error: fetchErr } = await supabase
-    .from("cards")
-    .select("number")
-    .eq("set_id", setId)
-    .gte("number", start)
-    .lte("number", end);
-  if (fetchErr) throw fetchErr;
-
-  const existingNumbers = new Set(existing.map((c) => c.number));
-  const toFetch = [];
-  for (let n = start; n <= end; n++) {
-    if (!existingNumbers.has(n)) toFetch.push(n);
+  // For prefixed ranges (e.g. RC1–RC25), we assign DB integers starting after
+  // the current max card number in the set, so we never collide with existing rows.
+  let dbNumberOffset = 0;
+  if (numPrefix) {
+    const { data: maxRow, error: maxErr } = await supabase
+      .from("cards")
+      .select("number")
+      .eq("set_id", setId)
+      .order("number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (maxErr) throw maxErr;
+    dbNumberOffset = maxRow ? maxRow.number : 0;
   }
 
-  console.log(`\n=== Patching ${setId} from limitlesstcg.com/${setCode} #${start}–#${end} ===`);
+  // For integer ranges, check which numbers are already in DB
+  // For prefixed ranges, check by DB number in the offset window
+  const rangeLabel = numPrefix ? `${numPrefix}${start}–${numPrefix}${end}` : `${start}–${end}`;
+  let existingNumbers = new Set();
+  if (!numPrefix) {
+    const { data: existing, error: fetchErr } = await supabase
+      .from("cards")
+      .select("number")
+      .eq("set_id", setId)
+      .gte("number", start)
+      .lte("number", end);
+    if (fetchErr) throw fetchErr;
+    existingNumbers = new Set(existing.map((c) => c.number));
+  }
+
+  const toFetch = [];
+  for (let n = start; n <= end; n++) {
+    if (!numPrefix && existingNumbers.has(n)) continue;
+    toFetch.push(n);
+  }
+
+  console.log(`\n=== Patching ${setId} from limitlesstcg.com/${setCode} #${rangeLabel} ===`);
+  if (numPrefix) console.log(`DB numbers will be assigned starting at ${dbNumberOffset + 1}`);
   console.log(`To fetch: ${toFetch.length}  |  Already in DB: ${existingNumbers.size}`);
   if (toFetch.length === 0) {
     console.log("Nothing to do — all cards already present.");
@@ -140,21 +165,25 @@ async function main() {
 
   for (let i = 0; i < toFetch.length; i++) {
     const num = toFetch[i];
+    // For prefixed ranges, use the prefix in the URL but assign sequential DB integers
+    const urlNum = numPrefix ? `${numPrefix}${num}` : num;
+    const dbNum  = numPrefix ? dbNumberOffset + (num - start + 1) : num;
+
     if (i > 0) await new Promise((r) => setTimeout(r, DELAY_MS));
 
-    process.stdout.write(`  [${i + 1}/${toFetch.length}] #${num} ... `);
+    process.stdout.write(`  [${i + 1}/${toFetch.length}] #${urlNum} (db:${dbNum}) ... `);
 
-    const scraped = await scrapeCard(setCode, num);
+    const scraped = await scrapeCard(setCode, urlNum);
     if (!scraped.ok) {
       console.log(`SKIP (${scraped.reason})`);
-      failed.push({ num, reason: scraped.reason });
+      failed.push({ num: urlNum, reason: scraped.reason });
       continue;
     }
 
     const cardRow = {
-      id: `${setId}-${num}`,
+      id: `${setId}-${urlNum}`,
       set_id: setId,
-      number: num,
+      number: dbNum,
       name: scraped.name,
       rarity: scraped.rarity,
       supertype: scraped.supertype,
@@ -168,7 +197,7 @@ async function main() {
     const { error: insErr } = await supabase.from("cards").insert(cardRow);
     if (insErr) {
       console.log(`DB ERROR: ${insErr.message}`);
-      failed.push({ num, reason: insErr.message });
+      failed.push({ num: urlNum, reason: insErr.message });
       continue;
     }
 
@@ -176,7 +205,7 @@ async function main() {
       id: `${cardRow.id}-${p.type}`,
       card_id: cardRow.id,
       set_id: setId,
-      card_number: num,
+      card_number: dbNum,
       printing_type: p.type,
       printing_label: p.label,
       display_order: p.order,
@@ -190,7 +219,7 @@ async function main() {
     } else {
       console.log(`OK — "${scraped.name}" (${scraped.rarity ?? "?"}) +${printingRows.length} printings`);
     }
-    inserted.push({ num, name: scraped.name });
+    inserted.push({ num: urlNum, name: scraped.name });
   }
 
   // Final counts

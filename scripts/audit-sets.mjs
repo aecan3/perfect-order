@@ -58,14 +58,15 @@ async function main() {
 
   const rows = sets.map((s) => {
     const actual = counts[s.id] || 0;
-    const expected = s.total || 0;
+    const expected = s.total_with_secrets || s.total || 0;
     const gap = expected - actual;
-    const status = gap === 0 ? "✅" : "❌";
+    const status = gap <= 0 ? "✅" : "❌";
     return { id: s.id, name: s.name, expected, actual, gap, status, total_with_secrets: s.total_with_secrets };
   });
 
-  const withGaps = rows.filter((r) => r.gap !== 0);
-  const totalMissing = withGaps.reduce((sum, r) => sum + Math.max(0, r.gap), 0);
+  // Only count sets where we're genuinely short (actual < total_with_secrets)
+  const withGaps = rows.filter((r) => r.gap > 0);
+  const totalMissing = withGaps.reduce((sum, r) => sum + r.gap, 0);
 
   // Column widths
   const idW = Math.max(6, ...rows.map((r) => r.id.length));
@@ -104,12 +105,9 @@ async function main() {
   lines.push(``);
 
   if (withGaps.length > 0) {
-    lines.push(`── Sets needing attention ───────────────────`);
+    lines.push(`── Sets needing attention (actual < total_with_secrets) ─────`);
     for (const r of withGaps.sort((a, b) => b.gap - a.gap)) {
-      const secretNote = r.total_with_secrets && r.total_with_secrets !== r.expected
-        ? ` (total_with_secrets: ${r.total_with_secrets})`
-        : "";
-      lines.push(`  ${r.id.padEnd(idW)}  missing ${r.gap}${secretNote}`);
+      lines.push(`  ${r.id.padEnd(idW)}  missing ${r.gap}  (have ${r.actual}, need ${r.expected})`);
     }
     lines.push(``);
   }

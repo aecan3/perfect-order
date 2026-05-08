@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(head *)",
+      "Bash(node -e ' *)",
+      "Bash(node scripts/patch-limitless.mjs me2pt5 ASC 252 295)",
+      "Bash(node scripts/patch-limitless.mjs me2pt5 ASC 250 251)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(vercel *)",
+      "Bash(node scripts/audit-sets.mjs)",
+      "Bash(node scripts/fix-seeding.mjs)",
+      "WebFetch(domain:limitlesstcg.com)",
+      "Bash(git commit *)",
+      "Bash(node *)"
+    ]
+  }
+}
