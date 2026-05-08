@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown } from "lucide-react";
+import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
@@ -101,28 +101,28 @@ const BUCKET_LABELS = {
   shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
 };
 const RARITY_TINT = {
-  gx:                "rgba(59,130,246,0.15)",
-  v:                 "rgba(59,130,246,0.15)",
-  double_rare:       "rgba(59,130,246,0.15)",
-  vmax:              "rgba(139,92,246,0.15)",
-  vstar:             "rgba(139,92,246,0.15)",
-  illustration_rare: "rgba(34,197,94,0.15)",
-  full_art:          "rgba(34,197,94,0.15)",
-  v_full_art:        "rgba(34,197,94,0.15)",
-  ultra_rare:        "rgba(249,115,22,0.15)",
-  alt_art:           "rgba(249,115,22,0.15)",
-  trainer_gallery:   "rgba(249,115,22,0.15)",
-  rainbow_rare:      "rgba(244,63,94,0.15)",
-  sir:               "rgba(244,63,94,0.15)",
-  mega_attack_rare:  "rgba(244,63,94,0.15)",
-  hyper_rare:        "rgba(234,179,8,0.15)",
-  mega_hyper_rare:   "rgba(234,179,8,0.15)",
-  gold_rare:         "rgba(234,179,8,0.15)",
-  shiny_rare:        "rgba(20,184,166,0.15)",
-  shiny_ultra_rare:  "rgba(20,184,166,0.15)",
-  shiny:             "rgba(20,184,166,0.15)",
-  ace_spec:          "rgba(239,68,68,0.15)",
-  prism_star:        "rgba(99,102,241,0.15)",
+  gx:                "rgba(59,130,246,0.38)",
+  v:                 "rgba(59,130,246,0.38)",
+  double_rare:       "rgba(59,130,246,0.38)",
+  vmax:              "rgba(139,92,246,0.38)",
+  vstar:             "rgba(139,92,246,0.38)",
+  illustration_rare: "rgba(34,197,94,0.38)",
+  full_art:          "rgba(34,197,94,0.38)",
+  v_full_art:        "rgba(34,197,94,0.38)",
+  ultra_rare:        "rgba(249,115,22,0.38)",
+  alt_art:           "rgba(249,115,22,0.38)",
+  trainer_gallery:   "rgba(249,115,22,0.38)",
+  rainbow_rare:      "rgba(244,63,94,0.38)",
+  sir:               "rgba(244,63,94,0.38)",
+  mega_attack_rare:  "rgba(244,63,94,0.38)",
+  hyper_rare:        "rgba(234,179,8,0.38)",
+  mega_hyper_rare:   "rgba(234,179,8,0.38)",
+  gold_rare:         "rgba(234,179,8,0.38)",
+  shiny_rare:        "rgba(20,184,166,0.38)",
+  shiny_ultra_rare:  "rgba(20,184,166,0.38)",
+  shiny:             "rgba(20,184,166,0.38)",
+  ace_spec:          "rgba(239,68,68,0.38)",
+  prism_star:        "rgba(99,102,241,0.38)",
 };
 
 function CardArt({ src, name, isOwned, themePrimary }) {
@@ -544,8 +544,9 @@ export default function SetTrackerPage() {
         <div className="mt-3">
           <button
             onClick={toggleMasterSet}
-            className="px-4 py-1.5 rounded text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)]"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] hover:border-[var(--po-text-dim)] transition-colors"
           >
+            {masterSet ? <BookOpen size={13} /> : <LayoutGrid size={13} />}
             {masterSet ? "Binder View" : "Rarity View"}
           </button>
         </div>
