@@ -108,7 +108,7 @@ export default function HomePage() {
             set:sets (
               id, code, name, series, total, total_with_secrets,
               logo_url, theme_primary, theme_secondary, theme_bg,
-              cards(count), printings(count)
+              cards(count), printings!printings_set_id_fkey(count)
             )
           `)
           .eq("user_id", user.id)
