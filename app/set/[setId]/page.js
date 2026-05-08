@@ -7,8 +7,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
-  AUD: { rate: 1.39, symbol: "A$" },
-  CAD: { rate: 1.36, symbol: "C$" },
+  AUD: { rate: 1.53, symbol: "A$" },
+  USD: { rate: 1.0,  symbol: "$"  },
+  GBP: { rate: 0.79, symbol: "£"  },
 };
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
 const fmtMoney = (v, currency) => {
@@ -99,6 +100,30 @@ const BUCKET_LABELS = {
   mega_hyper_rare: "Mega Hyper Rare", shiny_rare: "Shiny Rare",
   shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
 };
+const RARITY_TINT = {
+  gx:                "rgba(59,130,246,0.15)",
+  v:                 "rgba(59,130,246,0.15)",
+  double_rare:       "rgba(59,130,246,0.15)",
+  vmax:              "rgba(139,92,246,0.15)",
+  vstar:             "rgba(139,92,246,0.15)",
+  illustration_rare: "rgba(34,197,94,0.15)",
+  full_art:          "rgba(34,197,94,0.15)",
+  v_full_art:        "rgba(34,197,94,0.15)",
+  ultra_rare:        "rgba(249,115,22,0.15)",
+  alt_art:           "rgba(249,115,22,0.15)",
+  trainer_gallery:   "rgba(249,115,22,0.15)",
+  rainbow_rare:      "rgba(244,63,94,0.15)",
+  sir:               "rgba(244,63,94,0.15)",
+  mega_attack_rare:  "rgba(244,63,94,0.15)",
+  hyper_rare:        "rgba(234,179,8,0.15)",
+  mega_hyper_rare:   "rgba(234,179,8,0.15)",
+  gold_rare:         "rgba(234,179,8,0.15)",
+  shiny_rare:        "rgba(20,184,166,0.15)",
+  shiny_ultra_rare:  "rgba(20,184,166,0.15)",
+  shiny:             "rgba(20,184,166,0.15)",
+  ace_spec:          "rgba(239,68,68,0.15)",
+  prism_star:        "rgba(99,102,241,0.15)",
+};
 
 function CardArt({ src, name, isOwned, themePrimary }) {
   const [failed, setFailed] = useState(false);
@@ -141,7 +166,6 @@ export default function SetTrackerPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
   const [masterSet, setMasterSet] = useState(false);
-  const [collectionMode, setCollectionMode] = useState("highest_rarity");
   const [openSections, setOpenSections] = useState({});
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
@@ -164,7 +188,7 @@ export default function SetTrackerPage() {
       }
       setUser(user);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: prefData }] = await Promise.all([
+      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
@@ -174,7 +198,6 @@ export default function SetTrackerPage() {
           .select("printing_id, card_number, checked, photo_url")
           .eq("user_id", user.id)
           .eq("set_id", setId),
-        supabase.from("user_set_preferences").select("collection_mode").eq("user_id", user.id).eq("set_id", setId).maybeSingle(),
       ]);
 
       setProfile(prof);
@@ -195,8 +218,6 @@ export default function SetTrackerPage() {
         }
       });
       setOwnedPrintings(ownedMap);
-
-      if (prefData?.collection_mode) setCollectionMode(prefData.collection_mode);
 
       setAuthChecked(true);
     })();
@@ -227,14 +248,6 @@ export default function SetTrackerPage() {
     const next = !masterSet;
     setMasterSet(next);
     localStorage.setItem("po:masterSet", String(next));
-  };
-
-  const switchCollectionMode = async (mode) => {
-    setCollectionMode(mode);
-    if (!user) return;
-    await supabase
-      .from("user_set_preferences")
-      .upsert({ user_id: user.id, set_id: setId, collection_mode: mode }, { onConflict: "user_id,set_id" });
   };
 
   const togglePrinting = useCallback(
@@ -381,12 +394,11 @@ export default function SetTrackerPage() {
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  const isTM = collectionMode === "true_master";
-  const checkedDisplay = isTM ? ownedPrintingCount : ownedCardCount;
-  const totalDisplay = isTM ? totalPrintings : totalCards;
+  const checkedDisplay = ownedCardCount;
+  const totalDisplay = totalCards;
   const remainingDisplay = totalDisplay - checkedDisplay;
-  const ownedValueDisplay = isTM ? ownedPrintingValue : ownedCardValue;
-  const totalValueDisplay = isTM ? totalPrintingValue : totalCardValue;
+  const ownedValueDisplay = ownedCardValue;
+  const totalValueDisplay = totalCardValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
@@ -395,8 +407,10 @@ export default function SetTrackerPage() {
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
     const ownedCount = cardOwnedCount(card.number);
-    const owned = isTM ? (ownedCount === prints.length && prints.length > 0) : (ownedCount > 0);
-    const artOwned = isTM ? owned : ownedCount > 0;
+    const owned = ownedCount > 0;
+    const artOwned = ownedCount > 0;
+    const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total);
+    const tint = RARITY_TINT[bucket];
     const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
     const photo = photoEntry?.photo_url;
 
@@ -415,18 +429,13 @@ export default function SetTrackerPage() {
           ) : (
             <CardArt src={card.image_large} name={card.name} isOwned={artOwned} themePrimary={themePrimary} />
           )}
+          {!owned && tint && (
+            <div className="absolute inset-0 pointer-events-none" style={{ background: tint }} />
+          )}
           <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
             {String(card.number).padStart(3, "0")}
           </div>
-          {isTM && owned && (
-            <div
-              className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
-              style={{ background: themePrimary, color: "#000" }}
-            >
-              Full
-            </div>
-          )}
-          {!isTM && owned && (
+          {owned && (
             <div
               className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
               style={{ background: themePrimary, color: "#000", boxShadow: `0 0 8px ${themePrimary}80` }}
@@ -487,12 +496,15 @@ export default function SetTrackerPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
+            <select
+              value={currency}
+              onChange={(e) => switchCurrency(e.target.value)}
+              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
             >
-              {currency}
-            </button>
+              <option value="AUD">AUD</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
             <button
               onClick={() => setResetConfirm(true)}
               className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-rose-400"
@@ -507,7 +519,7 @@ export default function SetTrackerPage() {
               {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              {remainingDisplay} {isTM ? "printings" : "cards"} to go
+              {remainingDisplay} cards to go
             </div>
           </div>
           <div className="text-right">
@@ -529,39 +541,13 @@ export default function SetTrackerPage() {
             }}
           />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="flex gap-1 text-[10px] uppercase tracking-widest">
-            <button
-              onClick={() => masterSet && toggleMasterSet()}
-              className={`flex-1 py-1.5 rounded font-bold ${!masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-              style={!masterSet ? { background: themePrimary } : {}}
-            >
-              Standard
-            </button>
-            <button
-              onClick={() => !masterSet && toggleMasterSet()}
-              className={`flex-1 py-1.5 rounded font-bold ${masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-              style={masterSet ? { background: themePrimary } : {}}
-            >
-              Master Set
-            </button>
-          </div>
-          <div className="flex gap-1 text-[10px] uppercase tracking-widest">
-            <button
-              onClick={() => switchCollectionMode("highest_rarity")}
-              className={`flex-1 py-1.5 rounded font-bold ${collectionMode === "highest_rarity" ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-              style={collectionMode === "highest_rarity" ? { background: themeSecondary } : {}}
-            >
-              Highest
-            </button>
-            <button
-              onClick={() => switchCollectionMode("true_master")}
-              className={`flex-1 py-1.5 rounded font-bold ${collectionMode === "true_master" ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-              style={collectionMode === "true_master" ? { background: themeSecondary } : {}}
-            >
-              True Master
-            </button>
-          </div>
+        <div className="mt-3">
+          <button
+            onClick={toggleMasterSet}
+            className="px-4 py-1.5 rounded text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)]"
+          >
+            {masterSet ? "Binder View" : "Rarity View"}
+          </button>
         </div>
       </header>
 

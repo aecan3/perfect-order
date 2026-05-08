@@ -7,8 +7,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
-  AUD: { rate: 1.39, symbol: "A$" },
-  CAD: { rate: 1.36, symbol: "C$" },
+  AUD: { rate: 1.53, symbol: "A$" },
+  USD: { rate: 1.0,  symbol: "$"  },
+  GBP: { rate: 0.79, symbol: "£"  },
 };
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
 const fmtMoney = (v, currency) => {
@@ -99,6 +100,30 @@ const BUCKET_LABELS = {
   mega_hyper_rare: "Mega Hyper Rare", shiny_rare: "Shiny Rare",
   shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
 };
+const RARITY_TINT = {
+  gx:                "rgba(59,130,246,0.15)",
+  v:                 "rgba(59,130,246,0.15)",
+  double_rare:       "rgba(59,130,246,0.15)",
+  vmax:              "rgba(139,92,246,0.15)",
+  vstar:             "rgba(139,92,246,0.15)",
+  illustration_rare: "rgba(34,197,94,0.15)",
+  full_art:          "rgba(34,197,94,0.15)",
+  v_full_art:        "rgba(34,197,94,0.15)",
+  ultra_rare:        "rgba(249,115,22,0.15)",
+  alt_art:           "rgba(249,115,22,0.15)",
+  trainer_gallery:   "rgba(249,115,22,0.15)",
+  rainbow_rare:      "rgba(244,63,94,0.15)",
+  sir:               "rgba(244,63,94,0.15)",
+  mega_attack_rare:  "rgba(244,63,94,0.15)",
+  hyper_rare:        "rgba(234,179,8,0.15)",
+  mega_hyper_rare:   "rgba(234,179,8,0.15)",
+  gold_rare:         "rgba(234,179,8,0.15)",
+  shiny_rare:        "rgba(20,184,166,0.15)",
+  shiny_ultra_rare:  "rgba(20,184,166,0.15)",
+  shiny:             "rgba(20,184,166,0.15)",
+  ace_spec:          "rgba(239,68,68,0.15)",
+  prism_star:        "rgba(99,102,241,0.15)",
+};
 
 function CardArt({ src, name, isOwned, themePrimary }) {
   const [failed, setFailed] = useState(false);
@@ -138,7 +163,6 @@ export default function FriendSetTrackerPage() {
   const [cards, setCards] = useState([]);
   const [printingsByCard, setPrintingsByCard] = useState({});
   const [ownedPrintings, setOwnedPrintings] = useState({});
-  const [collectionMode, setCollectionMode] = useState("highest_rarity");
   const [pickingCard, setPickingCard] = useState(null);
   const [currency, setCurrency] = useState("AUD");
   const [masterSet, setMasterSet] = useState(false);
@@ -187,7 +211,7 @@ export default function FriendSetTrackerPage() {
         return;
       }
 
-      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: prefData }] = await Promise.all([
+      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         supabase.from("printings").select("*").eq("set_id", setId).order("display_order", { ascending: true }),
@@ -196,12 +220,6 @@ export default function FriendSetTrackerPage() {
           .select("printing_id, card_number, checked, photo_url")
           .eq("user_id", friendProfile.id)
           .eq("set_id", setId),
-        supabase
-          .from("user_set_preferences")
-          .select("collection_mode")
-          .eq("user_id", friendProfile.id)
-          .eq("set_id", setId)
-          .maybeSingle(),
       ]);
 
       setSetRow(setData);
@@ -221,8 +239,6 @@ export default function FriendSetTrackerPage() {
         }
       });
       setOwnedPrintings(ownedMap);
-
-      if (prefData?.collection_mode) setCollectionMode(prefData.collection_mode);
 
       setStatus("ok");
     })();
@@ -319,11 +335,10 @@ export default function FriendSetTrackerPage() {
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  const isTM = collectionMode === "true_master";
-  const checkedDisplay = isTM ? ownedPrintingCount : ownedCardCount;
-  const totalDisplay = isTM ? totalPrintings : totalCards;
-  const ownedValueDisplay = isTM ? ownedPrintingValue : ownedCardValue;
-  const totalValueDisplay = isTM ? totalPrintingValue : totalCardValue;
+  const checkedDisplay = ownedCardCount;
+  const totalDisplay = totalCards;
+  const ownedValueDisplay = ownedCardValue;
+  const totalValueDisplay = totalCardValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
@@ -332,8 +347,10 @@ export default function FriendSetTrackerPage() {
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
     const ownedCount = cardOwnedCount(card.number);
-    const owned = isTM ? (ownedCount === prints.length && prints.length > 0) : (ownedCount > 0);
-    const artOwned = isTM ? owned : ownedCount > 0;
+    const owned = ownedCount > 0;
+    const artOwned = ownedCount > 0;
+    const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total);
+    const tint = RARITY_TINT[bucket];
     const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
     const photo = photoEntry?.photo_url;
 
@@ -352,18 +369,13 @@ export default function FriendSetTrackerPage() {
           ) : (
             <CardArt src={card.image_large} name={card.name} isOwned={artOwned} themePrimary={themePrimary} />
           )}
+          {!owned && tint && (
+            <div className="absolute inset-0 pointer-events-none" style={{ background: tint }} />
+          )}
           <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
             {String(card.number).padStart(3, "0")}
           </div>
-          {isTM && owned && (
-            <div
-              className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
-              style={{ background: themePrimary, color: "#000" }}
-            >
-              Full
-            </div>
-          )}
-          {!isTM && owned && (
+          {owned && (
             <div
               className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
               style={{ background: themePrimary, color: "#000" }}
@@ -418,15 +430,18 @@ export default function FriendSetTrackerPage() {
               >
                 {setRow.name}
               </h1>
-              <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{friend.handle} · {isTM ? "True Master" : "Highest Rarity"}</p>
+              <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{friend.handle}</p>
             </div>
           </div>
-          <button
-            onClick={() => switchCurrency(currency === "AUD" ? "CAD" : "AUD")}
-            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-[var(--po-green)] px-2 py-1 border border-[var(--po-border)] rounded"
+          <select
+            value={currency}
+            onChange={(e) => switchCurrency(e.target.value)}
+            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
           >
-            {currency}
-          </button>
+            <option value="AUD">AUD</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+          </select>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-3">
           <div>
@@ -434,7 +449,7 @@ export default function FriendSetTrackerPage() {
               {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              {isTM ? "printings" : "cards"} collected
+              cards collected
             </div>
           </div>
           <div className="text-right">
@@ -456,20 +471,12 @@ export default function FriendSetTrackerPage() {
             }}
           />
         </div>
-        <div className="mt-3 flex gap-1 text-[10px] uppercase tracking-widest">
+        <div className="mt-3">
           <button
-            onClick={() => masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded font-bold ${!masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-            style={!masterSet ? { background: themePrimary } : {}}
+            onClick={toggleMasterSet}
+            className="px-4 py-1.5 rounded text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)]"
           >
-            Standard
-          </button>
-          <button
-            onClick={() => !masterSet && toggleMasterSet()}
-            className={`flex-1 py-1.5 rounded font-bold ${masterSet ? "text-black" : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"}`}
-            style={masterSet ? { background: themePrimary } : {}}
-          >
-            Master Set
+            {masterSet ? "Binder View" : "Rarity View"}
           </button>
         </div>
       </header>
