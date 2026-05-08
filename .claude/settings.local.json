@@ -13,7 +13,14 @@
       "Bash(node scripts/fix-seeding.mjs)",
       "WebFetch(domain:limitlesstcg.com)",
       "Bash(git commit *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\alexc\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alexc-Documents-perfect-order\\\\a5c13de0-566a-4357-91ad-cecc4673c377\\\\tasks\\\\beoif0dm1.output\")",
+      "Bash(Select-Object -Last 20)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(npm run *)",
+      "mcp__claude_ai_Supabase__get_logs",
+      "WebFetch(domain:perfect-order-54sa24mnk-aecan3s-projects.vercel.app)"
     ]
   }
 }

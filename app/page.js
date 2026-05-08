@@ -19,6 +19,7 @@ const fmtMoney = (v, currency) => {
 };
 
 export default function HomePage() {
+  "use no memo";
   const router = useRouter();
   const supabase = createClient();
   const [user, setUser] = useState(null);
@@ -86,10 +87,12 @@ export default function HomePage() {
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
-      const enriched = (sets || []).map((row) => ({
-        ...row.set,
-        checkedCount: counts[row.set.id] || 0,
-      }));
+      const enriched = (sets || [])
+        .filter((row) => row.set != null)
+        .map((row) => ({
+          ...row.set,
+          checkedCount: counts[row.set.id] || 0,
+        }));
       setUserSets(enriched);
       setSetValues(vals);
       setLoading(false);
