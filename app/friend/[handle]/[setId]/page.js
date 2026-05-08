@@ -18,33 +18,81 @@ const fmtMoney = (v, currency) => {
   return `${sym}${v.toFixed(2)}`;
 };
 
-function rarityBucket(rarity, supertype, subtypes) {
-  const r = (rarity || "").toLowerCase();
+function rarityBucket(rarity, subtypes, cardNumber, setPrintedTotal) {
+  const r = (rarity || "").toLowerCase().trim();
   const subs = (subtypes || []).map((s) => s.toLowerCase());
-  if (r.includes("hyper") || r.includes("rainbow")) return "hyper";
-  if (r.includes("special illustration")) return "sir";
-  if (r.includes("illustration rare")) return "illustration";
-  if (subs.includes("mega") && subs.some((s) => /(^|\s)(ex|gx)(\s|$)/.test(s))) return "mega_ex";
-  if (subs.includes("tera") && subs.some((s) => /(^|\s)(ex|gx)(\s|$)/.test(s))) return "tera_ex";
-  if (subs.some((s) => /(^|\s)(ex|gx|vmax|vstar|v)(\s|$)/.test(s)) || r.includes("double rare")) return "ex";
-  if (r.includes("mega attack")) return "mega_attack";
-  if (r.includes("ultra")) return "ultra";
-  if (r === "rare" || r === "rare holo" || r.startsWith("rare ")) return "rare";
-  if (r === "uncommon") return "uncommon";
-  if (r === "common") return "common";
-  if (supertype === "Energy") return "energy";
-  if (supertype === "Trainer") return "trainer";
+  const num = cardNumber || 0;
+  const prt = setPrintedTotal || 0;
+
+  if (!rarity) return "unknown";
+
+  // ── UNIVERSAL ────────────────────────────────────────────
+  if (r === "common")    return "common";
+  if (r === "uncommon")  return "uncommon";
+  if (r === "rare")      return "rare";
+  if (r === "rare holo") return "rare_holo";
+  if (r === "promo")     return "promo";
+
+  // ── SCARLET & VIOLET + MEGA EVOLUTION ────────────────────
+  if (r === "double rare")               return "double_rare";
+  if (r === "ultra rare")                return "ultra_rare";
+  if (r === "illustration rare")         return "illustration_rare";
+  if (r === "special illustration rare") return "sir";
+  if (r === "hyper rare")                return "hyper_rare";
+  if (r === "shiny rare")                return "shiny_rare";
+  if (r === "shiny ultra rare")          return "shiny_ultra_rare";
+  if (r === "ace spec rare")             return "ace_spec";
+  if (r === "mega attack rare")          return "mega_attack_rare";
+  if (r === "mega hyper rare")           return "mega_hyper_rare";
+
+  // ── SWORD & SHIELD ───────────────────────────────────────
+  if (r === "rare holo v")    return "v";
+  if (r === "rare holo vmax") return "vmax";
+  if (r === "rare holo vstar") return "vstar";
+  if (r === "rare ultra") {
+    const hasV = subs.some((s) => s === "v" || s === "vmax" || s === "vstar");
+    if (hasV) return num > prt ? "v_full_art" : "v";
+    return "full_art";
+  }
+  if (r === "rare rainbow") return "rainbow_rare";
+  if (r === "rare secret") {
+    const hasV = subs.some((s) => s === "v" || s === "vmax");
+    if (hasV && num > prt)       return "alt_art";
+    if (!hasV && num > prt + 20) return "gold_rare";
+    return "secret_rare";
+  }
+  if (r === "trainer gallery rare holo") return "trainer_gallery";
+  if (r === "rare shiny")                return "shiny";
+  if (r === "amazing rare")              return "amazing_rare";
+
+  // ── SUN & MOON ───────────────────────────────────────────
+  if (r === "rare holo gx")    return "gx";
+  if (r === "rare prism star") return "prism_star";
+  if (r === "rare shining")    return "shining";
+
+  // ── FALLBACK ─────────────────────────────────────────────
   return "other";
 }
 
-const BUCKET_ORDER = ["common", "uncommon", "rare", "ex", "tera_ex", "mega_ex", "ultra", "mega_attack", "illustration", "sir", "hyper", "trainer", "energy", "other"];
+const BUCKET_ORDER = [
+  "common", "uncommon", "rare", "rare_holo",
+  "gx", "full_art", "prism_star", "shining", "rainbow_rare", "secret_rare",
+  "v", "vmax", "vstar", "v_full_art", "alt_art", "gold_rare", "amazing_rare", "trainer_gallery", "shiny",
+  "double_rare", "illustration_rare", "ultra_rare", "ace_spec", "mega_attack_rare", "sir", "hyper_rare", "mega_hyper_rare", "shiny_rare", "shiny_ultra_rare",
+  "promo",
+];
 const BUCKET_LABELS = {
-  common: "Common", uncommon: "Uncommon", rare: "Rare",
-  ex: "ex", tera_ex: "Tera ex", mega_ex: "Mega ex",
-  ultra: "Ultra Rare",
-  mega_attack: "Mega Attack Rare",
-  illustration: "Illustration Rare", sir: "Special Illustration Rare",
-  hyper: "Hyper Rare", trainer: "Trainer", energy: "Energy", other: "Other",
+  common: "Common", uncommon: "Uncommon", rare: "Rare", rare_holo: "Rare Holo",
+  gx: "GX", full_art: "Full Art", prism_star: "Prism Star ◇", shining: "Shining",
+  rainbow_rare: "Rainbow Rare", secret_rare: "Secret Rare",
+  v: "V", vmax: "VMAX", vstar: "VSTAR", v_full_art: "Full Art V",
+  alt_art: "Alt Art", gold_rare: "Gold Rare", amazing_rare: "Amazing Rare",
+  trainer_gallery: "Trainer Gallery", shiny: "Shiny",
+  double_rare: "Double Rare", illustration_rare: "Illustration Rare",
+  ultra_rare: "Full Art", ace_spec: "ACE SPEC", mega_attack_rare: "Mega Attack Rare",
+  sir: "Special Illustration Rare", hyper_rare: "Hyper Rare",
+  mega_hyper_rare: "Mega Hyper Rare", shiny_rare: "Shiny Rare",
+  shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
 };
 
 function CardArt({ src, name, isOwned, themePrimary }) {
@@ -178,14 +226,14 @@ export default function FriendSetTrackerPage() {
   const sections = useMemo(() => {
     const grouped = {};
     for (const c of cards) {
-      const b = rarityBucket(c.rarity, c.supertype, c.subtypes);
+      const b = rarityBucket(c.rarity, c.subtypes, c.number, setRow?.total);
       if (!grouped[b]) grouped[b] = [];
       grouped[b].push(c);
     }
     return BUCKET_ORDER.filter((b) => grouped[b]?.length).map((b) => ({
       id: b, label: BUCKET_LABELS[b], cards: grouped[b],
     }));
-  }, [cards]);
+  }, [cards, setRow]);
 
   const toggleSection = (id) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
