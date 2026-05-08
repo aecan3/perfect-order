@@ -3,7 +3,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Users, LogOut, EyeOff, Eye, Trash2, MoreHorizontal, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Plus, Users, LogOut, EyeOff, Eye, Trash2,
+  MoreHorizontal, ChevronDown, ChevronRight,
+  RefreshCw, ArrowUp, ArrowDown, Clock,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -14,9 +18,22 @@ const RATES = {
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
   if (v >= 100) return `${sym}${v.toFixed(0)}`;
-  if (v >= 10) return `${sym}${v.toFixed(1)}`;
+  if (v >= 10)  return `${sym}${v.toFixed(1)}`;
   return `${sym}${v.toFixed(2)}`;
 };
+
+const daysSince = (ts) =>
+  Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000);
+
+const pricesLabel = (ts) => {
+  if (!ts) return null;
+  const d = daysSince(ts);
+  if (d === 0) return "Prices updated today";
+  if (d === 1) return "Prices updated 1 day ago";
+  return `Prices updated ${d} days ago`;
+};
+
+const isStale = (ts) => ts && daysSince(ts) > 7;
 
 export default function HomePage() {
   "use no memo";
@@ -30,15 +47,22 @@ export default function HomePage() {
   const [setValues, setSetValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("AUD");
-  // swipeState: boolean per setId — true = open (translated -160px)
+
+  // Swipe / menu state
   const [swipeState, setSwipeState] = useState({});
   const [menuState, setMenuState] = useState({});
   const [confirmAction, setConfirmAction] = useState(null);
-
-  // Per-card touch gesture tracking
-  const touchStartRef = useRef({});   // { x, y, baseX, isHorizontal }
-  // Per-card refs to the sliding DOM element for live drag without re-renders
+  const touchStartRef = useRef({});
   const slidingRefs = useRef({});
+
+  // Price refresh state
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState("");
+  const [toast, setToast] = useState(null);
+  const [trends, setTrends] = useState({});
+  const [displayValues, setDisplayValues] = useState({});
+  const rafRef = useRef(null);
+  const animTargetsRef = useRef({});
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -48,24 +72,18 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+      if (!user) { router.replace("/login"); return; }
       setUser(user);
 
       const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
+        .from("profiles").select("*").eq("id", user.id).maybeSingle();
       setProfile(profileData);
 
       const [{ data: sets }, { data: entries }] = await Promise.all([
         supabase
           .from("user_sets")
           .select(`
-            added_at, hidden_at,
+            added_at, hidden_at, prices_updated_at,
             set:sets (
               id, code, name, series, total, total_with_secrets,
               logo_url, theme_primary, theme_secondary, theme_bg,
@@ -81,15 +99,10 @@ export default function HomePage() {
           .eq("checked", true),
       ]);
 
-      const counts = {};
-      const vals = {};
-      const seen = new Set();
+      const counts = {}, vals = {}, seen = new Set();
       (entries || []).forEach((e) => {
         const key = `${e.set_id}::${e.card_number}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          counts[e.set_id] = (counts[e.set_id] || 0) + 1;
-        }
+        if (!seen.has(key)) { seen.add(key); counts[e.set_id] = (counts[e.set_id] || 0) + 1; }
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
@@ -99,6 +112,7 @@ export default function HomePage() {
           ...row.set,
           checkedCount: counts[row.set.id] || 0,
           isHidden: row.hidden_at != null,
+          pricesUpdatedAt: row.prices_updated_at,
         }));
 
       setUserSets(enriched.filter((s) => !s.isHidden));
@@ -108,26 +122,111 @@ export default function HomePage() {
     })();
   }, [router, supabase]);
 
-  const switchCurrency = (c) => {
-    setCurrency(c);
-    localStorage.setItem("po:currency", c);
+  // Clean up any running animation on unmount
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  // ── Animation ────────────────────────────────────────────────────────────
+  const startAnimations = (targets) => {
+    const now = performance.now();
+    for (const [sid, { from, to }] of Object.entries(targets)) {
+      animTargetsRef.current[sid] = { from, to, startTime: now, duration: 1200 };
+    }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const tick = (ts) => {
+      let hasActive = false;
+      const updates = {};
+      for (const [sid, anim] of Object.entries(animTargetsRef.current)) {
+        const t = Math.min((ts - anim.startTime) / anim.duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out
+        updates[sid] = anim.from + (anim.to - anim.from) * eased;
+        if (t < 1) hasActive = true;
+        else delete animTargetsRef.current[sid];
+      }
+      setDisplayValues((prev) => ({ ...prev, ...updates }));
+      rafRef.current = hasActive ? requestAnimationFrame(tick) : null;
+    };
+    rafRef.current = requestAnimationFrame(tick);
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    router.replace("/login");
+  // ── Price refresh ────────────────────────────────────────────────────────
+  const handleRefresh = async () => {
+    if (refreshing || !user) return;
+    setRefreshing(true);
+    setToast(null);
+
+    const visible = userSets; // only visible (not hidden) sets
+    const allResults = [];
+
+    for (let i = 0; i < visible.length; i++) {
+      setRefreshProgress(
+        `Updating ${i + 1} of ${visible.length} set${visible.length !== 1 ? "s" : ""}…`
+      );
+      try {
+        const res = await fetch("/api/refresh-prices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ setIds: [visible[i].id] }),
+        });
+        const data = await res.json();
+        allResults.push(...(data.results || []));
+      } catch {
+        // silent per-set failure — continue
+      }
+    }
+
+    // Process results
+    const newTrends = {};
+    const animTargets = {};
+    const valueUpdates = {};
+
+    for (const r of allResults) {
+      if (r.error) continue;
+      const { setId, previousValue, newValue } = r;
+      const prev = previousValue ?? 0;
+      if (newValue > prev + 0.005) newTrends[setId] = "up";
+      else if (newValue < prev - 0.005) newTrends[setId] = "down";
+
+      // Animate from whatever was being displayed to the new USD value
+      const oldDisplay = animTargetsRef.current[setId]
+        ? animTargetsRef.current[setId].to  // mid-animation: animate from current target
+        : (displayValues[setId] ?? setValues[setId] ?? 0);
+      if (Math.abs(newValue - oldDisplay) > 0.005) {
+        animTargets[setId] = { from: oldDisplay, to: newValue };
+      }
+      valueUpdates[setId] = newValue;
+    }
+
+    // Batch state updates
+    if (Object.keys(valueUpdates).length > 0) {
+      setSetValues((prev) => ({ ...prev, ...valueUpdates }));
+    }
+
+    const now = new Date().toISOString();
+    const refreshedIds = new Set(Object.keys(valueUpdates));
+    const stampUpdatedAt = (s) =>
+      refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
+    setUserSets((prev) => prev.map(stampUpdatedAt));
+    setHiddenSets((prev) => prev.map(stampUpdatedAt));
+
+    setTrends(newTrends);
+    if (Object.keys(animTargets).length > 0) startAnimations(animTargets);
+
+    setRefreshing(false);
+    setRefreshProgress("");
+    setToast("✓ Prices updated");
+    setTimeout(() => setToast(null), 3000);
   };
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const switchCurrency = (c) => { setCurrency(c); localStorage.setItem("po:currency", c); };
+  const signOut = async () => { await supabase.auth.signOut(); router.replace("/login"); };
   const closeAllSwipes = () => setSwipeState({});
 
   const executeHide = async (setId) => {
-    setConfirmAction(null);
-    setSwipeState({});
-    await supabase
-      .from("user_sets")
+    setConfirmAction(null); setSwipeState({});
+    await supabase.from("user_sets")
       .update({ hidden_at: new Date().toISOString() })
-      .eq("user_id", user.id)
-      .eq("set_id", setId);
+      .eq("user_id", user.id).eq("set_id", setId);
     const moving = userSets.find((s) => s.id === setId);
     if (moving) {
       setUserSets((prev) => prev.filter((s) => s.id !== setId));
@@ -136,22 +235,16 @@ export default function HomePage() {
   };
 
   const executeRemove = async (setId) => {
-    setConfirmAction(null);
-    setSwipeState({});
-    await supabase
-      .from("user_sets")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("set_id", setId);
+    setConfirmAction(null); setSwipeState({});
+    await supabase.from("user_sets").delete()
+      .eq("user_id", user.id).eq("set_id", setId);
     setUserSets((prev) => prev.filter((s) => s.id !== setId));
   };
 
   const executeUnhide = async (setId) => {
-    await supabase
-      .from("user_sets")
+    await supabase.from("user_sets")
       .update({ hidden_at: null })
-      .eq("user_id", user.id)
-      .eq("set_id", setId);
+      .eq("user_id", user.id).eq("set_id", setId);
     const moving = hiddenSets.find((s) => s.id === setId);
     if (moving) {
       setHiddenSets((prev) => prev.filter((s) => s.id !== setId));
@@ -160,7 +253,6 @@ export default function HomePage() {
     }
   };
 
-  // Snap a card's DOM element to its committed position, with transition.
   const snapEl = (el, open) => {
     if (!el) return;
     el.style.transition = "transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94)";
@@ -169,30 +261,23 @@ export default function HomePage() {
 
   const makeTouchHandlers = (setId) => ({
     onTouchStart(e) {
-      const isOpen = !!swipeState[setId];
       touchStartRef.current[setId] = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
-        baseX: isOpen ? -160 : 0,
-        isHorizontal: null, // resolved on first significant move
+        baseX: swipeState[setId] ? -160 : 0,
+        isHorizontal: null,
       };
       const el = slidingRefs.current[setId];
-      if (el) el.style.transition = "none"; // disable transition during drag
+      if (el) el.style.transition = "none";
     },
     onTouchMove(e) {
       const start = touchStartRef.current[setId];
       if (!start) return;
-
       const dx = e.touches[0].clientX - start.x;
       const dy = e.touches[0].clientY - start.y;
-
-      // Resolve direction on first movement > 4px
-      if (start.isHorizontal === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      if (start.isHorizontal === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4))
         start.isHorizontal = Math.abs(dx) > Math.abs(dy);
-      }
-      if (!start.isHorizontal) return; // vertical scroll — don't intercept
-
-      // Live drag: clamp to [-160, 20] so the card can spring slightly right
+      if (!start.isHorizontal) return;
       const newX = Math.max(-160, Math.min(20, start.baseX + dx));
       const el = slidingRefs.current[setId];
       if (el) el.style.transform = `translateX(${newX}px)`;
@@ -201,37 +286,23 @@ export default function HomePage() {
       const start = touchStartRef.current[setId];
       if (!start) return;
       delete touchStartRef.current[setId];
-
       const dx = e.changedTouches[0].clientX - start.x;
       const dy = e.changedTouches[0].clientY - start.y;
       const el = slidingRefs.current[setId];
-
-      // If the gesture was vertical (or < 4px — a tap), don't change state
       const isHoriz = start.isHorizontal || (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 4);
       if (!isHoriz) {
-        // Tap: if card is open, close it
-        if (swipeState[setId]) {
-          snapEl(el, false);
-          setSwipeState((prev) => ({ ...prev, [setId]: false }));
-        } else {
-          // Plain tap — restore (no-op, but re-enable transition)
-          snapEl(el, false);
-        }
+        if (swipeState[setId]) { snapEl(el, false); setSwipeState((p) => ({ ...p, [setId]: false })); }
+        else snapEl(el, false);
         return;
       }
-
-      // Horizontal swipe: snap open if crossed threshold
       const shouldOpen = dx < -60 ? true : dx > 60 ? false : !!swipeState[setId];
       snapEl(el, shouldOpen);
-      setSwipeState((prev) => ({ ...prev, [setId]: shouldOpen }));
+      setSwipeState((p) => ({ ...p, [setId]: shouldOpen }));
     },
     onTouchCancel() {
-      const start = touchStartRef.current[setId];
       delete touchStartRef.current[setId];
-      const wasOpen = !!swipeState[setId];
       const el = slidingRefs.current[setId];
-      // Snap back to whatever state was committed before this gesture
-      snapEl(el, start ? !!swipeState[setId] : wasOpen);
+      snapEl(el, !!swipeState[setId]);
     },
   });
 
@@ -249,7 +320,11 @@ export default function HomePage() {
     const primary = set.theme_primary || "#b9ff3c";
     const secondary = set.theme_secondary || "#c084fc";
     const bg = set.theme_bg || "#0a0e0a";
-    const val = (setValues[set.id] || 0) * (RATES[currency]?.rate || 1);
+
+    // Use animated display value (USD) if available, else fall back to setValues
+    const dispUsd = displayValues[set.id] ?? (setValues[set.id] || 0);
+    const val = dispUsd * (RATES[currency]?.rate || 1);
+
     const touch = makeTouchHandlers(set.id);
 
     return (
@@ -258,13 +333,13 @@ export default function HomePage() {
         className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
         style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
       >
-        {/* Desktop ··· menu — outside the sliding track so it stays fixed */}
+        {/* Desktop ··· menu */}
         <div
           className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={() => setMenuState((prev) => ({ ...prev, [set.id]: !prev[set.id] }))}
+            onClick={() => setMenuState((p) => ({ ...p, [set.id]: !p[set.id] }))}
             className="w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80"
             aria-label="More options"
           >
@@ -288,10 +363,7 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Sliding inner track.
-            touch-action: pan-y lets the browser handle vertical scroll natively
-            while delivering horizontal touch events to our handlers.
-            Action buttons use left-full to sit just off the right clipping edge. */}
+        {/* Sliding track */}
         <div
           ref={(el) => { slidingRefs.current[set.id] = el; }}
           className="relative"
@@ -308,19 +380,14 @@ export default function HomePage() {
             onClick={(e) => {
               if (swipeState[set.id]) {
                 e.preventDefault();
-                setSwipeState((prev) => ({ ...prev, [set.id]: false }));
-                const el = slidingRefs.current[set.id];
-                snapEl(el, false);
+                setSwipeState((p) => ({ ...p, [set.id]: false }));
+                snapEl(slidingRefs.current[set.id], false);
               }
             }}
           >
             <div className="p-4 flex items-center gap-3">
               {set.logo_url ? (
-                <img
-                  src={set.logo_url}
-                  alt={set.name}
-                  className="w-20 h-20 object-contain flex-shrink-0"
-                />
+                <img src={set.logo_url} alt={set.name} className="w-20 h-20 object-contain flex-shrink-0" />
               ) : (
                 <div
                   className="w-20 h-20 rounded-lg flex items-center justify-center font-black text-2xl flex-shrink-0"
@@ -330,10 +397,7 @@ export default function HomePage() {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div
-                  className="font-extrabold text-base leading-tight truncate"
-                  style={{ color: primary }}
-                >
+                <div className="font-extrabold text-base leading-tight truncate" style={{ color: primary }}>
                   {set.name}
                 </div>
                 {set.series && (
@@ -343,16 +407,17 @@ export default function HomePage() {
                 )}
                 <div className="mt-2 flex items-baseline justify-between gap-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black tabular-nums">
-                      {set.checkedCount}
-                    </span>
-                    <span className="text-xs text-[var(--po-text-dim)]">
-                      / {total} · {pct}%
-                    </span>
+                    <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
+                    <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
                   </div>
                   {val > 0 && (
-                    <span className="text-xs tabular-nums font-bold" style={{ color: primary }}>
+                    <span
+                      className="flex items-center gap-0.5 text-xs tabular-nums font-bold flex-shrink-0"
+                      style={{ color: primary }}
+                    >
                       {fmtMoney(val, currency)}
+                      {trends[set.id] === "up"   && <ArrowUp   size={10} className="text-green-400" />}
+                      {trends[set.id] === "down" && <ArrowDown size={10} className="text-red-400"   />}
                     </span>
                   )}
                 </div>
@@ -365,11 +430,22 @@ export default function HomePage() {
                     }}
                   />
                 </div>
+                {/* Price staleness */}
+                {set.pricesUpdatedAt && (
+                  <div
+                    className={`mt-1 flex items-center gap-0.5 text-[10px] ${
+                      isStale(set.pricesUpdatedAt) ? "text-amber-400" : "text-[var(--po-text-dim)]"
+                    }`}
+                  >
+                    {isStale(set.pricesUpdatedAt) && <Clock size={9} />}
+                    {pricesLabel(set.pricesUpdatedAt)}
+                  </div>
+                )}
               </div>
             </div>
           </Link>
 
-          {/* Action buttons — left-full keeps them off-screen until the track slides */}
+          {/* Swipe action buttons — revealed by translateX(-160px) */}
           <div className="absolute inset-y-0 left-full flex">
             <button
               onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
@@ -394,16 +470,20 @@ export default function HomePage() {
   return (
     <div
       className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]"
-      // Tap anywhere outside a swiped card closes all open cards and menus
       onClick={() => { closeAllSwipes(); setMenuState({}); }}
     >
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[var(--po-green)] text-black text-xs font-bold px-4 py-2 rounded-full shadow-lg whitespace-nowrap pointer-events-none">
+          {toast}
+        </div>
+      )}
+
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="po-wordmark text-2xl">My Sets</h1>
-            <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">
-              @{profile?.handle}
-            </p>
+            <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{profile?.handle}</p>
           </div>
           <div className="flex items-center gap-3">
             <select
@@ -415,22 +495,27 @@ export default function HomePage() {
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
-            <Link
-              href="/friends"
-              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
-              aria-label="Friends"
+            <button
+              onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
+              disabled={refreshing}
+              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)] disabled:opacity-40 transition-opacity"
+              aria-label="Refresh prices"
             >
+              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            </button>
+            <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Friends">
               <Users size={18} />
             </Link>
-            <button
-              onClick={signOut}
-              className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
-              aria-label="Sign out"
-            >
+            <button onClick={signOut} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Sign out">
               <LogOut size={18} />
             </button>
           </div>
         </div>
+        {refreshing && (
+          <p className="text-[10px] text-[var(--po-text-dim)] text-center mt-1.5">
+            {refreshProgress}
+          </p>
+        )}
       </header>
 
       <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
@@ -450,6 +535,7 @@ export default function HomePage() {
           userSets.map((set) => renderSetCard(set))
         )}
 
+        {/* Hidden sets section */}
         {hiddenSets.length > 0 && (
           <div className="pt-2">
             <button
@@ -461,7 +547,6 @@ export default function HomePage() {
               </span>
               {showHidden ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
-
             {showHidden && (
               <div className="space-y-2 mt-1">
                 {hiddenSets.map((set) => {
@@ -475,11 +560,7 @@ export default function HomePage() {
                     >
                       <div className="p-3 flex items-center gap-3">
                         {set.logo_url ? (
-                          <img
-                            src={set.logo_url}
-                            alt={set.name}
-                            className="w-12 h-12 object-contain flex-shrink-0"
-                          />
+                          <img src={set.logo_url} alt={set.name} className="w-12 h-12 object-contain flex-shrink-0" />
                         ) : (
                           <div
                             className="w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0"
@@ -489,10 +570,7 @@ export default function HomePage() {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div
-                            className="font-bold text-sm leading-tight truncate"
-                            style={{ color: primary }}
-                          >
+                          <div className="font-bold text-sm leading-tight truncate" style={{ color: primary }}>
                             {set.name}
                           </div>
                           {set.series && (
@@ -518,6 +596,7 @@ export default function HomePage() {
         )}
       </main>
 
+      {/* Confirm modal (Hide / Remove) */}
       {confirmAction && (
         <div
           className="fixed inset-0 z-30 bg-black/80 flex items-end sm:items-center justify-center p-4"

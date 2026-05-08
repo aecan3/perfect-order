@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen } from "lucide-react";
+import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
@@ -12,6 +12,15 @@ const RATES = {
   GBP: { rate: 0.79, symbol: "£"  },
 };
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
+const daysSince = (ts) => Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000);
+const isStale = (ts) => ts && daysSince(ts) > 7;
+const pricesLabel = (ts) => {
+  if (!ts) return "Prices not yet refreshed";
+  const d = daysSince(ts);
+  if (d === 0) return "Prices updated today";
+  if (d === 1) return "Prices updated 1 day ago";
+  return `Prices updated ${d} days ago`;
+};
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
   if (v >= 100) return `${sym}${v.toFixed(0)}`;
@@ -169,6 +178,7 @@ export default function SetTrackerPage() {
   const [openSections, setOpenSections] = useState({});
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
+  const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
 
@@ -188,7 +198,7 @@ export default function SetTrackerPage() {
       }
       setUser(user);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }] = await Promise.all([
+      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: userSetData }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
@@ -198,10 +208,17 @@ export default function SetTrackerPage() {
           .select("printing_id, card_number, checked, photo_url")
           .eq("user_id", user.id)
           .eq("set_id", setId),
+        supabase
+          .from("user_sets")
+          .select("prices_updated_at")
+          .eq("user_id", user.id)
+          .eq("set_id", setId)
+          .maybeSingle(),
       ]);
 
       setProfile(prof);
       setSetRow(setData);
+      setPricesUpdatedAt(userSetData?.prices_updated_at || null);
       setCards(cardData || []);
 
       const groupedPrintings = {};
@@ -528,6 +545,13 @@ export default function SetTrackerPage() {
             </div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
               owned · {fmtMoney(remainingValueDisplay, currency)} to go
+            </div>
+            <div
+              className="flex items-center justify-end gap-0.5 mt-0.5"
+              style={{ color: isStale(pricesUpdatedAt) ? "#f59e0b" : "var(--po-text-dim)" }}
+            >
+              {isStale(pricesUpdatedAt) && <Clock size={9} />}
+              <span className="text-[9px]">{pricesLabel(pricesUpdatedAt)}</span>
             </div>
           </div>
         </div>
