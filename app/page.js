@@ -30,10 +30,15 @@ export default function HomePage() {
   const [setValues, setSetValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("AUD");
+  // swipeState: boolean per setId — true = open (translated -160px)
   const [swipeState, setSwipeState] = useState({});
   const [menuState, setMenuState] = useState({});
   const [confirmAction, setConfirmAction] = useState(null);
-  const touchStartRef = useRef({});
+
+  // Per-card touch gesture tracking
+  const touchStartRef = useRef({});   // { x, y, baseX, isHorizontal }
+  // Per-card refs to the sliding DOM element for live drag without re-renders
+  const slidingRefs = useRef({});
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -113,6 +118,8 @@ export default function HomePage() {
     router.replace("/login");
   };
 
+  const closeAllSwipes = () => setSwipeState({});
+
   const executeHide = async (setId) => {
     setConfirmAction(null);
     setSwipeState({});
@@ -153,6 +160,81 @@ export default function HomePage() {
     }
   };
 
+  // Snap a card's DOM element to its committed position, with transition.
+  const snapEl = (el, open) => {
+    if (!el) return;
+    el.style.transition = "transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+    el.style.transform = open ? "translateX(-160px)" : "translateX(0)";
+  };
+
+  const makeTouchHandlers = (setId) => ({
+    onTouchStart(e) {
+      const isOpen = !!swipeState[setId];
+      touchStartRef.current[setId] = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        baseX: isOpen ? -160 : 0,
+        isHorizontal: null, // resolved on first significant move
+      };
+      const el = slidingRefs.current[setId];
+      if (el) el.style.transition = "none"; // disable transition during drag
+    },
+    onTouchMove(e) {
+      const start = touchStartRef.current[setId];
+      if (!start) return;
+
+      const dx = e.touches[0].clientX - start.x;
+      const dy = e.touches[0].clientY - start.y;
+
+      // Resolve direction on first movement > 4px
+      if (start.isHorizontal === null && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        start.isHorizontal = Math.abs(dx) > Math.abs(dy);
+      }
+      if (!start.isHorizontal) return; // vertical scroll — don't intercept
+
+      // Live drag: clamp to [-160, 20] so the card can spring slightly right
+      const newX = Math.max(-160, Math.min(20, start.baseX + dx));
+      const el = slidingRefs.current[setId];
+      if (el) el.style.transform = `translateX(${newX}px)`;
+    },
+    onTouchEnd(e) {
+      const start = touchStartRef.current[setId];
+      if (!start) return;
+      delete touchStartRef.current[setId];
+
+      const dx = e.changedTouches[0].clientX - start.x;
+      const dy = e.changedTouches[0].clientY - start.y;
+      const el = slidingRefs.current[setId];
+
+      // If the gesture was vertical (or < 4px — a tap), don't change state
+      const isHoriz = start.isHorizontal || (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 4);
+      if (!isHoriz) {
+        // Tap: if card is open, close it
+        if (swipeState[setId]) {
+          snapEl(el, false);
+          setSwipeState((prev) => ({ ...prev, [setId]: false }));
+        } else {
+          // Plain tap — restore (no-op, but re-enable transition)
+          snapEl(el, false);
+        }
+        return;
+      }
+
+      // Horizontal swipe: snap open if crossed threshold
+      const shouldOpen = dx < -60 ? true : dx > 60 ? false : !!swipeState[setId];
+      snapEl(el, shouldOpen);
+      setSwipeState((prev) => ({ ...prev, [setId]: shouldOpen }));
+    },
+    onTouchCancel() {
+      const start = touchStartRef.current[setId];
+      delete touchStartRef.current[setId];
+      const wasOpen = !!swipeState[setId];
+      const el = slidingRefs.current[setId];
+      // Snap back to whatever state was committed before this gesture
+      snapEl(el, start ? !!swipeState[setId] : wasOpen);
+    },
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
@@ -168,6 +250,7 @@ export default function HomePage() {
     const secondary = set.theme_secondary || "#c084fc";
     const bg = set.theme_bg || "#0a0e0a";
     const val = (setValues[set.id] || 0) * (RATES[currency]?.rate || 1);
+    const touch = makeTouchHandlers(set.id);
 
     return (
       <div
@@ -175,7 +258,7 @@ export default function HomePage() {
         className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
         style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
       >
-        {/* Desktop ··· menu — outside the sliding track so it doesn't move */}
+        {/* Desktop ··· menu — outside the sliding track so it stays fixed */}
         <div
           className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
@@ -205,21 +288,19 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Sliding inner — contains the card link; action buttons are anchored to its right edge
-            via left-full so they start outside the overflow-hidden boundary and are
-            only revealed when the track translates left. */}
+        {/* Sliding inner track.
+            touch-action: pan-y lets the browser handle vertical scroll natively
+            while delivering horizontal touch events to our handlers.
+            Action buttons use left-full to sit just off the right clipping edge. */}
         <div
-          className="relative transition-transform duration-300 ease-out"
-          style={{ transform: swipeState[set.id] ? "translateX(-160px)" : "translateX(0)" }}
-          onTouchStart={(e) => { touchStartRef.current[set.id] = e.touches[0].clientX; }}
-          onTouchEnd={(e) => {
-            const startX = touchStartRef.current[set.id];
-            if (startX == null) return;
-            const dx = e.changedTouches[0].clientX - startX;
-            if (dx < -60) setSwipeState((prev) => ({ ...prev, [set.id]: true }));
-            else if (dx > 60) setSwipeState((prev) => ({ ...prev, [set.id]: false }));
-            delete touchStartRef.current[set.id];
+          ref={(el) => { slidingRefs.current[set.id] = el; }}
+          className="relative"
+          style={{
+            transform: swipeState[set.id] ? "translateX(-160px)" : "translateX(0)",
+            transition: "transform 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            touchAction: "pan-y",
           }}
+          {...touch}
         >
           <Link
             href={`/set/${set.id}`}
@@ -228,6 +309,8 @@ export default function HomePage() {
               if (swipeState[set.id]) {
                 e.preventDefault();
                 setSwipeState((prev) => ({ ...prev, [set.id]: false }));
+                const el = slidingRefs.current[set.id];
+                snapEl(el, false);
               }
             }}
           >
@@ -286,8 +369,7 @@ export default function HomePage() {
             </div>
           </Link>
 
-          {/* Action buttons — left-full positions them just past the card's right edge,
-              hidden by the outer overflow-hidden until the track slides left */}
+          {/* Action buttons — left-full keeps them off-screen until the track slides */}
           <div className="absolute inset-y-0 left-full flex">
             <button
               onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
@@ -310,7 +392,11 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]" onClick={() => setMenuState({})}>
+    <div
+      className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]"
+      // Tap anywhere outside a swiped card closes all open cards and menus
+      onClick={() => { closeAllSwipes(); setMenuState({}); }}
+    >
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
