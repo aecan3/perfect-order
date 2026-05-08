@@ -76,10 +76,15 @@ function rarityBucket(rarity, subtypes, cardNumber, setPrintedTotal) {
 
 const BUCKET_ORDER = [
   "common", "uncommon", "rare", "rare_holo",
-  "gx", "full_art", "prism_star", "shining", "rainbow_rare", "secret_rare",
-  "v", "vmax", "vstar", "v_full_art", "alt_art", "gold_rare", "amazing_rare", "trainer_gallery", "shiny",
-  "double_rare", "illustration_rare", "ultra_rare", "ace_spec", "mega_attack_rare", "sir", "hyper_rare", "mega_hyper_rare", "shiny_rare", "shiny_ultra_rare",
-  "promo",
+  "gx", "v", "vmax", "vstar",
+  "full_art", "prism_star", "shining",
+  "v_full_art", "amazing_rare", "trainer_gallery", "shiny",
+  "double_rare", "illustration_rare", "ace_spec",
+  "rainbow_rare", "ultra_rare",
+  "alt_art", "secret_rare", "gold_rare",
+  "mega_attack_rare", "sir",
+  "hyper_rare", "mega_hyper_rare",
+  "shiny_rare", "shiny_ultra_rare", "promo",
 ];
 const BUCKET_LABELS = {
   common: "Common", uncommon: "Uncommon", rare: "Rare", rare_holo: "Rare Holo",
