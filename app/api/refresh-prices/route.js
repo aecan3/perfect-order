@@ -265,6 +265,23 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
   }
 }
 
+// ── DB write helper ──────────────────────────────────────────────────────────
+// UPDATE only — never INSERT. Printing rows are seeded separately; this route
+// only writes price columns on existing rows. Upsert would fail with NOT NULL
+// violations on card_id and other required columns.
+async function batchUpdate(admin, updates) {
+  const PARALLEL = 20;
+  for (let i = 0; i < updates.length; i += PARALLEL) {
+    const results = await Promise.all(
+      updates.slice(i, i + PARALLEL).map(({ id, ...fields }) =>
+        admin.from("printings").update(fields).eq("id", id)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed) throw new Error(failed.error.message);
+  }
+}
+
 // ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
 // Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
 // Page contains text like "Market Price (TCG holofoil) $1.11".
@@ -479,9 +496,12 @@ async function processSet(admin, userId, setId, slugMap) {
         id, ...prices, updated_at: new Date().toISOString(),
       }));
       console.log(`[PokeScope] Mid-scrape flush: writing ${rows.length} prices to DB`);
-      const { error } = await admin.from("printings").upsert(rows, { onConflict: "id" });
-      if (error) console.error(`[PokeScope] Flush error:`, error.message);
-      else console.log(`[PokeScope] Flush OK`);
+      try {
+        await batchUpdate(admin, rows);
+        console.log(`[PokeScope] Flush OK`);
+      } catch (err) {
+        console.error(`[PokeScope] Flush error:`, err.message);
+      }
     };
 
     result = await tryPokeScope(setId, printings, pokeFlush);
@@ -516,20 +536,11 @@ async function processSet(admin, userId, setId, slugMap) {
     console.log(`  ${u.id}: USD ${u.price_usd ?? "—"} / EUR ${u.price_eur ?? "—"}`)
   );
 
-  // 4. Bulk-upsert in batches of 200
-  const BATCH = 200;
-  console.log(`[DB Write] ${setId} (${priceSource}): upserting ${updates.length} rows`);
+  // 4. Update prices on existing printing rows (never insert — rows are seeded separately)
+  console.log(`[DB Write] ${setId} (${priceSource}): updating ${updates.length} rows`);
   updates.slice(0, 3).forEach((u) => console.log(`  → ${u.id}: $${u.price_usd ?? "—"}`));
-  for (let i = 0; i < updates.length; i += BATCH) {
-    const { error: uErr } = await admin
-      .from("printings")
-      .upsert(updates.slice(i, i + BATCH), { onConflict: "id" });
-    if (uErr) {
-      console.error(`[DB Write] ${setId} batch ${Math.floor(i / BATCH) + 1} FAILED:`, uErr.message);
-      throw new Error(uErr.message);
-    }
-  }
-  console.log(`[DB Write] ${setId}: upsert complete`);
+  await batchUpdate(admin, updates);
+  console.log(`[DB Write] ${setId}: update complete`);
 
   // 5. Compute new collection value with updated prices
   const updatedMap = new Map(updates.map((u) => [u.id, u]));
