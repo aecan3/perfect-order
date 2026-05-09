@@ -428,6 +428,7 @@ export default function HomePage() {
     const printingCount = Number(set.printings?.[0]?.count) || 0;
     const total = printingCount > 0 ? printingCount : (Number(set.cards?.[0]?.count) || 0);
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
+    const isMaster = total > 0 && set.checkedCount >= total;
     const primary = set.theme_primary || "#b9ff3c";
     const secondary = set.theme_secondary || "#c084fc";
     const bg = set.theme_bg || "#050507";
@@ -441,8 +442,18 @@ export default function HomePage() {
     return (
       <div
         key={set.id}
-        className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
-        style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
+        className={`group relative rounded-2xl overflow-hidden border border-[var(--po-border)]${isMaster ? " po-master-card" : ""}`}
+        style={{
+          background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)`,
+          ...(isMaster ? {
+            "--glow-a":      primary,
+            "--glow-a-soft": `${primary}60`,
+            "--glow-a-faint":`${primary}1e`,
+            "--glow-b":      secondary,
+            "--glow-b-soft": `${secondary}60`,
+            "--glow-b-faint":`${secondary}1e`,
+          } : {}),
+        }}
       >
         {/* Desktop ··· menu */}
         <div
@@ -519,7 +530,9 @@ export default function HomePage() {
                 <div className="mt-2 flex items-baseline justify-between gap-2">
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
-                    <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
+                    <span className="text-xs text-[var(--po-text-dim)]">
+                      / {total}{!isMaster && ` · ${pct}%`}
+                    </span>
                   </div>
                   {val > 0 && (
                     <div className="flex items-center gap-1 text-xs tabular-nums flex-shrink-0">
@@ -536,16 +549,30 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
+                {isMaster ? (
                   <div
-                    className="h-full transition-all"
+                    className="mt-2.5 self-start inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.14em] leading-none"
                     style={{
-                      width: `${pct}%`,
-                      background: `linear-gradient(90deg, ${primary}, ${secondary})`,
-                      boxShadow: `0 0 10px ${primary}80`,
+                      color: primary,
+                      background: `${primary}18`,
+                      border: `1px solid ${primary}50`,
+                      boxShadow: `0 0 10px ${primary}30`,
                     }}
-                  />
-                </div>
+                  >
+                    ✦ Master Set ✦
+                  </div>
+                ) : (
+                  <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
+                    <div
+                      className="h-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        background: `linear-gradient(90deg, ${primary}, ${secondary})`,
+                        boxShadow: `0 0 10px ${primary}80`,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </Link>
