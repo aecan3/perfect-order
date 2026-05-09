@@ -177,52 +177,198 @@ const RARITY_DOT = {
   other:             "#64748b",
 };
 
-function ConfettiBurst({ onDone }) {
+function MasterSetCelebration({ themePrimary, themeSecondary, logoUrl, setName, onDismiss }) {
   const canvasRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  // Fade in on first paint
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(r);
+  }, []);
+
+  // Lock body scroll while overlay is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    setTimeout(onDismiss, 480);
+  }, [onDismiss]);
+
+  // Auto-dismiss after 4 s
+  useEffect(() => {
+    const t = setTimeout(dismiss, 4000);
+    return () => clearTimeout(t);
+  }, [dismiss]);
+
+  // Canvas particle burst
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    const COLORS = ["#c8ff4a", "#c084fc", "#f472b6", "#5eead4", "#ffffff", "#fbbf24"];
-    const particles = Array.from({ length: 44 }, () => ({
-      x: canvas.width / 2 + (Math.random() - 0.5) * 120,
-      y: canvas.height * 0.32,
-      vx: (Math.random() - 0.5) * 9,
-      vy: (Math.random() * -9) - 2,
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    const COLORS = [themePrimary, themePrimary, themeSecondary, "#ffffff", "#fbbf24", "#f472b6"];
+
+    // Radial burst — 100 particles fanning out from centre
+    const burst = Array.from({ length: 100 }, (_, i) => {
+      const angle = (i / 100) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+      const speed = 4 + Math.random() * 10;
+      return {
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        w: 4 + Math.random() * 6,
+        h: 2 + Math.random() * 3,
+        life: 1,
+        decay: 0.009 + Math.random() * 0.012,
+        rot: Math.random() * Math.PI * 2,
+        rotV: (Math.random() - 0.5) * 0.22,
+      };
+    });
+
+    // Slow-drifting atmosphere particles that outlast the burst
+    const drifters = Array.from({ length: 35 }, () => ({
+      x: cx + (Math.random() - 0.5) * Math.min(canvas.width * 0.9, 600),
+      y: cy - canvas.height * 0.25 + (Math.random() - 0.5) * canvas.height * 0.15,
+      vx: (Math.random() - 0.5) * 1.2,
+      vy: 0.6 + Math.random() * 1.4,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      w: 4 + Math.random() * 5,
+      w: 3 + Math.random() * 5,
       h: 2 + Math.random() * 3,
+      life: 0,
+      maxLife: 0.7 + Math.random() * 0.3,
+      decay: 0.0025 + Math.random() * 0.003,
+      startFrame: 30 + Math.floor(Math.random() * 50),
       rot: Math.random() * Math.PI * 2,
-      rotV: (Math.random() - 0.5) * 0.35,
+      rotV: (Math.random() - 0.5) * 0.07,
     }));
-    let start = null;
-    const DURATION = 720;
-    function frame(ts) {
-      if (!start) start = ts;
-      const t = Math.min((ts - start) / DURATION, 1);
+
+    let frame = 0;
+    let animId;
+
+    function draw() {
+      frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const alpha = t < 0.45 ? 1 : 1 - (t - 0.45) / 0.55;
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.28;
-        p.rot += p.rotV;
+
+      burst.forEach((p) => {
+        if (p.life <= 0) return;
+        p.x += p.vx;  p.y += p.vy;
+        p.vy += 0.18;  p.vx *= 0.985;
+        p.rot += p.rotV;  p.life -= p.decay;
         ctx.save();
-        ctx.globalAlpha = Math.max(0, alpha);
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.translate(p.x, p.y);  ctx.rotate(p.rot);
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
         ctx.restore();
       });
-      if (t < 1) requestAnimationFrame(frame);
-      else onDone?.();
+
+      drifters.forEach((p) => {
+        if (frame < p.startFrame) return;
+        p.x += p.vx;  p.y += p.vy;
+        p.rot += p.rotV;
+        if (p.life < p.maxLife) p.life = Math.min(p.maxLife, p.life + 0.05);
+        p.life -= p.decay;
+        if (p.life <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.translate(p.x, p.y);  ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+
+      if (burst.some(p => p.life > 0) || drifters.some(p => p.life > 0 || frame < p.startFrame)) {
+        animId = requestAnimationFrame(draw);
+      }
     }
-    requestAnimationFrame(frame);
+
+    // Slight delay so overlay fade-in settles before burst fires
+    const t = setTimeout(() => { animId = requestAnimationFrame(draw); }, 350);
+    return () => { clearTimeout(t); cancelAnimationFrame(animId); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 60 }} />;
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 200,
+        background: "rgba(5,5,7,0.87)",
+        opacity: visible ? 1 : 0,
+        transition: "opacity 0.35s ease",
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}
+      onClick={dismiss}
+    >
+      {/* Particle canvas sits behind text */}
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+
+      {/* Content */}
+      <div
+        className="relative flex flex-col items-center text-center px-8 select-none"
+        style={{ transform: "translateY(-8%)" }}
+      >
+        {/* Pulsing glow orb behind logo */}
+        <div
+          className="po-master-glow-orb absolute rounded-full pointer-events-none"
+          style={{
+            width: 280, height: 280,
+            background: `radial-gradient(circle, ${themePrimary}55 0%, ${themePrimary}18 45%, transparent 72%)`,
+            top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+
+        {/* Set logo */}
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt={setName}
+            className="po-master-logo relative w-52 h-auto object-contain mb-10"
+            style={{ filter: `drop-shadow(0 0 28px ${themePrimary}bb) drop-shadow(0 0 8px ${themePrimary})` }}
+          />
+        )}
+
+        {/* MASTER SET */}
+        <div
+          className="po-master-title-1 font-black uppercase text-white"
+          style={{
+            fontFamily: "var(--font-baloo), system-ui, sans-serif",
+            fontSize: "clamp(1.1rem, 5vw, 1.6rem)",
+            letterSpacing: "0.28em",
+            textShadow: "0 2px 16px rgba(0,0,0,0.6)",
+          }}
+        >
+          Master Set
+        </div>
+
+        {/* COMPLETE */}
+        <div
+          className="po-master-title-2 font-black uppercase"
+          style={{
+            fontFamily: "var(--font-baloo), system-ui, sans-serif",
+            fontSize: "clamp(3rem, 14vw, 5.5rem)",
+            letterSpacing: "0.08em",
+            lineHeight: 1,
+            color: themePrimary,
+            textShadow: `0 0 30px ${themePrimary}, 0 0 70px ${themePrimary}88`,
+          }}
+        >
+          Complete
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onToggle, children }) {
@@ -369,7 +515,7 @@ export default function SetTrackerPage() {
   const [resetTyped, setResetTyped] = useState("");
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const [shimmerMain, setShimmerMain] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
   const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -478,7 +624,7 @@ export default function SetTrackerPage() {
     prevSetPctRef.current = pct;
     if (prev < 100 && pct >= 100) {
       setShimmerMain(true);
-      setShowConfetti(true);
+      setShowCelebration(true);
       setTimeout(() => setShimmerMain(false), 1100);
     }
   }); // runs every render — intentional, reads computed pct
@@ -813,7 +959,15 @@ export default function SetTrackerPage() {
 
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      {showConfetti && <ConfettiBurst onDone={() => setShowConfetti(false)} />}
+      {showCelebration && (
+        <MasterSetCelebration
+          themePrimary={themePrimary}
+          themeSecondary={themeSecondary}
+          logoUrl={setRow.logo_url}
+          setName={setRow.name}
+          onDismiss={() => setShowCelebration(false)}
+        />
+      )}
       <header
         className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
         style={{ background: "rgba(5,5,7,0.92)", borderBottom: `1px solid ${themePrimary}30` }}
