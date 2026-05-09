@@ -211,27 +211,41 @@ export default function ThreadPage() {
 
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
-                    {/* Card previews for trade proposals */}
-                    {(meta?.cards || (meta?.cardName ? [meta] : null))?.map((c, ci) => (
-                      <div
-                        key={ci}
-                        className="mb-1 rounded-xl overflow-hidden border border-[var(--po-border)] flex gap-2 p-2 max-w-[260px]"
-                        style={{ background: "var(--po-bg-soft)" }}
-                      >
-                        {c.imageUrl && (
-                          <img src={c.imageUrl} alt={c.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
-                        )}
-                        <div className="flex flex-col justify-center min-w-0">
-                          <p className="text-xs font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
-                          <p className="text-[10px] text-[var(--po-text-dim)] truncate">{c.setName}</p>
-                          {c.priceUsd > 0 && (
-                            <p className="text-[10px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                              {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                            </p>
-                          )}
+                    {/* Card previews for trade proposals — horizontal scroll row */}
+                    {(() => {
+                      const cardList = meta?.cards || (meta?.cardName ? [meta] : null);
+                      if (!cardList?.length) return null;
+                      return (
+                        <div
+                          className="flex gap-2 mb-1 overflow-x-auto pb-1"
+                          style={{ maxWidth: 280, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+                        >
+                          {cardList.map((c, ci) => (
+                            <div
+                              key={ci}
+                              className="flex-none flex flex-col rounded-xl overflow-hidden border border-[var(--po-border)]"
+                              style={{ width: 88, background: "var(--po-bg-soft)", scrollSnapAlign: "start" }}
+                            >
+                              {c.imageUrl ? (
+                                <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} />
+                              ) : (
+                                <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
+                                  {c.cardName}
+                                </div>
+                              )}
+                              <div className="px-1.5 py-1.5">
+                                <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
+                                {c.priceUsd > 0 && (
+                                  <p className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
+                                    {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })()}
 
                     <div
                       className="px-3 py-2 rounded-2xl max-w-[75%] text-sm leading-relaxed"
@@ -256,14 +270,17 @@ export default function ThreadPage() {
         <div ref={bottomRef} />
       </main>
 
-      {/* Card previews above input when arriving from Discover */}
+      {/* Card previews above input when arriving from Discover — horizontal scroll */}
       {cardsMeta?.length > 0 && (
-        <div className="max-w-md mx-auto w-full px-4 pb-1 space-y-1">
+        <div
+          className="max-w-md mx-auto w-full px-4 pb-2 flex gap-2 overflow-x-auto"
+          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+        >
           {cardsMeta.map((c, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
-              style={{ background: "var(--po-bg-soft)" }}
+              className="flex-none flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
+              style={{ background: "var(--po-bg-soft)", scrollSnapAlign: "start", minWidth: 180, maxWidth: 240 }}
             >
               {c.imageUrl && (
                 <img src={c.imageUrl} alt={c.cardName} className="w-8 h-10 object-cover rounded flex-shrink-0" />
@@ -271,12 +288,12 @@ export default function ThreadPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
                 <p className="text-[var(--po-text-faint)] truncate">{c.setName}</p>
+                {c.priceUsd > 0 && (
+                  <p className="font-black" style={{ color: "var(--po-green)" }}>
+                    {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                  </p>
+                )}
               </div>
-              {c.priceUsd > 0 && (
-                <span className="font-black flex-shrink-0" style={{ color: "var(--po-green)" }}>
-                  {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                </span>
-              )}
             </div>
           ))}
         </div>

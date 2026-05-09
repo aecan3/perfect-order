@@ -992,9 +992,12 @@ export default function HomePage() {
           onClick={() => setDiscoverModal(null)}
         >
           <div
-            className="w-full max-w-md bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl p-5 pb-8 shadow-2xl"
+            className="w-full max-w-md bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl p-5 pb-8 shadow-2xl overflow-y-auto"
+            style={{ maxHeight: "80vh" }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Drag handle */}
+            <div className="w-10 h-1 rounded-full bg-[var(--po-border-strong)] mx-auto mb-4" />
             {/* Card preview */}
             <div className="flex items-center gap-3 mb-5">
               {discoverModal.imageUrl && (
@@ -1017,7 +1020,7 @@ export default function HomePage() {
                 className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
                 onClick={() => setDiscoverModal(null)}
               >
-                <span>View in @{discoverModal.friendHandle}&apos;s collection</span>
+                <span>View in @{discoverModal.friendHandle}{"'"}s collection</span>
                 <ChevronRight size={16} className="text-[var(--po-text-faint)]" />
               </Link>
               <Link

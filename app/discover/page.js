@@ -111,7 +111,13 @@ export default function DiscoverPage() {
     return acc;
   }, {});
 
+  // The friend whose cards are currently selected (only one friend at a time)
+  const selectedCards = filtered.filter((c) => selected.has(cardKey(c)));
+  const selectedFriend = selectedCards[0]?.friendHandle ?? null;
+
   const toggleCard = (card) => {
+    // Block selection of cards from a different friend
+    if (selectedFriend && card.friendHandle !== selectedFriend) return;
     const key = cardKey(card);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -120,11 +126,17 @@ export default function DiscoverPage() {
     });
   };
 
-  const selectAll = () => setSelected(new Set(filtered.map(cardKey)));
+  // Select All only selects within the currently active friend (or first friend if none)
+  const selectAll = () => {
+    const targetFriend = selectedFriend || Object.keys(
+      filtered.reduce((acc, c) => { acc[c.friendHandle] = true; return acc; }, {})
+    )[0];
+    if (!targetFriend) return;
+    setSelected(new Set(filtered.filter((c) => c.friendHandle === targetFriend).map(cardKey)));
+  };
   const clearAll = () => setSelected(new Set());
 
-  // Group selected cards by friend for bulk messaging
-  const selectedCards = filtered.filter((c) => selected.has(cardKey(c)));
+  // Bulk messaging — only ever one friend in the map
   const selectedByFriend = selectedCards.reduce((acc, card) => {
     if (!acc[card.friendHandle]) acc[card.friendHandle] = [];
     acc[card.friendHandle].push(card);
@@ -230,15 +242,18 @@ export default function DiscoverPage() {
               {friendCards.map((card, i) => {
                 const key = cardKey(card);
                 const isSelected = selected.has(key);
+                const isLocked = isSelecting && card.friendHandle !== selectedFriend;
                 return (
                   <button
                     key={i}
                     onClick={() => toggleCard(card)}
-                    className="relative rounded-lg overflow-hidden bg-black/40 text-left"
+                    disabled={isLocked}
+                    className="relative rounded-lg overflow-hidden bg-black/40 text-left transition-opacity"
                     style={{
                       aspectRatio: "2/3",
                       outline: isSelected ? "2px solid var(--po-green)" : "none",
                       outlineOffset: 2,
+                      opacity: isLocked ? 0.3 : 1,
                     }}
                   >
                     {card.imageUrl ? (
@@ -280,9 +295,17 @@ export default function DiscoverPage() {
       {isSelecting && (
         <div className="fixed bottom-0 inset-x-0 z-20 border-t border-[var(--po-border)] bg-[var(--po-bg)]/95 backdrop-blur px-4 pt-3 pb-8">
           <div className="max-w-md mx-auto space-y-2">
-            <p className="text-xs text-[var(--po-text-dim)] text-center mb-1">
-              {selected.size} card{selected.size !== 1 ? "s" : ""} selected
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-[var(--po-text-dim)]">
+                {selected.size} card{selected.size !== 1 ? "s" : ""} selected
+              </p>
+              <button
+                onClick={clearAll}
+                className="text-xs font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+              >
+                Clear selection
+              </button>
+            </div>
             {Object.entries(selectedByFriend).map(([handle, friendCards]) => (
               <button
                 key={handle}
