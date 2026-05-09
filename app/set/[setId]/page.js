@@ -193,6 +193,10 @@ export default function SetTrackerPage() {
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
+  const dupTimersRef = useRef({});
+  const ownedPrintingsRef = useRef({});
+  ownedPrintingsRef.current = ownedPrintings; // always current — set every render
+  const [missingOnly, setMissingOnly] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -217,7 +221,7 @@ export default function SetTrackerPage() {
         supabase.from("printings").select("*").eq("set_id", setId).order("display_order", { ascending: true }),
         supabase
           .from("collection_entries")
-          .select("printing_id, card_number, checked, photo_url")
+          .select("printing_id, card_number, checked, photo_url, duplicate_count")
           .eq("user_id", user.id)
           .eq("set_id", setId),
         supabase
@@ -243,7 +247,7 @@ export default function SetTrackerPage() {
       const ownedMap = {};
       (entriesData || []).forEach((e) => {
         if (e.printing_id) {
-          ownedMap[e.printing_id] = { checked: e.checked, photo_url: e.photo_url, card_number: e.card_number };
+          ownedMap[e.printing_id] = { checked: e.checked, photo_url: e.photo_url, card_number: e.card_number, duplicate_count: e.duplicate_count || 0 };
         }
       });
       setOwnedPrintings(ownedMap);
@@ -273,10 +277,36 @@ export default function SetTrackerPage() {
     localStorage.setItem("po:currency", c);
   };
 
-  const toggleMasterSet = () => {
-    const next = !masterSet;
-    setMasterSet(next);
-    localStorage.setItem("po:masterSet", String(next));
+  useEffect(() => () => {
+    Object.values(dupTimersRef.current).forEach(clearTimeout);
+  }, []);
+
+  const handleDupChange = (printingId, delta) => {
+    if (!user) return;
+    const cur = ownedPrintingsRef.current[printingId] || {};
+    const newCount = Math.max(0, (cur.duplicate_count || 0) + delta);
+    setOwnedPrintings((prev) => ({
+      ...prev,
+      [printingId]: { ...prev[printingId], duplicate_count: newCount },
+    }));
+    clearTimeout(dupTimersRef.current[printingId]);
+    dupTimersRef.current[printingId] = setTimeout(async () => {
+      delete dupTimersRef.current[printingId];
+      const latest = ownedPrintingsRef.current[printingId] || {};
+      await supabase.from("collection_entries").upsert(
+        {
+          user_id: user.id,
+          set_id: setId,
+          card_number: latest.card_number,
+          printing_id: printingId,
+          checked: latest.checked || false,
+          photo_url: latest.photo_url ?? null,
+          duplicate_count: latest.duplicate_count || 0,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,set_id,card_number,printing_id" }
+      );
+    }, 800);
   };
 
   const togglePrinting = useCallback(
@@ -433,6 +463,19 @@ export default function SetTrackerPage() {
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
 
+  const missingFilter = (card) => {
+    const prints = printingsByCard[card.number] || [];
+    return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
+  };
+  const viewCards = missingOnly ? cards.filter(missingFilter) : cards;
+  // Keep section.cards original (used for owned/total counts in headers);
+  // displayCards is the filtered subset actually rendered.
+  const viewSections = missingOnly
+    ? sections
+        .map((s) => ({ ...s, displayCards: s.cards.filter(missingFilter) }))
+        .filter((s) => s.displayCards.length > 0)
+    : sections.map((s) => ({ ...s, displayCards: s.cards }));
+
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
     const checkedCount = prints.filter((p) => ownedPrintings[p.id]?.checked).length;
@@ -450,6 +493,8 @@ export default function SetTrackerPage() {
       completionState === "complete" ? "" :
       completionState === "partial"  ? "opacity-60" :
       "grayscale opacity-30";
+    const firstOwned = prints.find((p) => ownedPrintings[p.id]?.checked);
+    const dupCount = firstOwned ? (ownedPrintings[firstOwned.id]?.duplicate_count || 0) : 0;
 
     return (
       <div key={card.id} className="flex flex-col">
@@ -488,6 +533,14 @@ export default function SetTrackerPage() {
               {checkedCount}/{prints.length}
             </div>
           )}
+          {cardPrice !== null && (
+            <div
+              className="absolute bottom-1 right-1 bg-black/70 text-[9px] px-1 py-0.5 rounded font-mono leading-none"
+              style={{ color: themePrimary }}
+            >
+              {fmtMoney(cardPrice, currency)}
+            </div>
+          )}
         </div>
         {prints.length > 1 && (
           <div className="flex justify-center gap-1 mt-1">
@@ -510,12 +563,33 @@ export default function SetTrackerPage() {
             })}
           </div>
         )}
-        {cardPrice !== null && (
+        {checkedCount > 0 && firstOwned && (
           <div
-            className="text-center text-[9px] tabular-nums mt-0.5 leading-none"
-            style={{ color: completionState === "uncollected" ? "var(--po-text-dim)" : themePrimary }}
+            className="flex items-center justify-center gap-1 mt-1"
+            onClick={(e) => e.stopPropagation()}
           >
-            {fmtMoney(cardPrice, currency)}
+            {dupCount > 0 && (
+              <>
+                <button
+                  onClick={() => handleDupChange(firstOwned.id, -1)}
+                  className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+                >
+                  −
+                </button>
+                <span
+                  className="text-[10px] font-bold tabular-nums w-4 text-center"
+                  style={{ color: themePrimary }}
+                >
+                  {dupCount}
+                </span>
+              </>
+            )}
+            <button
+              onClick={() => handleDupChange(firstOwned.id, 1)}
+              className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+            >
+              +
+            </button>
           </div>
         )}
       </div>
@@ -601,23 +675,46 @@ export default function SetTrackerPage() {
             }}
           />
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-lg overflow-hidden border border-[var(--po-border)]">
+            <button
+              onClick={() => { setMasterSet(false); localStorage.setItem("po:masterSet", "false"); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold transition-colors ${!masterSet ? "text-black" : "text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
+              style={!masterSet ? { background: themePrimary } : undefined}
+            >
+              <LayoutGrid size={12} />
+              Rarity
+            </button>
+            <button
+              onClick={() => { setMasterSet(true); localStorage.setItem("po:masterSet", "true"); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold transition-colors ${masterSet ? "text-black" : "text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
+              style={masterSet ? { background: themePrimary } : undefined}
+            >
+              <BookOpen size={12} />
+              Binder
+            </button>
+          </div>
           <button
-            onClick={toggleMasterSet}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] hover:border-[var(--po-text-dim)] transition-colors"
+            onClick={() => setMissingOnly((v) => !v)}
+            className={`flex items-center px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border transition-colors ${missingOnly ? "text-black border-transparent" : "border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
+            style={missingOnly ? { background: themePrimary } : undefined}
           >
-            {masterSet ? <BookOpen size={13} /> : <LayoutGrid size={13} />}
-            {masterSet ? "Binder View" : "Rarity View"}
+            Missing Only
           </button>
         </div>
       </header>
 
       <main className="px-3 py-4">
         {masterSet ? (
-          <div className="grid grid-cols-2 gap-3">{cards.map(renderCard)}</div>
+          viewCards.length > 0
+            ? <div className="grid grid-cols-2 gap-3">{viewCards.map(renderCard)}</div>
+            : <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
         ) : (
           <div className="space-y-3">
-            {sections.map((section) => {
+            {viewSections.length === 0 && (
+              <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
+            )}
+            {viewSections.map((section) => {
               const isOpen = !!openSections[section.id];
               return (
                 <div key={section.id} className="border border-[var(--po-border)] rounded-lg overflow-hidden bg-[var(--po-bg-soft)]">
@@ -635,7 +732,7 @@ export default function SetTrackerPage() {
                   </button>
                   {isOpen && (
                     <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-[var(--po-border)]">
-                      {section.cards.map(renderCard)}
+                      {section.displayCards.map(renderCard)}
                     </div>
                   )}
                 </div>
