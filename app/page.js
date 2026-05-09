@@ -195,7 +195,7 @@ export default function HomePage() {
           const [{ data: friendDups }, { data: myMissing }] = await Promise.all([
             supabase
               .from("collection_entries")
-              .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings(price_usd, image_url, card:cards(name)), set:sets(name, code)")
+              .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
               .in("user_id", friendIds)
               .gt("duplicate_count", 0),
             supabase
@@ -226,7 +226,7 @@ export default function HomePage() {
               duplicateCount: entry.duplicate_count,
               friendHandle: profileMap[entry.user_id]?.handle || "unknown",
               priceUsd: entry.printing?.price_usd || 0,
-              imageUrl: entry.printing?.image_url || null,
+              imageUrl: entry.printing?.image_url || entry.printing?.card?.image_large || null,
               setName: entry.set?.name || "",
               cardName: entry.printing?.card?.name || "",
             }))
