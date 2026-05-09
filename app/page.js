@@ -85,6 +85,9 @@ export default function HomePage() {
   const rafRef = useRef(null);
   const animTargetsRef = useRef({});
 
+  // Discover panel
+  const [discoverCards, setDiscoverCards] = useState(null); // null=loading, []=empty, [...]=results
+
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
@@ -175,6 +178,66 @@ export default function HomePage() {
       setSetValues(vals);
       setDisplayValues(initDisplay);
       setLoading(false);
+
+      // Non-blocking discover fetch — runs after main load so it doesn't delay the page
+      (async () => {
+        try {
+          const { data: fships } = await supabase
+            .from("friendships")
+            .select("user_a, user_b")
+            .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+            .eq("status", "accepted");
+
+          if (!fships?.length) { setDiscoverCards([]); return; }
+
+          const friendIds = fships.map((f) => f.user_a === user.id ? f.user_b : f.user_a);
+
+          const [{ data: friendDups }, { data: myMissing }] = await Promise.all([
+            supabase
+              .from("collection_entries")
+              .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings(price_usd, card:cards(name, image_url)), set:sets(name, code)")
+              .in("user_id", friendIds)
+              .gt("duplicate_count", 0),
+            supabase
+              .from("collection_entries")
+              .select("printing_id, set_id, card_number")
+              .eq("user_id", user.id)
+              .eq("checked", false),
+          ]);
+
+          const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
+          const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
+
+          const friendProfileIds = [...new Set((friendDups || []).map((d) => d.user_id))];
+          const { data: friendProfiles } = friendProfileIds.length > 0
+            ? await supabase.from("profiles").select("id, handle").in("id", friendProfileIds)
+            : { data: [] };
+          const profileMap = Object.fromEntries((friendProfiles || []).map((p) => [p.id, p]));
+
+          const results = (friendDups || [])
+            .filter((entry) =>
+              (entry.printing_id && missingPrintingIds.has(entry.printing_id)) ||
+              missingKeys.has(`${entry.set_id}:${entry.card_number}`)
+            )
+            .map((entry) => ({
+              printingId: entry.printing_id,
+              cardNumber: entry.card_number,
+              setId: entry.set_id,
+              duplicateCount: entry.duplicate_count,
+              friendHandle: profileMap[entry.user_id]?.handle || "unknown",
+              priceUsd: entry.printing?.price_usd || 0,
+              imageUrl: entry.printing?.card?.image_url || null,
+              setName: entry.set?.name || "",
+              cardName: entry.printing?.card?.name || "",
+            }))
+            .sort((a, b) => b.priceUsd - a.priceUsd)
+            .slice(0, 20);
+
+          setDiscoverCards(results);
+        } catch {
+          setDiscoverCards([]);
+        }
+      })();
 
       // Staggered count-up from zero — fires on every page load / navigate-back
       const loadTargets = {};
@@ -622,6 +685,60 @@ export default function HomePage() {
     );
   };
 
+  // ── Discover panel ───────────────────────────────────────────────────────
+  const renderDiscoverPanel = () => {
+    if (!discoverCards || discoverCards.length === 0) return null;
+
+    return (
+      <div className="rounded-2xl overflow-hidden border border-[var(--po-border)] bg-[var(--po-bg-soft)]">
+        <Link href="/discover" className="flex items-center gap-2 px-4 pt-3 pb-2">
+          <span
+            className="text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded-full flex-shrink-0"
+            style={{ background: "var(--po-green)", color: "#050507" }}
+          >
+            NEW
+          </span>
+          <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-[var(--po-text-dim)] flex-1 truncate">
+            Discover · {discoverCards.length} cards your friends have
+          </span>
+          <ChevronRight size={14} className="text-[var(--po-text-faint)] flex-shrink-0" />
+        </Link>
+        <div
+          className="flex gap-2 overflow-x-auto px-4 pb-3"
+          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+        >
+          {discoverCards.map((card, i) => (
+            <Link
+              key={i}
+              href={`/friend/${card.friendHandle}/${card.setId}`}
+              className="flex-none relative rounded-lg overflow-hidden bg-black/40"
+              style={{ width: "calc(33.333% - 6px)", scrollSnapAlign: "start", aspectRatio: "2/3" }}
+            >
+              {card.imageUrl ? (
+                <img src={card.imageUrl} alt={card.cardName} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-1 text-center text-[8px] text-[var(--po-text-faint)] leading-tight">
+                  {card.cardName || card.setName}
+                </div>
+              )}
+              <div
+                className="absolute inset-x-0 bottom-0 px-1.5 py-1 flex items-end justify-between gap-1"
+                style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)" }}
+              >
+                <span className="text-[8px] text-white/75 font-bold truncate min-w-0">@{card.friendHandle}</span>
+                {card.priceUsd > 0 && (
+                  <span className="text-[8px] font-black flex-shrink-0" style={{ color: "var(--po-green)" }}>
+                    {fmtMoney(card.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                  </span>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // ── Portfolio banner ──────────────────────────────────────────────────────
   const renderBanner = () => {
     const totalSets = allSets.length;
@@ -767,6 +884,9 @@ export default function HomePage() {
       <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
         {/* Portfolio banner — only shown when user has sets */}
         {allSets.length > 0 && renderBanner()}
+
+        {/* Discover panel — friends' duplicates you're missing */}
+        {renderDiscoverPanel()}
 
         <Link
           href="/sets"
