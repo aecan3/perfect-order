@@ -100,27 +100,37 @@ export default function HomePage() {
         .from("profiles").select("*").eq("id", user.id).maybeSingle();
       setProfile(profileData);
 
+      // Paginated fetch for collection_entries — loops with .range() until
+      // a page returns fewer rows than PAGE, guaranteeing every row is
+      // included regardless of collection size.
+      const fetchAllEntries = async (userId) => {
+        const PAGE = 1000;
+        const rows = [];
+        let from = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from("collection_entries")
+            .select("set_id, printing:printings(price_usd)")
+            .eq("user_id", userId)
+            .eq("checked", true)
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          rows.push(...data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+        return rows;
+      };
+
       // Step 1: user_sets metadata + all checked entries in parallel.
-      // collection_entries needs an explicit limit — Supabase's default page
-      // is 1000 rows; without it a large collection is silently truncated and
-      // the truncated subset varies between sessions (stale counts on re-login).
-      const [{ data: userSetsRows }, { data: entries }] = await Promise.all([
+      const [{ data: userSetsRows }, entries] = await Promise.all([
         supabase
           .from("user_sets")
           .select("set_id, added_at, hidden_at, prices_updated_at")
           .eq("user_id", user.id)
           .order("added_at", { ascending: false }),
-        supabase
-          .from("collection_entries")
-          .select("set_id, printing:printings(price_usd)")
-          .eq("user_id", user.id)
-          .eq("checked", true)
-          .limit(10000),
+        fetchAllEntries(user.id),
       ]);
-
-      if (entries && entries.length === 10000) {
-        console.error(`[perfect-order] collection_entries hit the 10k row limit for user ${user.id} — raise the limit before counts are wrong`);
-      }
 
       // Step 2: fetch set details at the top level.
       // Nesting printings!printings_set_id_fkey(count) inside the user_sets

@@ -66,26 +66,36 @@ export default function FriendOverviewPage() {
         return;
       }
 
-      // Same two-query split as the home page: nesting printings count inside
-      // user_sets silently returns [] for the aggregate, and no limit on
-      // collection_entries causes silent truncation at 1000 rows.
-      const [{ data: userSetsRows }, { data: entries }] = await Promise.all([
+      // Paginated fetch — loops with .range() until a page returns fewer
+      // rows than PAGE, guaranteeing all entries are returned regardless of
+      // collection size.
+      const fetchAllEntries = async (userId) => {
+        const PAGE = 1000;
+        const rows = [];
+        let from = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from("collection_entries")
+            .select("set_id, printing:printings(price_usd)")
+            .eq("user_id", userId)
+            .eq("checked", true)
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          rows.push(...data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+        return rows;
+      };
+
+      const [{ data: userSetsRows }, entries] = await Promise.all([
         supabase
           .from("user_sets")
           .select("set_id, added_at")
           .eq("user_id", friendProfile.id)
           .order("added_at", { ascending: false }),
-        supabase
-          .from("collection_entries")
-          .select("set_id, printing:printings(price_usd)")
-          .eq("user_id", friendProfile.id)
-          .eq("checked", true)
-          .limit(10000),
+        fetchAllEntries(friendProfile.id),
       ]);
-
-      if (entries && entries.length === 10000) {
-        console.error(`[perfect-order] collection_entries hit 10k limit for friend ${friendProfile.id} — counts may be wrong`);
-      }
 
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
       const { data: setsData } = setIds.length > 0
