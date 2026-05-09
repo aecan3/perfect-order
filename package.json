@@ -16,7 +16,8 @@
     "reseed:empty": "node scripts/reseed-empty-sets.mjs",
     "seed:missing": "node scripts/seed-missing-printings.mjs",
     "patch:set": "node scripts/patch-set.mjs",
-    "patch:limitless": "node scripts/patch-limitless.mjs"
+    "patch:limitless": "node scripts/patch-limitless.mjs",
+    "audit:counts": "node scripts/audit-raff-counts.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

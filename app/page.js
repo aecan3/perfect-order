@@ -118,6 +118,10 @@ export default function HomePage() {
           .limit(10000),
       ]);
 
+      if (entries && entries.length === 10000) {
+        console.error(`[perfect-order] collection_entries hit the 10k row limit for user ${user.id} — raise the limit before counts are wrong`);
+      }
+
       // Step 2: fetch set details at the top level.
       // Nesting printings!printings_set_id_fkey(count) inside the user_sets
       // join silently returns [] for the aggregate, causing the denominator

@@ -66,18 +66,36 @@ export default function FriendOverviewPage() {
         return;
       }
 
-      const [{ data: sets }, { data: entries }] = await Promise.all([
+      // Same two-query split as the home page: nesting printings count inside
+      // user_sets silently returns [] for the aggregate, and no limit on
+      // collection_entries causes silent truncation at 1000 rows.
+      const [{ data: userSetsRows }, { data: entries }] = await Promise.all([
         supabase
           .from("user_sets")
-          .select(`added_at, set:sets (id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count))`)
+          .select("set_id, added_at")
           .eq("user_id", friendProfile.id)
           .order("added_at", { ascending: false }),
         supabase
           .from("collection_entries")
           .select("set_id, printing:printings(price_usd)")
           .eq("user_id", friendProfile.id)
-          .eq("checked", true),
+          .eq("checked", true)
+          .limit(10000),
       ]);
+
+      if (entries && entries.length === 10000) {
+        console.error(`[perfect-order] collection_entries hit 10k limit for friend ${friendProfile.id} — counts may be wrong`);
+      }
+
+      const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
+      const { data: setsData } = setIds.length > 0
+        ? await supabase
+            .from("sets")
+            .select("id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
+            .in("id", setIds)
+        : { data: [] };
+
+      const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
       const countMap = {}, vals = {};
       (entries || []).forEach((e) => {
@@ -85,11 +103,19 @@ export default function FriendOverviewPage() {
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
-      setFriendSets((sets || []).map((row) => ({
-        ...row.set,
-        checkedCount: countMap[row.set.id] || 0,
-        collectionValue: vals[row.set.id] || 0,
-      })));
+      setFriendSets(
+        (userSetsRows || [])
+          .map((row) => {
+            const s = setById[row.set_id];
+            if (!s) return null;
+            return {
+              ...s,
+              checkedCount: countMap[s.id] || 0,
+              collectionValue: vals[s.id] || 0,
+            };
+          })
+          .filter(Boolean)
+      );
       setStatus("ok");
     })();
   }, [handle, router, supabase]);
@@ -137,7 +163,7 @@ export default function FriendOverviewPage() {
           </div>
         ) : (
           friendSets.map((set) => {
-            const total = set.printings?.[0]?.count || 0;
+            const total = Number(set.printings?.[0]?.count) || 0;
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";
