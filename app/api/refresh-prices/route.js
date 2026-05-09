@@ -304,7 +304,11 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
     try {
       const url = `${POKESCOPE_BASE}/${setId}-${cardNumber}`;
       const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; perfect-order-price-bot/1.0)" },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+        },
       });
       requestsUsed++;
 
@@ -315,18 +319,21 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
       }
 
       const html = await res.text();
-      // Find "Market Price" then extract the first $ amount within the next 500 chars
-      const mpIdx = html.toLowerCase().indexOf("market price");
-      if (mpIdx === -1) {
-        console.warn(`[PokeScope] No "Market Price" found for ${setId}-${cardNumber}`);
-        await sleep(1000);
-        continue;
+      // Scan all "market price" occurrences — the first few are in meta tags (no $).
+      // React also injects <!-- --> comment nodes around text, so strip those first.
+      // Stop at the first occurrence whose 500-char window contains a dollar amount.
+      const lowerHtml = html.toLowerCase();
+      let amtMatch = null;
+      let searchFrom = 0;
+      while (!amtMatch) {
+        const mpIdx = lowerHtml.indexOf("market price", searchFrom);
+        if (mpIdx === -1) break;
+        const segment = html.slice(mpIdx, mpIdx + 500).replace(/<!--.*?-->/g, "");
+        amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+        searchFrom = mpIdx + 1;
       }
-
-      const segment = html.slice(mpIdx, mpIdx + 500);
-      const amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
       if (!amtMatch) {
-        console.warn(`[PokeScope] No $ amount found near "Market Price" for ${setId}-${cardNumber}`);
+        console.warn(`[PokeScope] No price found for ${setId}-${cardNumber}`);
         await sleep(1000);
         continue;
       }
