@@ -213,7 +213,7 @@ export default function DiscoverPage() {
         )}
 
         {cards === null && (
-          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loadingâ€¦</div>
+          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading...</div>
         )}
 
         {cards !== null && filtered.length === 0 && (

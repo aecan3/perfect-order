@@ -71,7 +71,7 @@ export default function InboxPage() {
 
       <main className="max-w-md mx-auto px-4 py-4">
         {conversations === null && (
-          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loadingâ€¦</div>
+          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading...</div>
         )}
 
         {conversations?.length === 0 && (

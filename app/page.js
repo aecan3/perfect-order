@@ -477,7 +477,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loadingâ€¦
+        Loading...
       </div>
     );
   }
@@ -883,8 +883,14 @@ export default function HomePage() {
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
-            <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Friends">
-              <Users size={20} />
+            <Link
+              href="/friends"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-colors"
+              style={{ background: "var(--po-bg-soft)", border: "1px solid var(--po-border)", color: "var(--po-green)" }}
+              aria-label="Friends"
+            >
+              <Users size={14} />
+              Friends
             </Link>
             <Link href="/messages" className="relative text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Messages">
               <MessageCircle size={18} />

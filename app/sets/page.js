@@ -421,7 +421,7 @@ export default function SetBrowserPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loadingâ€¦
+        Loading...
       </div>
     );
   }
@@ -593,7 +593,7 @@ export default function SetBrowserPage() {
             <div className="flex-1 overflow-y-auto px-4 pb-8">
               {wizardLoading ? (
                 <div className="flex items-center justify-center py-12 text-[var(--po-text-dim)] text-sm">
-                  Loading set dataâ€¦
+                  Loading set data...
                 </div>
               ) : wizardStep === 1 ? (
                 <div className="pt-2 space-y-3">
@@ -614,7 +614,7 @@ export default function SetBrowserPage() {
                         className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
                         style={{ background: wPrimary, color: wBg }}
                       >
-                        {wizardBusy ? "Loadingâ€¦" : "Pick up where you left off"}
+                        {wizardBusy ? "Loading..." : "Pick up where you left off"}
                       </button>
 
                       {/* Start completely fresh (destructive) */}

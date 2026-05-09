@@ -183,7 +183,7 @@ export default function FriendsPage() {
   if (!authChecked) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading&hellip;
+        Loading...
       </div>
     );
   }
