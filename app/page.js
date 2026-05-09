@@ -100,25 +100,38 @@ export default function HomePage() {
         .from("profiles").select("*").eq("id", user.id).maybeSingle();
       setProfile(profileData);
 
-      const [{ data: sets }, { data: entries }] = await Promise.all([
+      // Step 1: user_sets metadata + all checked entries in parallel.
+      // collection_entries needs an explicit limit — Supabase's default page
+      // is 1000 rows; without it a large collection is silently truncated and
+      // the truncated subset varies between sessions (stale counts on re-login).
+      const [{ data: userSetsRows }, { data: entries }] = await Promise.all([
         supabase
           .from("user_sets")
-          .select(`
-            added_at, hidden_at, prices_updated_at,
-            set:sets (
-              id, code, name, series, total, total_with_secrets,
-              logo_url, theme_primary, theme_secondary, theme_bg,
-              cards(count), printings!printings_set_id_fkey(count)
-            )
-          `)
+          .select("set_id, added_at, hidden_at, prices_updated_at")
           .eq("user_id", user.id)
           .order("added_at", { ascending: false }),
         supabase
           .from("collection_entries")
-          .select("set_id, card_number, checked, printing:printings(price_usd)")
+          .select("set_id, printing:printings(price_usd)")
           .eq("user_id", user.id)
-          .eq("checked", true),
+          .eq("checked", true)
+          .limit(10000),
       ]);
+
+      // Step 2: fetch set details at the top level.
+      // Nesting printings!printings_set_id_fkey(count) inside the user_sets
+      // join silently returns [] for the aggregate, causing the denominator
+      // to fall back to card count instead of printing count.
+      // The flat sets query (same pattern as /sets browser) is reliable.
+      const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
+      const { data: setsData } = setIds.length > 0
+        ? await supabase
+            .from("sets")
+            .select("id, code, name, series, total, total_with_secrets, logo_url, theme_primary, theme_secondary, theme_bg, cards(count), printings!printings_set_id_fkey(count)")
+            .in("id", setIds)
+        : { data: [] };
+
+      const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
       const counts = {}, vals = {};
       (entries || []).forEach((e) => {
@@ -126,14 +139,18 @@ export default function HomePage() {
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
-      const enriched = (sets || [])
-        .filter((row) => row.set != null)
-        .map((row) => ({
-          ...row.set,
-          checkedCount: counts[row.set.id] || 0,
-          isHidden: row.hidden_at != null,
-          pricesUpdatedAt: row.prices_updated_at,
-        }));
+      const enriched = (userSetsRows || [])
+        .map((row) => {
+          const s = setById[row.set_id];
+          if (!s) return null;
+          return {
+            ...s,
+            checkedCount: counts[s.id] || 0,
+            isHidden: row.hidden_at != null,
+            pricesUpdatedAt: row.prices_updated_at,
+          };
+        })
+        .filter(Boolean);
 
       // Pre-zero displayValues so banner starts at $0 (no flash of real values)
       const initDisplay = {};
@@ -394,7 +411,8 @@ export default function HomePage() {
     }, null);
 
   const renderSetCard = (set) => {
-    const total = set.printings?.[0]?.count || set.cards?.[0]?.count || 0;
+    const printingCount = Number(set.printings?.[0]?.count) || 0;
+    const total = printingCount > 0 ? printingCount : (Number(set.cards?.[0]?.count) || 0);
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
     const primary = set.theme_primary || "#b9ff3c";
     const secondary = set.theme_secondary || "#c084fc";
