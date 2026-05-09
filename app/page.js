@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase";
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "Â£"  },
+  GBP: { rate: 0.79, symbol: "£"  },
 };
 
 const fmtMoney = (v, currency) => {
@@ -626,9 +626,9 @@ export default function HomePage() {
                       boxShadow: `0 0 12px ${primary}30, inset 0 0 8px ${primary}10`,
                     }}
                   >
-                    <span className="po-master-star">âœ¦</span>
+                    <span className="po-master-star">&#10022;</span>
                     Master Set
-                    <span className="po-master-star po-master-star-b">âœ¦</span>
+                    <span className="po-master-star po-master-star-b">&#10022;</span>
                   </div>
                 ) : (
                   <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
@@ -711,7 +711,7 @@ export default function HomePage() {
             NEW
           </span>
           <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-[var(--po-text-dim)] flex-1 truncate">
-            Discover Â· {discoverCards.length} cards your friends have
+            Discover &mdash; {discoverCards.length} cards your friends have
           </span>
           <ChevronRight size={14} className="text-[var(--po-text-faint)] flex-shrink-0" />
         </Link>
@@ -883,6 +883,9 @@ export default function HomePage() {
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
+            <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Friends">
+              <Users size={20} />
+            </Link>
             <Link href="/messages" className="relative text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Messages">
               <MessageCircle size={18} />
               {unreadCount > 0 && (

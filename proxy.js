@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 // Paths that must remain publicly accessible — never require auth.
 // Includes PWA assets, icons, the SW itself, and the login page.
 const PUBLIC_PATHS = new Set([
+  "/welcome",
   "/login",
   "/manifest.json",
   "/sw.js",
@@ -48,7 +49,7 @@ export async function proxy(request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL("/welcome", request.url));
   }
 
   return response;
