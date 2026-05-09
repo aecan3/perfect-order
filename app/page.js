@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Plus, Users, LogOut, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
-  RefreshCw, Clock,
+  RefreshCw, Clock, MessageCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -87,6 +87,9 @@ export default function HomePage() {
 
   // Discover panel
   const [discoverCards, setDiscoverCards] = useState(null); // null=loading, []=empty, [...]=results
+
+  // Unread messages badge
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -178,6 +181,14 @@ export default function HomePage() {
       setSetValues(vals);
       setDisplayValues(initDisplay);
       setLoading(false);
+
+      // Non-blocking unread count fetch
+      supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("read", false)
+        .then(({ count }) => setUnreadCount(count || 0));
 
       // Non-blocking discover fetch — runs after main load so it doesn't delay the page
       (async () => {
@@ -707,10 +718,13 @@ export default function HomePage() {
           className="flex gap-2 overflow-x-auto px-4 pb-3"
           style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
         >
-          {discoverCards.map((card, i) => (
+          {discoverCards.map((card, i) => {
+            const prefill = encodeURIComponent(`Hey @${card.friendHandle}, I noticed you have a duplicate ${card.cardName} — would you be interested in a trade?`);
+            const cardParam = encodeURIComponent(JSON.stringify({ cardName: card.cardName, setName: card.setName, imageUrl: card.imageUrl, priceUsd: card.priceUsd }));
+            return (
             <Link
               key={i}
-              href={`/friend/${card.friendHandle}/${card.setId}`}
+              href={`/messages/${card.friendHandle}?prefill=${prefill}&card=${cardParam}`}
               className="flex-none relative rounded-lg overflow-hidden bg-black/40"
               style={{ width: "calc(33.333% - 6px)", scrollSnapAlign: "start", aspectRatio: "2/3" }}
             >
@@ -733,7 +747,8 @@ export default function HomePage() {
                 )}
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -871,8 +886,16 @@ export default function HomePage() {
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
-            <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Friends">
-              <Users size={18} />
+            <Link href="/messages" className="relative text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Messages">
+              <MessageCircle size={18} />
+              {unreadCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[8px] font-black px-0.5"
+                  style={{ background: "#ef4444", color: "#fff" }}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Link>
             <button onClick={signOut} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Sign out">
               <LogOut size={18} />
