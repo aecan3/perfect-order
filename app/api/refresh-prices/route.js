@@ -285,7 +285,8 @@ async function batchUpdate(admin, updates) {
 // ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
 // Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
 // Page contains text like "Market Price (TCG holofoil) $1.11".
-// Rate limit: 1 req/second (sequential). me2pt5 has 295 cards → ~295s.
+// Rate limit: 800ms between requests. me2pt5 has 295 cards → ~240s.
+// Skips cards that already have a price so partial scrapes resume efficiently.
 // flushCallback is called every 25 cards to survive Vercel's 300s function limit.
 async function tryPokeScope(setId, allPrintings, flushCallback = null) {
   const printingsByNumber = new Map();
@@ -295,7 +296,10 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
     printingsByNumber.get(num).push(p);
   }
 
-  const numbers = [...printingsByNumber.keys()];
+  // Skip cards where all printings already have a price — resume from unpriced only
+  const numbers = [...printingsByNumber.keys()].filter(
+    (num) => !printingsByNumber.get(num).some((p) => p.price_usd > 0)
+  );
   const priceMap = new Map();
   let requestsUsed = 0;
   let cardCount = 0;
@@ -363,7 +367,7 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
       await flushCallback(new Map(priceMap));
     }
 
-    await sleep(1000); // 1 req/second — be respectful to a small site
+    await sleep(800); // ~1.25 req/second — respectful to a small site
   }
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;

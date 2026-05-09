@@ -363,6 +363,8 @@ export default function FriendSetTrackerPage() {
       prints.length === 0 || checkedCount === 0 ? "uncollected"
       : checkedCount === prints.length ? "complete"
       : "partial";
+    const minPriceUsd = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
+    const cardPrice = Number.isFinite(minPriceUsd) ? valueOf(minPriceUsd, currency) : null;
     const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total);
     const tint = RARITY_TINT[bucket];
     const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
@@ -426,6 +428,14 @@ export default function FriendSetTrackerPage() {
                 />
               );
             })}
+          </div>
+        )}
+        {cardPrice !== null && (
+          <div
+            className="text-center text-[9px] tabular-nums mt-0.5 leading-none"
+            style={{ color: completionState === "uncollected" ? "var(--po-text-dim)" : themePrimary }}
+          >
+            {fmtMoney(cardPrice, currency)}
           </div>
         )}
       </div>
