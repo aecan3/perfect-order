@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, Check, Plus, X, ChevronLeft } from "lucide-react";
+import { ArrowLeft, Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -119,7 +119,8 @@ export default function SetBrowserPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [allSets, setAllSets] = useState([]);
-  const [activeSetIds, setActiveSetIds] = useState(new Set());
+  const [activeSetIds, setActiveSetIds] = useState(new Set());  // user_sets with hidden_at IS NULL
+  const [hiddenSetIds, setHiddenSetIds] = useState(new Set());  // user_sets with hidden_at IS NOT NULL
   const [query, setQuery] = useState("");
   const [seriesFilter, setSeriesFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -134,6 +135,10 @@ export default function SetBrowserPage() {
   const [wizardBusy, setWizardBusy] = useState(false);
   const [selectedBuckets, setSelectedBuckets] = useState(new Set());
   const [wizardResult, setWizardResult] = useState(null);
+  // >0 when set was previously removed but collection_entries remain (case 3)
+  const [wizardExistingCount, setWizardExistingCount] = useState(0);
+  // delete-confirmation sub-modal
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
 
   // Scroll lock while wizard is open
   useEffect(() => {
@@ -153,10 +158,7 @@ export default function SetBrowserPage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+      if (!user) { router.replace("/login"); return; }
       setUser(user);
 
       const [{ data: sets }, { data: userSets }] = await Promise.all([
@@ -164,11 +166,18 @@ export default function SetBrowserPage() {
           .from("sets")
           .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
           .order("release_date", { ascending: false }),
-        supabase.from("user_sets").select("set_id").eq("user_id", user.id),
+        supabase.from("user_sets").select("set_id, hidden_at").eq("user_id", user.id),
       ]);
 
       setAllSets(sets || []);
-      setActiveSetIds(new Set((userSets || []).map((r) => r.set_id)));
+      const active = new Set();
+      const hidden = new Set();
+      for (const row of userSets || []) {
+        if (row.hidden_at) hidden.add(row.set_id);
+        else active.add(row.set_id);
+      }
+      setActiveSetIds(active);
+      setHiddenSetIds(hidden);
       setLoading(false);
     })();
   }, [router, supabase]);
@@ -225,7 +234,29 @@ export default function SetBrowserPage() {
 
   // ── Wizard actions ────────────────────────────────────────────────────────
 
-  const openWizard = async (set) => {
+  const handleAddTap = async (set) => {
+    // Case 2: set is hidden → unhide and navigate, no wizard
+    if (hiddenSetIds.has(set.id)) {
+      await supabase.from("user_sets")
+        .update({ hidden_at: null })
+        .eq("user_id", user.id)
+        .eq("set_id", set.id);
+      setHiddenSetIds((prev) => { const n = new Set(prev); n.delete(set.id); return n; });
+      setActiveSetIds((prev) => new Set([...prev, set.id]));
+      router.push(`/set/${set.id}`);
+      return;
+    }
+
+    // Cases 1, 3, 4: set not in user_sets — check for orphaned collection_entries
+    const { count } = await supabase
+      .from("collection_entries")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("set_id", set.id);
+
+    const existingCount = count || 0;
+
+    // Set up wizard shell immediately so user sees it open
     setWizardSet(set);
     setWizardStep(1);
     setWizardMode(null);
@@ -233,8 +264,11 @@ export default function SetBrowserPage() {
     setWizardLoading(true);
     setSelectedBuckets(new Set());
     setWizardResult(null);
+    setWizardExistingCount(existingCount);
+    setConfirmDeleteVisible(false);
     setWizardBusy(false);
 
+    // Fetch printings + cards in parallel
     const [{ data: printingData }, { data: cardData }] = await Promise.all([
       supabase
         .from("printings")
@@ -246,11 +280,9 @@ export default function SetBrowserPage() {
         .eq("set_id", set.id),
     ]);
 
-    // Merge rarity/subtypes onto each printing for easy bucket lookups
     const cardByNumber = {};
-    for (const c of cardData || []) {
-      cardByNumber[c.number] = c;
-    }
+    for (const c of cardData || []) cardByNumber[c.number] = c;
+
     const merged = (printingData || []).map((p) => ({
       ...p,
       _rarity: cardByNumber[p.card_number]?.rarity || null,
@@ -261,11 +293,23 @@ export default function SetBrowserPage() {
     setWizardLoading(false);
   };
 
-  const closeWizard = () => setWizardSet(null);
+  const closeWizard = () => {
+    setWizardSet(null);
+    setConfirmDeleteVisible(false);
+  };
 
   const ensureUserSet = async (setId) => {
-    if (activeSetIds.has(setId)) return;
-    await supabase.from("user_sets").insert({ user_id: user.id, set_id: setId });
+    if (activeSetIds.has(setId) || hiddenSetIds.has(setId)) {
+      // If hidden, also clear hidden_at
+      if (hiddenSetIds.has(setId)) {
+        await supabase.from("user_sets")
+          .update({ hidden_at: null })
+          .eq("user_id", user.id).eq("set_id", setId);
+        setHiddenSetIds((prev) => { const n = new Set(prev); n.delete(setId); return n; });
+      }
+    } else {
+      await supabase.from("user_sets").insert({ user_id: user.id, set_id: setId });
+    }
     setActiveSetIds((prev) => new Set([...prev, setId]));
   };
 
@@ -286,6 +330,25 @@ export default function SetBrowserPage() {
       if (error) throw new Error(error.message);
     }
     return rows.length;
+  };
+
+  // "Pick up where you left off" — re-add set, navigate with existing data intact
+  const resumeExisting = async () => {
+    setWizardBusy(true);
+    await ensureUserSet(wizardSet.id);
+    router.push(`/set/${wizardSet.id}`);
+  };
+
+  // Confirmed delete of existing entries → clear warning, continue with wizard
+  const confirmDeleteExisting = async () => {
+    setConfirmDeleteVisible(false);
+    setWizardBusy(true);
+    await supabase.from("collection_entries")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("set_id", wizardSet.id);
+    setWizardExistingCount(0);
+    setWizardBusy(false);
   };
 
   const selectMode = async (mode) => {
@@ -409,15 +472,14 @@ export default function SetBrowserPage() {
           filteredSets.map((set) => {
             const total = set.printings?.[0]?.count || 0;
             const isActive = activeSetIds.has(set.id);
+            const isHidden = hiddenSetIds.has(set.id);
             const primary = set.theme_primary || "#b9ff3c";
             const bg = set.theme_bg || "#0a0e0a";
             return (
               <div
                 key={set.id}
                 className="rounded-xl border border-[var(--po-border)] overflow-hidden flex items-center gap-3 p-3"
-                style={{
-                  background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)`,
-                }}
+                style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
               >
                 {set.logo_url ? (
                   <img
@@ -434,10 +496,7 @@ export default function SetBrowserPage() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div
-                    className="font-bold text-sm leading-tight truncate"
-                    style={{ color: primary }}
-                  >
+                  <div className="font-bold text-sm leading-tight truncate" style={{ color: primary }}>
                     {set.name}
                   </div>
                   <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
@@ -455,11 +514,20 @@ export default function SetBrowserPage() {
                   </Link>
                 ) : (
                   <button
-                    onClick={() => openWizard(set)}
+                    onClick={() => handleAddTap(set)}
                     className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] flex items-center gap-1"
                   >
-                    <Plus size={12} />
-                    Add
+                    {isHidden ? (
+                      <>
+                        <Check size={12} />
+                        Unhide
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={12} />
+                        Add
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -473,6 +541,7 @@ export default function SetBrowserPage() {
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={closeWizard} />
           <div className="fixed inset-x-0 bottom-0 z-50 bg-[var(--po-bg-soft)] rounded-t-2xl border-t border-[var(--po-border)] max-h-[90vh] flex flex-col">
+
             {/* Drag handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-[var(--po-border)]" />
@@ -519,7 +588,45 @@ export default function SetBrowserPage() {
                   Loading set data…
                 </div>
               ) : wizardStep === 1 ? (
-                <div className="space-y-3 pt-2">
+                <div className="pt-2 space-y-3">
+                  {/* Case 3: warning banner + resume/fresh-delete buttons */}
+                  {wizardExistingCount > 0 && (
+                    <>
+                      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-950/40 border border-amber-700/50">
+                        <AlertTriangle size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-[12px] text-amber-300 leading-snug">
+                          You've previously collected cards in this set.
+                        </p>
+                      </div>
+
+                      {/* Pick up where you left off */}
+                      <button
+                        onClick={resumeExisting}
+                        disabled={wizardBusy}
+                        className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                        style={{ background: wPrimary, color: wBg }}
+                      >
+                        {wizardBusy ? "Loading…" : "Pick up where you left off"}
+                      </button>
+
+                      {/* Start completely fresh (destructive) */}
+                      <button
+                        onClick={() => setConfirmDeleteVisible(true)}
+                        disabled={wizardBusy}
+                        className="w-full py-3 rounded-xl font-bold text-sm border border-red-800/60 text-red-400 hover:border-red-600 hover:text-red-300 transition-colors disabled:opacity-50"
+                      >
+                        Start completely fresh
+                      </button>
+
+                      <div className="flex items-center gap-3 py-1">
+                        <div className="flex-1 h-px bg-[var(--po-border)]" />
+                        <span className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">or</span>
+                        <div className="flex-1 h-px bg-[var(--po-border)]" />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Standard three options */}
                   {[
                     {
                       id: "fresh",
@@ -528,7 +635,7 @@ export default function SetBrowserPage() {
                     },
                     {
                       id: "full",
-                      title: "I have the full set",
+                      title: "I already have the full set",
                       desc: `Mark all ${wizardPrintings.length} printings as collected`,
                     },
                     {
@@ -548,6 +655,7 @@ export default function SetBrowserPage() {
                     </button>
                   ))}
                 </div>
+
               ) : wizardStep === 2 && wizardMode === "full" ? (
                 <div className="pt-2 space-y-4">
                   <div className="rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] p-4 space-y-2">
@@ -573,6 +681,7 @@ export default function SetBrowserPage() {
                     {wizardBusy ? "Adding…" : `Mark all ${wizardPrintings.length} as collected`}
                   </button>
                 </div>
+
               ) : wizardStep === 2 && wizardMode === "partial" ? (
                 <div className="pt-2">
                   <div className="space-y-2 mb-4">
@@ -597,17 +706,13 @@ export default function SetBrowserPage() {
                           <span className="flex-1 text-left text-sm font-medium text-[var(--po-text)]">
                             {BUCKET_LABELS[b.id] || b.id}
                           </span>
-                          <span className="text-[11px] text-[var(--po-text-dim)]">
-                            {b.count}
-                          </span>
+                          <span className="text-[11px] text-[var(--po-text-dim)]">{b.count}</span>
                           {b.totalValue > 0 && (
                             <span className="text-[11px]" style={{ color: wPrimary }}>
                               {fmtMoney(b.totalValue * (RATES[currency]?.rate || 1), currency)}
                             </span>
                           )}
-                          {sel && (
-                            <Check size={14} className="text-[var(--po-green)] flex-shrink-0" />
-                          )}
+                          {sel && <Check size={14} className="text-[var(--po-green)] flex-shrink-0" />}
                         </button>
                       );
                     })}
@@ -618,26 +723,23 @@ export default function SetBrowserPage() {
                       disabled={wizardBusy}
                       className="flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
                     >
-                      Skip
+                      Skip — start empty
                     </button>
                     <button
                       onClick={confirmPartial}
                       disabled={wizardBusy || !selectedBuckets.size}
                       className="flex-[2] py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:bg-[var(--po-bg-soft)] disabled:text-[var(--po-text-dim)]"
-                      style={
-                        selectedBuckets.size
-                          ? { background: wPrimary, color: wBg }
-                          : undefined
-                      }
+                      style={selectedBuckets.size ? { background: wPrimary, color: wBg } : undefined}
                     >
                       {wizardBusy
                         ? "Adding…"
                         : selectedBuckets.size
-                        ? `Apply (${selectedCount} cards)`
+                        ? `Apply selection (${selectedCount})`
                         : "Select rarities"}
                     </button>
                   </div>
                 </div>
+
               ) : wizardStep === 3 ? (
                 <div className="pt-6 pb-4 flex flex-col items-center gap-4 text-center">
                   <div
@@ -667,13 +769,51 @@ export default function SetBrowserPage() {
               ) : null}
             </div>
 
-            {/* Working overlay (busy but not yet on success screen) */}
+            {/* Working overlay */}
             {wizardBusy && wizardStep < 3 && (
               <div className="absolute inset-0 flex items-center justify-center rounded-t-2xl bg-[var(--po-bg-soft)]/80 z-10">
                 <span className="text-sm text-[var(--po-text-dim)]">Working…</span>
               </div>
             )}
           </div>
+
+          {/* ── Delete confirmation sub-modal ─────────────────────────────── */}
+          {confirmDeleteVisible && (
+            <>
+              <div
+                className="fixed inset-0 bg-black/50"
+                style={{ zIndex: 60 }}
+                onClick={() => setConfirmDeleteVisible(false)}
+              />
+              <div
+                className="fixed inset-x-6 top-1/2 -translate-y-1/2 bg-[var(--po-bg-soft)] rounded-2xl border border-red-800/50 p-5 shadow-2xl"
+                style={{ zIndex: 60 }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-red-400 flex-shrink-0" />
+                  <span className="font-bold text-sm text-red-400">Delete collected cards?</span>
+                </div>
+                <p className="text-[12px] text-[var(--po-text-dim)] leading-relaxed mb-4">
+                  This will permanently delete your {wizardExistingCount} previously collected card
+                  {wizardExistingCount === 1 ? "" : "s"} from this set. This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDeleteVisible(false)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDeleteExisting}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-700 hover:bg-red-600 text-white"
+                  >
+                    Delete &amp; continue
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
