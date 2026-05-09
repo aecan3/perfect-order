@@ -803,8 +803,8 @@ export default function SetTrackerPage() {
                       <div className="font-bold text-[15px] leading-none">{section.label}</div>
                       <div className="flex items-center gap-2 mt-1.5">
                         <span className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>{sectionOwned}/{sectionTotal}</span>
-                        <div className="flex-1 max-w-[90px] rounded-full overflow-hidden" style={{ height: 2, background: "var(--po-progress-track)" }}>
-                          <div style={{ width: `${sectionPct}%`, height: "100%", background: dot }} />
+                        <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, background: "rgba(255,255,255,0.14)" }}>
+                          <div style={{ width: `${sectionPct}%`, height: "100%", background: dot, boxShadow: `0 0 6px ${dot}99` }} />
                         </div>
                       </div>
                     </div>
