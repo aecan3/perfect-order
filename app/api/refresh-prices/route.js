@@ -322,8 +322,8 @@ async function tryPokeScope(setId, allPrintings) {
         let price;
         switch (type) {
           case "holofoil":         price = marketPrice;           break;
-          case "normal":           price = marketPrice * 0.6;     break;
-          case "reverse_holofoil": price = marketPrice * 0.4;     break;
+          case "reverse_holofoil": price = marketPrice * 0.85;    break;
+          case "normal":           price = marketPrice * 0.5;     break;
           default:                 price = marketPrice;           break;
         }
         if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
