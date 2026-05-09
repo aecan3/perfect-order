@@ -66,3 +66,26 @@ body {
   color: transparent;
   text-shadow: 0 0 20px rgba(200, 255, 74, 0.3);
 }
+
+/* ── Completion animations ─────────────────────────────────── */
+
+@keyframes po-shimmer-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(110%); }
+}
+
+@keyframes po-dot-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(2.2); }
+  65%  { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+@keyframes po-badge-in {
+  0%   { transform: scale(0.55); opacity: 0; }
+  75%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+.po-dot-pop  { animation: po-dot-pop  0.55s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+.po-badge-in { animation: po-badge-in 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards; }

@@ -177,6 +177,148 @@ const RARITY_DOT = {
   other:             "#64748b",
 };
 
+function ConfettiBurst({ onDone }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const COLORS = ["#c8ff4a", "#c084fc", "#f472b6", "#5eead4", "#ffffff", "#fbbf24"];
+    const particles = Array.from({ length: 44 }, () => ({
+      x: canvas.width / 2 + (Math.random() - 0.5) * 120,
+      y: canvas.height * 0.32,
+      vx: (Math.random() - 0.5) * 9,
+      vy: (Math.random() * -9) - 2,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      w: 4 + Math.random() * 5,
+      h: 2 + Math.random() * 3,
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.35,
+    }));
+    let start = null;
+    const DURATION = 720;
+    function frame(ts) {
+      if (!start) start = ts;
+      const t = Math.min((ts - start) / DURATION, 1);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const alpha = t < 0.45 ? 1 : 1 - (t - 0.45) / 0.55;
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.28;
+        p.rot += p.rotV;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (t < 1) requestAnimationFrame(frame);
+      else onDone?.();
+    }
+    requestAnimationFrame(frame);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 60 }} />;
+}
+
+function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onToggle, children }) {
+  const sectionPct = sectionTotal > 0 ? (sectionOwned / sectionTotal) * 100 : 0;
+  const [barWidth, setBarWidth] = useState(0);
+  const [shimmer, setShimmer] = useState(false);
+  const [dotPop, setDotPop] = useState(false);
+  const [showBadge, setShowBadge] = useState(false);
+  const prevPctRef = useRef(null);
+
+  useEffect(() => {
+    if (prevPctRef.current === null) {
+      prevPctRef.current = sectionPct;
+      if (sectionPct >= 100) setShowBadge(true);
+      // Small delay so DOM paints at width=0 before CSS transition fires
+      const t = setTimeout(() => setBarWidth(sectionPct), 40);
+      return () => clearTimeout(t);
+    }
+    const prev = prevPctRef.current;
+    prevPctRef.current = sectionPct;
+    setBarWidth(sectionPct);
+    if (prev < 100 && sectionPct >= 100) {
+      setShowBadge(true);
+      setShimmer(true);
+      setDotPop(true);
+      setTimeout(() => setShimmer(false), 950);
+      setTimeout(() => setDotPop(false), 650);
+    } else if (sectionPct < 100 && prev >= 100) {
+      setShowBadge(false);
+    }
+  }, [sectionPct]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--po-border)", background: "var(--po-bg-soft)" }}>
+      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3">
+        <span
+          className={`flex-shrink-0 rounded-full${dotPop ? " po-dot-pop" : ""}`}
+          style={{ width: 8, height: 8, background: dot, boxShadow: `0 0 10px ${dot}` }}
+        />
+        <div className="flex-1 text-left min-w-0">
+          <div className="font-bold text-[15px] leading-none">{section.label}</div>
+          <div className="flex items-center gap-2 mt-1.5">
+            {showBadge ? (
+              <span
+                key="badge"
+                className="po-badge-in text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded leading-none"
+                style={{ background: `${dot}22`, color: dot, border: `1px solid ${dot}66` }}
+              >
+                ✓ Complete
+              </span>
+            ) : (
+              <span className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>
+                {sectionOwned}/{sectionTotal}
+              </span>
+            )}
+            <div className="flex-1 relative rounded-full overflow-hidden" style={{ height: 4, background: "rgba(255,255,255,0.14)" }}>
+              <div
+                style={{
+                  width: `${barWidth}%`,
+                  height: "100%",
+                  background: dot,
+                  boxShadow: `0 0 6px ${dot}99`,
+                  transition: "width 0.7s cubic-bezier(0.25,0.46,0.45,0.94)",
+                }}
+              />
+              {shimmer && (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: `linear-gradient(90deg, transparent 0%, ${dot}dd 50%, transparent 100%)`,
+                    animation: "po-shimmer-sweep 0.75s ease-out forwards",
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+        <ChevronDown
+          size={14}
+          style={{
+            color: "var(--po-text-dim)",
+            flexShrink: 0,
+            transform: isOpen ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+          }}
+        />
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3" style={{ borderTop: "1px solid var(--po-border)" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardArt({ src, name, ownershipState, themePrimary }) {
   const [failed, setFailed] = useState(false);
   const imgClass =
@@ -226,6 +368,9 @@ export default function SetTrackerPage() {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
+  const [shimmerMain, setShimmerMain] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
   const dupTimersRef = useRef({});
@@ -320,6 +465,23 @@ export default function SetTrackerPage() {
   useEffect(() => () => {
     Object.values(dupTimersRef.current).forEach(clearTimeout);
   }, []);
+
+  // Full-set completion detection — fires only on real-time transition, not initial load
+  useEffect(() => {
+    if (!authChecked) return;
+    const pct = totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0;
+    if (prevSetPctRef.current === null) {
+      prevSetPctRef.current = pct;
+      return;
+    }
+    const prev = prevSetPctRef.current;
+    prevSetPctRef.current = pct;
+    if (prev < 100 && pct >= 100) {
+      setShimmerMain(true);
+      setShowConfetti(true);
+      setTimeout(() => setShimmerMain(false), 1100);
+    }
+  }); // runs every render — intentional, reads computed pct
 
   const handleDupChange = (printingId, delta) => {
     if (!user) return;
@@ -651,6 +813,7 @@ export default function SetTrackerPage() {
 
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+      {showConfetti && <ConfettiBurst onDone={() => setShowConfetti(false)} />}
       <header
         className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
         style={{ background: "rgba(5,5,7,0.92)", borderBottom: `1px solid ${themePrimary}30` }}
@@ -728,15 +891,25 @@ export default function SetTrackerPage() {
 
         {/* Progress bar */}
         <div className="mb-3">
-          <div className="w-full rounded-full overflow-hidden" style={{ height: 5, background: "var(--po-progress-track)" }}>
+          <div className="w-full relative rounded-full overflow-hidden" style={{ height: 5, background: "var(--po-progress-track)" }}>
             <div
               className="h-full transition-all duration-300"
               style={{
                 width: `${pct}%`,
                 background: `linear-gradient(90deg, ${themePrimary}, ${themeSecondary})`,
-                boxShadow: `0 0 12px ${themePrimary}80`,
+                boxShadow: shimmerMain ? `0 0 20px ${themePrimary}` : `0 0 12px ${themePrimary}80`,
+                transition: "width 0.3s, box-shadow 0.4s",
               }}
             />
+            {shimmerMain && (
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(90deg, transparent 0%, ${themePrimary}ee 50%, transparent 100%)`,
+                  animation: "po-shimmer-sweep 0.9s ease-out forwards",
+                }}
+              />
+            )}
           </div>
           <div className="flex justify-between mt-1">
             <div className="text-[10px] flex items-center gap-1"
@@ -744,7 +917,13 @@ export default function SetTrackerPage() {
               {isStale(pricesUpdatedAt) && <Clock size={9} />}
               {pricesLabel(pricesUpdatedAt)}
             </div>
-            <div className="text-[10px] font-bold" style={{ color: themePrimary }}>
+            <div
+              className="text-[10px] font-bold transition-all duration-500"
+              style={{
+                color: themePrimary,
+                textShadow: shimmerMain ? `0 0 10px ${themePrimary}` : "none",
+              }}
+            >
               {pct.toFixed(0)}%
             </div>
           </div>
@@ -790,32 +969,18 @@ export default function SetTrackerPage() {
               const dot = RARITY_DOT[section.id] || "#ffffff";
               const sectionOwned = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0);
               const sectionTotal = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0);
-              const sectionPct = sectionTotal > 0 ? (sectionOwned / sectionTotal) * 100 : 0;
               return (
-                <div key={section.id} className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--po-border)", background: "var(--po-bg-soft)" }}>
-                  <button
-                    onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center gap-3 px-4 py-3"
-                  >
-                    {/* Glowing rarity dot */}
-                    <span className="flex-shrink-0 rounded-full" style={{ width: 8, height: 8, background: dot, boxShadow: `0 0 10px ${dot}` }} />
-                    <div className="flex-1 text-left min-w-0">
-                      <div className="font-bold text-[15px] leading-none">{section.label}</div>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>{sectionOwned}/{sectionTotal}</span>
-                        <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, background: "rgba(255,255,255,0.14)" }}>
-                          <div style={{ width: `${sectionPct}%`, height: "100%", background: dot, boxShadow: `0 0 6px ${dot}99` }} />
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronDown size={14} style={{ color: "var(--po-text-dim)", flexShrink: 0, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                  </button>
-                  {isOpen && (
-                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3" style={{ borderTop: "1px solid var(--po-border)" }}>
-                      {section.displayCards.map(renderCard)}
-                    </div>
-                  )}
-                </div>
+                <RaritySection
+                  key={section.id}
+                  section={section}
+                  isOpen={isOpen}
+                  dot={dot}
+                  sectionOwned={sectionOwned}
+                  sectionTotal={sectionTotal}
+                  onToggle={() => toggleSection(section.id)}
+                >
+                  {section.displayCards.map(renderCard)}
+                </RaritySection>
               );
             })}
           </div>
