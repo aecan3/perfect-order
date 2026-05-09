@@ -1,8 +1,8 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v2";
+const CACHE = "perfect-order-v3";
 
-const PRECACHE_URLS = ["/", "/login", "/friends", "/manifest.json"];
+const PRECACHE_URLS = ["/", "/welcome", "/login", "/friends", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
   // Use allSettled so a single failed precache (e.g. 401 on a protected deploy URL)

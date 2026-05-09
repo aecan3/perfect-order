@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
@@ -194,7 +194,7 @@ export default function FriendSetTrackerPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.replace("/login");
+        router.replace("/welcome");
         return;
       }
       setMe(user);

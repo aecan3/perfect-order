@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase";
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
+  GBP: { rate: 0.79, symbol: "Â£"  },
 };
 
 const fmtMoney = (v, currency) => {
@@ -38,7 +38,7 @@ export default function DiscoverPage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
+      if (!user) { router.replace("/welcome"); return; }
 
       const { data: fships } = await supabase
         .from("friendships")
@@ -136,7 +136,7 @@ export default function DiscoverPage() {
   };
   const clearAll = () => setSelected(new Set());
 
-  // Bulk messaging — only ever one friend in the map
+  // Bulk messaging â€” only ever one friend in the map
   const selectedByFriend = selectedCards.reduce((acc, card) => {
     if (!acc[card.friendHandle]) acc[card.friendHandle] = [];
     acc[card.friendHandle].push(card);
@@ -185,7 +185,7 @@ export default function DiscoverPage() {
       </header>
 
       <main className="px-4 py-4 max-w-md mx-auto space-y-4">
-        {/* Filters — hidden during selection mode */}
+        {/* Filters â€” hidden during selection mode */}
         {!isSelecting && cards && cards.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-1">
             <select
@@ -213,13 +213,13 @@ export default function DiscoverPage() {
         )}
 
         {cards === null && (
-          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading…</div>
+          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loadingâ€¦</div>
         )}
 
         {cards !== null && filtered.length === 0 && (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-16">
             {cards.length === 0
-              ? "No matches yet — add friends and start collecting!"
+              ? "No matches yet â€” add friends and start collecting!"
               : "No cards match your filters."}
           </div>
         )}
@@ -291,7 +291,7 @@ export default function DiscoverPage() {
         ))}
       </main>
 
-      {/* Sticky bottom bar — shown when cards are selected */}
+      {/* Sticky bottom bar â€” shown when cards are selected */}
       {isSelecting && (
         <div className="fixed bottom-0 inset-x-0 z-20 border-t border-[var(--po-border)] bg-[var(--po-bg)]/95 backdrop-blur px-4 pt-3 pb-8">
           <div className="max-w-md mx-auto space-y-2">
@@ -326,3 +326,4 @@ export default function DiscoverPage() {
     </div>
   );
 }
+

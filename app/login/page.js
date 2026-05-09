@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -86,7 +86,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="po-wordmark text-4xl mb-1">Perfect Order</h1>
+        <h1 className="po-wordmark text-4xl mb-1">Pok{"é"}Binder</h1>
         <p className="text-sm text-[var(--po-text-dim)] mb-6">
           {mode === "signup" ? "Create your collection" : "Sign in to your collection"}
         </p>
@@ -180,3 +180,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase";
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
+  GBP: { rate: 0.79, symbol: "Â£"  },
 };
 
 const fmtMoney = (v, currency) => {
@@ -28,7 +28,7 @@ const fmtMoneyBig = (v, currency) => {
   return `${sym}${v.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// Compact diff for inline trend: "↑44" or "↓2.5"
+// Compact diff for inline trend: "â†‘44" or "â†“2.5"
 const formatDiff = (diffUsd, currency) => {
   const v = Math.abs(diffUsd) * (RATES[currency]?.rate || 1);
   return v >= 10 ? v.toFixed(0) : v.toFixed(1);
@@ -100,14 +100,14 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
+      if (!user) { router.replace("/welcome"); return; }
       setUser(user);
 
       const { data: profileData } = await supabase
         .from("profiles").select("*").eq("id", user.id).maybeSingle();
       setProfile(profileData);
 
-      // Paginated fetch for collection_entries — loops with .range() until
+      // Paginated fetch for collection_entries â€” loops with .range() until
       // a page returns fewer rows than PAGE, guaranteeing every row is
       // included regardless of collection size.
       const fetchAllEntries = async (userId) => {
@@ -191,7 +191,7 @@ export default function HomePage() {
         .eq("read", false)
         .then(({ count }) => setUnreadCount(count || 0));
 
-      // Non-blocking discover fetch — runs after main load so it doesn't delay the page
+      // Non-blocking discover fetch â€” runs after main load so it doesn't delay the page
       (async () => {
         try {
           const { data: fships } = await supabase
@@ -251,7 +251,7 @@ export default function HomePage() {
         }
       })();
 
-      // Staggered count-up from zero — fires on every page load / navigate-back
+      // Staggered count-up from zero â€” fires on every page load / navigate-back
       const loadTargets = {};
       enriched.forEach((set, i) => {
         const target = vals[set.id] || 0;
@@ -266,7 +266,7 @@ export default function HomePage() {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
   }, []);
 
-  // ── Animation ────────────────────────────────────────────────────────────
+  // â”€â”€ Animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // targets: { [setId]: { from, to, delay? (ms), duration? (ms) } }
   const startAnimations = (targets) => {
     const now = performance.now();
@@ -295,7 +295,7 @@ export default function HomePage() {
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // ── Price refresh ────────────────────────────────────────────────────────
+  // â”€â”€ Price refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleRefresh = async () => {
     if (refreshing || !user) return;
 
@@ -315,7 +315,7 @@ export default function HomePage() {
 
     for (let i = 0; i < total; i++) {
       const set = visible[i];
-      setRefreshProgress(`Updating ${set.name}… (${i + 1} of ${total})`);
+      setRefreshProgress(`Updating ${set.name}â€¦ (${i + 1} of ${total})`);
       setRefreshProgressPct((i / total) * 100);
 
       try {
@@ -350,7 +350,7 @@ export default function HomePage() {
           allNewTotal += newValue;
         }
       } catch {
-        // silent per-set failure — continue
+        // silent per-set failure â€” continue
       }
 
       setRefreshProgressPct(((i + 1) / total) * 100);
@@ -385,9 +385,9 @@ export default function HomePage() {
     }, 3000);
   };
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const switchCurrency = (c) => { setCurrency(c); localStorage.setItem("po:currency", c); };
-  const signOut = async () => { await supabase.auth.signOut(); router.replace("/login"); };
+  const signOut = async () => { await supabase.auth.signOut(); router.replace("/welcome"); };
   const closeAllSwipes = () => setSwipeState({});
 
   const executeHide = async (setId) => {
@@ -477,12 +477,12 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading…
+        Loadingâ€¦
       </div>
     );
   }
 
-  // ── Computed portfolio values ─────────────────────────────────────────────
+  // â”€â”€ Computed portfolio values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const allSets = [...userSets, ...hiddenSets];
   const totalUsd = allSets.reduce(
     (s, set) => s + (displayValues[set.id] ?? setValues[set.id] ?? 0),
@@ -514,7 +514,7 @@ export default function HomePage() {
 
     const touch = makeTouchHandlers(set.id);
 
-    // Shared inner card content — used inside both master wrapper and plain wrapper
+    // Shared inner card content â€” used inside both master wrapper and plain wrapper
     const cardContent = (
       <div
         className="relative rounded-[16px] overflow-hidden"
@@ -524,7 +524,7 @@ export default function HomePage() {
             : `linear-gradient(135deg, ${bg} 0%, #050507 100%)`,
         }}
       >
-        {/* Desktop ··· menu */}
+        {/* Desktop Â·Â·Â· menu */}
         <div
           className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
@@ -600,7 +600,7 @@ export default function HomePage() {
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
                     <span className="text-xs text-[var(--po-text-dim)]">
-                      / {total}{!isMaster && ` · ${pct}%`}
+                      / {total}{!isMaster && ` Â· ${pct}%`}
                     </span>
                   </div>
                   {val > 0 && (
@@ -610,7 +610,7 @@ export default function HomePage() {
                       </span>
                       {trend && (
                         <span className={`font-bold ${trend.dir === "up" ? "text-green-400" : "text-red-400"}`}>
-                          {trend.dir === "up" ? "↑" : "↓"}{formatDiff(trend.diff, currency)}
+                          {trend.dir === "up" ? "â†‘" : "â†“"}{formatDiff(trend.diff, currency)}
                         </span>
                       )}
                     </div>
@@ -626,9 +626,9 @@ export default function HomePage() {
                       boxShadow: `0 0 12px ${primary}30, inset 0 0 8px ${primary}10`,
                     }}
                   >
-                    <span className="po-master-star">✦</span>
+                    <span className="po-master-star">âœ¦</span>
                     Master Set
-                    <span className="po-master-star po-master-star-b">✦</span>
+                    <span className="po-master-star po-master-star-b">âœ¦</span>
                   </div>
                 ) : (
                   <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
@@ -646,7 +646,7 @@ export default function HomePage() {
             </div>
           </Link>
 
-          {/* Swipe action buttons — revealed by translateX(-160px) */}
+          {/* Swipe action buttons â€” revealed by translateX(-160px) */}
           <div className="absolute inset-y-0 left-full flex">
             <button
               onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
@@ -697,7 +697,7 @@ export default function HomePage() {
     );
   };
 
-  // ── Discover panel ───────────────────────────────────────────────────────
+  // â”€â”€ Discover panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderDiscoverPanel = () => {
     if (!discoverCards || discoverCards.length === 0) return null;
 
@@ -711,7 +711,7 @@ export default function HomePage() {
             NEW
           </span>
           <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-[var(--po-text-dim)] flex-1 truncate">
-            Discover · {discoverCards.length} cards your friends have
+            Discover Â· {discoverCards.length} cards your friends have
           </span>
           <ChevronRight size={14} className="text-[var(--po-text-faint)] flex-shrink-0" />
         </Link>
@@ -751,7 +751,7 @@ export default function HomePage() {
     );
   };
 
-  // ── Portfolio banner ──────────────────────────────────────────────────────
+  // â”€â”€ Portfolio banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderBanner = () => {
     const totalSets = allSets.length;
     const stale = isStale(portfolioUpdatedAt);
@@ -781,17 +781,17 @@ export default function HomePage() {
           {/* Meta: set count + staleness */}
           <div className="mt-2 flex items-center gap-2 text-[11px]" style={{ color: "var(--po-text-dim)" }}>
             <span>Across {totalSets} set{totalSets !== 1 ? "s" : ""}</span>
-            {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
+            {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>Â·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
           </div>
 
-          {/* Trend line — hidden until first refresh */}
+          {/* Trend line â€” hidden until first refresh */}
           {portfolioTrend && (
             <div
               className={`mt-1 text-xs font-bold ${
                 portfolioTrend.diff >= 0 ? "text-green-400" : "text-red-400"
               }`}
             >
-              {portfolioTrend.diff >= 0 ? "▲" : "▼"}{" "}
+              {portfolioTrend.diff >= 0 ? "â–²" : "â–¼"}{" "}
               {fmtMoneyBig(
                 Math.abs(portfolioTrend.diff) * (RATES[currency]?.rate || 1),
                 currency
@@ -802,7 +802,7 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Meta: set count + staleness — kept for backward compat below, now merged above */}
+          {/* Meta: set count + staleness â€” kept for backward compat below, now merged above */}
           <div
             className={`hidden items-center gap-1 text-[10px] ${
               stale ? "text-amber-400" : "text-[var(--po-text-dim)]"
@@ -811,12 +811,12 @@ export default function HomePage() {
             {stale && <Clock size={9} />}
             <span>
               Across {totalSets} set{totalSets !== 1 ? "s" : ""}
-              {updatedLabel ? ` · ${updatedLabel}` : ""}
+              {updatedLabel ? ` Â· ${updatedLabel}` : ""}
             </span>
           </div>
         </div>
 
-        {/* Refresh button — becomes a progress bar during refresh */}
+        {/* Refresh button â€” becomes a progress bar during refresh */}
         <div className="relative mx-5 mb-5 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
           {/* Progress fill */}
           <div
@@ -843,12 +843,12 @@ export default function HomePage() {
             {refreshDone ? (
               <>
                 <RefreshCw size={12} />
-                ✓ Updated
+                âœ“ Updated
               </>
             ) : refreshing ? (
               <>
                 <RefreshCw size={12} className="animate-spin flex-shrink-0" />
-                <span className="truncate min-w-0">{refreshProgress || "Refreshing…"}</span>
+                <span className="truncate min-w-0">{refreshProgress || "Refreshingâ€¦"}</span>
               </>
             ) : (
               <>
@@ -902,10 +902,10 @@ export default function HomePage() {
       </header>
 
       <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
-        {/* Portfolio banner — only shown when user has sets */}
+        {/* Portfolio banner â€” only shown when user has sets */}
         {allSets.length > 0 && renderBanner()}
 
-        {/* Discover panel — friends' duplicates you're missing */}
+        {/* Discover panel â€” friends' duplicates you're missing */}
         {renderDiscoverPanel()}
 
         <Link
@@ -918,7 +918,7 @@ export default function HomePage() {
 
         {userSets.length === 0 && hiddenSets.length === 0 ? (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
-            No sets yet — tap above to start collecting.
+            No sets yet â€” tap above to start collecting.
           </div>
         ) : (
           userSets.map((set) => renderSetCard(set))
@@ -1077,3 +1077,4 @@ export default function HomePage() {
     </div>
   );
 }
+

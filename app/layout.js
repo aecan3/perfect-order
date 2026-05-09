@@ -1,4 +1,4 @@
-import { Baloo_2 } from "next/font/google";
+﻿import { Baloo_2 } from "next/font/google";
 import "./globals.css";
 import SwRegister from "./sw-register";
 
@@ -10,13 +10,13 @@ const baloo = Baloo_2({
 });
 
 export const metadata = {
-  title: "Perfect Order",
-  description: "Pokémon TCG collection tracker",
+  title: "PokéBinder",
+  description: "Track your Pokemon TCG collection and trade with friends",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Perfect Order",
+    title: "PokéBinder",
   },
   icons: {
     icon: "/icon-192.png",
@@ -42,3 +42,4 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
+

@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, UserPlus, Check, X, Eye } from "lucide-react";
@@ -17,6 +17,11 @@ export default function FriendsPage() {
   const [searchError, setSearchError] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedResult, setSelectedResult] = useState(null);
+  const debounceRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   const loadFriendships = useCallback(async (uid) => {
     const { data: rows } = await supabase
@@ -46,7 +51,7 @@ export default function FriendsPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.replace("/login");
+        router.replace("/welcome");
         return;
       }
       setUser(user);
@@ -61,12 +66,58 @@ export default function FriendsPage() {
     })();
   }, [router, supabase, loadFriendships]);
 
+  // Debounced search
+  useEffect(() => {
+    if (selectedResult) return; // don't search if user picked a result
+    clearTimeout(debounceRef.current);
+    if (!searchHandle.trim()) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const q = searchHandle.trim().toLowerCase();
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, handle, display_name")
+        .or(`handle.ilike.%${q}%,display_name.ilike.%${q}%`)
+        .limit(8);
+      const friendAndSelfIds = new Set([
+        user?.id,
+        ...friendships.map((f) => f.user_a),
+        ...friendships.map((f) => f.user_b),
+      ]);
+      const filtered = (data || []).filter((p) => !friendAndSelfIds.has(p.id));
+      setSearchResults(filtered);
+      setShowDropdown(true);
+    }, 300);
+  }, [searchHandle, selectedResult]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const pickResult = (p) => {
+    setSelectedResult(p);
+    setSearchHandle(p.handle);
+    setShowDropdown(false);
+    setSearchResults([]);
+    setSearchError(null);
+  };
+
   const sendRequest = async (e) => {
     e.preventDefault();
     setSearchError(null);
     setSearchLoading(true);
 
-    const handle = searchHandle.trim().toLowerCase();
+    const handle = (selectedResult?.handle || searchHandle).trim().toLowerCase();
     if (!handle) { setSearchLoading(false); return; }
     if (handle === profile?.handle) {
       setSearchError("That's you!");
@@ -74,11 +125,14 @@ export default function FriendsPage() {
       return;
     }
 
-    const { data: target } = await supabase
-      .from("profiles")
-      .select("id, handle, display_name")
-      .eq("handle", handle)
-      .maybeSingle();
+    const target = selectedResult || await (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, handle, display_name")
+        .eq("handle", handle)
+        .maybeSingle();
+      return data;
+    })();
 
     if (!target) {
       setSearchError("No one found with that handle.");
@@ -111,6 +165,7 @@ export default function FriendsPage() {
     }
 
     setSearchHandle("");
+    setSelectedResult(null);
     setSearchLoading(false);
     await loadFriendships(user.id);
   };
@@ -128,7 +183,7 @@ export default function FriendsPage() {
   if (!authChecked) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading…
+        Loading&hellip;
       </div>
     );
   }
@@ -165,20 +220,54 @@ export default function FriendsPage() {
             Add a friend
           </h2>
           <form onSubmit={sendRequest} className="flex gap-2">
-            <input
-              type="text"
-              value={searchHandle}
-              onChange={(e) => setSearchHandle(e.target.value.toLowerCase())}
-              placeholder="their_handle"
-              className="flex-1 px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)] placeholder:text-[var(--po-text-dim)]"
-            />
+            <div className="flex-1 relative" ref={dropdownRef}>
+              <input
+                type="text"
+                value={searchHandle}
+                onChange={(e) => {
+                  setSearchHandle(e.target.value.toLowerCase());
+                  setSelectedResult(null);
+                  if (!e.target.value.trim()) setShowDropdown(false);
+                }}
+                onFocus={() => { if (searchResults.length > 0) setShowDropdown(true); }}
+                placeholder="search by handle or name"
+                className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)] placeholder:text-[var(--po-text-dim)]"
+              />
+              {showDropdown && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg overflow-hidden shadow-lg">
+                  {searchResults.length === 0 ? (
+                    <div className="px-3 py-2.5 text-sm text-[var(--po-text-dim)]">No users found</div>
+                  ) : (
+                    searchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={() => pickResult(p)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--po-bg)] transition-colors flex items-center gap-2"
+                      >
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0"
+                          style={{ background: "var(--po-bg)", border: "1px solid var(--po-border)", color: "var(--po-green)" }}
+                        >
+                          {(p.handle || "?")[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold truncate">{p.display_name || p.handle}</div>
+                          <div className="text-[10px] text-[var(--po-text-dim)]">@{p.handle}</div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="submit"
               disabled={searchLoading || !searchHandle.trim()}
-              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex items-center gap-1"
+              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
             >
               <UserPlus size={14} />
-              Send
+              Add
             </button>
           </form>
           {searchError && (
@@ -287,7 +376,7 @@ export default function FriendsPage() {
                     <div>
                       <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
                       <div className="text-xs text-[var(--po-text-dim)]">
-                        @{p?.handle} · awaiting response
+                        @{p?.handle} Â· awaiting response
                       </div>
                     </div>
                     <button
@@ -306,3 +395,4 @@ export default function FriendsPage() {
     </div>
   );
 }
+

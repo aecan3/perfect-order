@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,7 @@ export default function InboxPage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
+      if (!user) { router.replace("/welcome"); return; }
       setUser(user);
 
       const { data: messages } = await supabase
@@ -71,7 +71,7 @@ export default function InboxPage() {
 
       <main className="max-w-md mx-auto px-4 py-4">
         {conversations === null && (
-          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading…</div>
+          <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loadingâ€¦</div>
         )}
 
         {conversations?.length === 0 && (
@@ -124,3 +124,4 @@ export default function InboxPage() {
     </div>
   );
 }
+

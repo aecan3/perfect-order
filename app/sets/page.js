@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase";
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
+  GBP: { rate: 0.79, symbol: "Â£"  },
 };
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
@@ -88,7 +88,7 @@ const BUCKET_ORDER = [
 ];
 const BUCKET_LABELS = {
   common: "Common", uncommon: "Uncommon", rare: "Rare", rare_holo: "Rare Holo",
-  gx: "GX", full_art: "Full Art", prism_star: "Prism Star ◇", shining: "Shining",
+  gx: "GX", full_art: "Full Art", prism_star: "Prism Star â—‡", shining: "Shining",
   rainbow_rare: "Rainbow Rare", secret_rare: "Secret Rare",
   v: "V", vmax: "VMAX", vstar: "VSTAR", v_full_art: "Full Art V",
   alt_art: "Alt Art", gold_rare: "Gold Rare", amazing_rare: "Amazing Rare",
@@ -159,7 +159,7 @@ export default function SetBrowserPage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
+      if (!user) { router.replace("/welcome"); return; }
       setUser(user);
 
       const [{ data: sets }, { data: userSets }] = await Promise.all([
@@ -183,7 +183,7 @@ export default function SetBrowserPage() {
     })();
   }, [router, supabase]);
 
-  // ── Wizard derived values ─────────────────────────────────────────────────
+  // â”€â”€ Wizard derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const wizardBuckets = useMemo(() => {
     if (!wizardPrintings.length) return [];
@@ -213,7 +213,7 @@ export default function SetBrowserPage() {
     }).length;
   }, [wizardPrintings, selectedBuckets, wizardSet]);
 
-  // ── Browser derived values ────────────────────────────────────────────────
+  // â”€â”€ Browser derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const seriesList = useMemo(() => {
     const s = new Set(allSets.map((x) => x.series).filter(Boolean));
@@ -233,10 +233,10 @@ export default function SetBrowserPage() {
     });
   }, [allSets, query, seriesFilter]);
 
-  // ── Wizard actions ────────────────────────────────────────────────────────
+  // â”€â”€ Wizard actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const handleAddTap = async (set) => {
-    // Case 2: set is hidden → unhide and navigate, no wizard
+    // Case 2: set is hidden â†’ unhide and navigate, no wizard
     if (hiddenSetIds.has(set.id)) {
       await supabase.from("user_sets")
         .update({ hidden_at: null })
@@ -248,7 +248,7 @@ export default function SetBrowserPage() {
       return;
     }
 
-    // Cases 1, 3, 4: set not in user_sets — check for orphaned collection_entries
+    // Cases 1, 3, 4: set not in user_sets â€” check for orphaned collection_entries
     const { count } = await supabase
       .from("collection_entries")
       .select("*", { count: "exact", head: true })
@@ -335,7 +335,7 @@ export default function SetBrowserPage() {
     return rows.length;
   };
 
-  // "Pick up where you left off" — re-add set, navigate with existing data intact
+  // "Pick up where you left off" â€” re-add set, navigate with existing data intact
   const resumeExisting = async () => {
     if (!wizardSet?.id) return;
     setWizardBusy(true);
@@ -343,7 +343,7 @@ export default function SetBrowserPage() {
     router.push(`/set/${wizardSet.id}`);
   };
 
-  // Confirmed delete of existing entries → clear warning, continue with wizard
+  // Confirmed delete of existing entries â†’ clear warning, continue with wizard
   const confirmDeleteExisting = async () => {
     if (!user?.id || !wizardSet?.id) return;
     setConfirmDeleteVisible(false);
@@ -416,12 +416,12 @@ export default function SetBrowserPage() {
     });
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading…
+        Loadingâ€¦
       </div>
     );
   }
@@ -508,7 +508,7 @@ export default function SetBrowserPage() {
                     {set.name}
                   </div>
                   <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                    {set.series || "—"} · {total} cards
+                    {set.series || "â€”"} Â· {total} cards
                   </div>
                 </div>
                 {isActive ? (
@@ -544,7 +544,7 @@ export default function SetBrowserPage() {
         )}
       </main>
 
-      {/* ── Setup wizard bottom sheet ───────────────────────────────────────── */}
+      {/* â”€â”€ Setup wizard bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {wizardSet && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={closeWizard} />
@@ -593,7 +593,7 @@ export default function SetBrowserPage() {
             <div className="flex-1 overflow-y-auto px-4 pb-8">
               {wizardLoading ? (
                 <div className="flex items-center justify-center py-12 text-[var(--po-text-dim)] text-sm">
-                  Loading set data…
+                  Loading set dataâ€¦
                 </div>
               ) : wizardStep === 1 ? (
                 <div className="pt-2 space-y-3">
@@ -614,7 +614,7 @@ export default function SetBrowserPage() {
                         className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
                         style={{ background: wPrimary, color: wBg }}
                       >
-                        {wizardBusy ? "Loading…" : "Pick up where you left off"}
+                        {wizardBusy ? "Loadingâ€¦" : "Pick up where you left off"}
                       </button>
 
                       {/* Start completely fresh (destructive) */}
@@ -686,7 +686,7 @@ export default function SetBrowserPage() {
                     className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
                     style={{ background: wPrimary, color: wBg }}
                   >
-                    {wizardBusy ? "Adding…" : `Mark all ${wizardPrintings.length} as collected`}
+                    {wizardBusy ? "Addingâ€¦" : `Mark all ${wizardPrintings.length} as collected`}
                   </button>
                 </div>
 
@@ -731,7 +731,7 @@ export default function SetBrowserPage() {
                       disabled={wizardBusy}
                       className="flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
                     >
-                      Skip — start empty
+                      Skip â€” start empty
                     </button>
                     <button
                       onClick={confirmPartial}
@@ -740,7 +740,7 @@ export default function SetBrowserPage() {
                       style={selectedBuckets.size ? { background: wPrimary, color: wBg } : undefined}
                     >
                       {wizardBusy
-                        ? "Adding…"
+                        ? "Addingâ€¦"
                         : selectedBuckets.size
                         ? `Apply selection (${selectedCount})`
                         : "Select rarities"}
@@ -780,12 +780,12 @@ export default function SetBrowserPage() {
             {/* Working overlay */}
             {wizardBusy && wizardStep < 3 && (
               <div className="absolute inset-0 flex items-center justify-center rounded-t-2xl bg-[var(--po-bg-soft)]/80 z-10">
-                <span className="text-sm text-[var(--po-text-dim)]">Working…</span>
+                <span className="text-sm text-[var(--po-text-dim)]">Workingâ€¦</span>
               </div>
             )}
           </div>
 
-          {/* ── Delete confirmation sub-modal ─────────────────────────────── */}
+          {/* â”€â”€ Delete confirmation sub-modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           {confirmDeleteVisible && (
             <>
               <div
@@ -827,3 +827,4 @@ export default function SetBrowserPage() {
     </div>
   );
 }
+

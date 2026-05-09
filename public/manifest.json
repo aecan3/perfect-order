@@ -1,7 +1,7 @@
 {
-  "name": "Perfect Order",
-  "short_name": "Perfect Order",
-  "description": "Pokémon TCG collection tracker for the Perfect Order set",
+  "name": "PokéBinder",
+  "short_name": "PokéBinder",
+  "description": "Pokémon TCG collection tracker — track your collection and trade with friends",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
