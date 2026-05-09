@@ -5,7 +5,13 @@ const CACHE = "perfect-order-v2";
 const PRECACHE_URLS = ["/", "/login", "/friends", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE_URLS)));
+  // Use allSettled so a single failed precache (e.g. 401 on a protected deploy URL)
+  // doesn't abort the entire SW install.
+  e.waitUntil(
+    caches.open(CACHE).then((c) =>
+      Promise.allSettled(PRECACHE_URLS.map((url) => c.add(url)))
+    )
+  );
   self.skipWaiting();
 });
 
@@ -64,7 +70,10 @@ self.addEventListener("fetch", (e) => {
     fetch(e.request)
       .then((res) => {
         if (res.ok) {
-          caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+          // Clone synchronously before caches.open resolves asynchronously —
+          // by the time the .then fires, res body may already be consumed.
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, clone));
         }
         return res;
       })

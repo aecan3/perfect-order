@@ -1,13 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --po-bg: #0a0e0a;
-  --po-bg-soft: #141a14;
-  --po-border: #1f2a1f;
-  --po-green: #b9ff3c;
-  --po-green-dim: #6b9920;
-  --po-text: #e8f0e0;
-  --po-text-dim: #8a9580;
+  /* Holo direction — cool near-black base, lime accent */
+  --po-bg: #050507;
+  --po-bg-soft: #0c0c12;
+  --po-border: rgba(255, 255, 255, 0.07);
+  --po-border-strong: rgba(255, 255, 255, 0.13);
+  --po-green: #c8ff4a;
+  --po-green-dim: rgba(200, 255, 74, 0.42);
+  --po-text: #f4f4f6;
+  --po-text-dim: rgba(244, 244, 246, 0.55);
+  --po-text-faint: rgba(244, 244, 246, 0.32);
+  --po-progress-track: rgba(255, 255, 255, 0.08);
+  --po-panel: rgba(255, 255, 255, 0.025);
+  /* kept for compatibility */
   --po-purple: #c084fc;
   --po-magenta: #f472b6;
   --po-teal: #5eead4;
@@ -19,26 +25,14 @@ html, body {
 }
 
 body {
-  background-image:
-    radial-gradient(circle at 20% 0%, rgba(185, 255, 60, 0.04) 0%, transparent 40%),
-    radial-gradient(circle at 80% 100%, rgba(192, 132, 252, 0.04) 0%, transparent 40%);
+  /* Atmospheric lime glow from top of viewport */
+  background-image: radial-gradient(80% 35% at 50% 0%, rgba(200, 255, 74, 0.07) 0%, transparent 65%);
   background-attachment: fixed;
   font-family: var(--font-baloo), system-ui, sans-serif;
 }
 
-.po-hex-pattern {
-  background-image:
-    linear-gradient(30deg, var(--po-border) 12%, transparent 12.5%, transparent 87%, var(--po-border) 87.5%, var(--po-border)),
-    linear-gradient(150deg, var(--po-border) 12%, transparent 12.5%, transparent 87%, var(--po-border) 87.5%, var(--po-border)),
-    linear-gradient(30deg, var(--po-border) 12%, transparent 12.5%, transparent 87%, var(--po-border) 87.5%, var(--po-border)),
-    linear-gradient(150deg, var(--po-border) 12%, transparent 12.5%, transparent 87%, var(--po-border) 87.5%, var(--po-border));
-  background-size: 40px 70px;
-  background-position: 0 0, 0 0, 20px 35px, 20px 35px;
-  opacity: 0.3;
-}
-
 .po-holo {
-  background: linear-gradient(135deg, #c084fc 0%, #f472b6 25%, #5eead4 50%, #b9ff3c 75%, #c084fc 100%);
+  background: linear-gradient(135deg, #c084fc 0%, #f472b6 25%, #5eead4 50%, #c8ff4a 75%, #c084fc 100%);
   background-size: 200% 200%;
   animation: po-holo-shift 8s ease infinite;
 }
@@ -48,12 +42,17 @@ body {
   50% { background-position: 100% 50%; }
 }
 
-.po-glow-green {
-  box-shadow: 0 0 12px rgba(185, 255, 60, 0.3), 0 0 4px rgba(185, 255, 60, 0.5);
+@keyframes po-spin {
+  to { transform: rotate(360deg); }
 }
 
+.po-glow-green {
+  box-shadow: 0 0 12px rgba(200, 255, 74, 0.3), 0 0 4px rgba(200, 255, 74, 0.5);
+}
+
+/* Accent shimmer line at top of portfolio hero */
 .po-banner-shimmer {
-  background: #b9ff3c;
+  background: linear-gradient(90deg, transparent, #c8ff4a, transparent);
 }
 
 .po-wordmark {
@@ -61,9 +60,9 @@ body {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, #b9ff3c 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #c8ff4a 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 20px rgba(185, 255, 60, 0.3);
+  text-shadow: 0 0 20px rgba(200, 255, 74, 0.3);
 }

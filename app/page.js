@@ -430,7 +430,7 @@ export default function HomePage() {
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
     const primary = set.theme_primary || "#b9ff3c";
     const secondary = set.theme_secondary || "#c084fc";
-    const bg = set.theme_bg || "#0a0e0a";
+    const bg = set.theme_bg || "#050507";
 
     const dispUsd = displayValues[set.id] ?? (setValues[set.id] || 0);
     const val = dispUsd * (RATES[currency]?.rate || 1);
@@ -442,7 +442,7 @@ export default function HomePage() {
       <div
         key={set.id}
         className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
-        style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
+        style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
       >
         {/* Desktop ··· menu */}
         <div
@@ -536,12 +536,13 @@ export default function HomePage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
+                <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
                   <div
                     className="h-full transition-all"
                     style={{
                       width: `${pct}%`,
                       background: `linear-gradient(90deg, ${primary}, ${secondary})`,
+                      boxShadow: `0 0 10px ${primary}80`,
                     }}
                   />
                 </div>
@@ -578,45 +579,53 @@ export default function HomePage() {
     const updatedLabel = pricesLabel(portfolioUpdatedAt);
 
     return (
-      <div className="relative rounded-2xl overflow-hidden border border-[var(--po-border)] bg-[var(--po-bg-soft)]">
-        {/* 2px shimmer accent line */}
-        <div className="absolute top-0 left-0 right-0 h-0.5 po-banner-shimmer" />
+      <div className="relative rounded-2xl overflow-hidden border border-[var(--po-border-strong)]"
+           style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))", borderTop: "1px solid rgba(200,255,74,0.35)" }}>
+        {/* Iridescent conic glow behind content */}
+        <div aria-hidden="true" className="absolute inset-0 pointer-events-none"
+             style={{ background: "conic-gradient(from 220deg at 30% 0%, rgba(200,255,74,0.06), rgba(215,107,255,0.06), rgba(95,182,255,0.06), rgba(200,255,74,0.06))", opacity: 0.8 }} />
 
-        <div className="px-4 pt-5 pb-4">
+        <div className="relative px-5 pt-5 pb-4">
           {/* Label */}
-          <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
+          <div className="text-[10px] uppercase tracking-[0.18em] font-bold" style={{ color: "var(--po-text-faint)" }}>
             Total Collection Value
           </div>
 
           {/* Big value */}
           <div
-            className="mt-1 text-3xl font-black tabular-nums font-mono leading-none transition-colors duration-300"
-            style={{ color: totalFlash ? "#ffffff" : "var(--po-green)" }}
+            className="mt-2.5 text-4xl font-black tabular-nums leading-none transition-colors duration-300"
+            style={{ color: totalFlash ? "#ffffff" : "var(--po-green)", letterSpacing: "-0.02em", textShadow: `0 0 24px rgba(200,255,74,0.4)` }}
           >
             {fmtMoneyBig(bannerTotal, currency)}
+          </div>
+
+          {/* Meta: set count + staleness */}
+          <div className="mt-2 flex items-center gap-2 text-[11px]" style={{ color: "var(--po-text-dim)" }}>
+            <span>Across {totalSets} set{totalSets !== 1 ? "s" : ""}</span>
+            {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
           </div>
 
           {/* Trend line — hidden until first refresh */}
           {portfolioTrend && (
             <div
-              className={`mt-1.5 text-xs font-bold ${
+              className={`mt-1 text-xs font-bold ${
                 portfolioTrend.diff >= 0 ? "text-green-400" : "text-red-400"
               }`}
             >
-              {portfolioTrend.diff >= 0 ? "↑" : "↓"}{" "}
+              {portfolioTrend.diff >= 0 ? "▲" : "▼"}{" "}
               {fmtMoneyBig(
                 Math.abs(portfolioTrend.diff) * (RATES[currency]?.rate || 1),
                 currency
               )}
-              {" · "}
+              {" "}
               {portfolioTrend.diff >= 0 ? "+" : ""}
               {portfolioTrend.pct.toFixed(1)}% since last refresh
             </div>
           )}
 
-          {/* Meta: set count + staleness */}
+          {/* Meta: set count + staleness — kept for backward compat below, now merged above */}
           <div
-            className={`mt-1.5 flex items-center gap-1 text-[10px] ${
+            className={`hidden items-center gap-1 text-[10px] ${
               stale ? "text-amber-400" : "text-[var(--po-text-dim)]"
             }`}
           >
@@ -629,15 +638,15 @@ export default function HomePage() {
         </div>
 
         {/* Refresh button — becomes a progress bar during refresh */}
-        <div className="relative mx-4 mb-4 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
+        <div className="relative mx-5 mb-5 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
           {/* Progress fill */}
           <div
             className="absolute inset-y-0 left-0 transition-all duration-500"
             style={{
               width: `${refreshProgressPct}%`,
               background: refreshDone
-                ? "rgba(185,255,60,0.18)"
-                : "rgba(185,255,60,0.12)",
+                ? "rgba(200,255,74,0.18)"
+                : "rgba(200,255,74,0.12)",
             }}
           />
           <button
@@ -741,12 +750,12 @@ export default function HomePage() {
               <div className="space-y-2 mt-1">
                 {hiddenSets.map((set) => {
                   const primary = set.theme_primary || "#b9ff3c";
-                  const bg = set.theme_bg || "#0a0e0a";
+                  const bg = set.theme_bg || "#050507";
                   return (
                     <div
                       key={set.id}
                       className="rounded-2xl overflow-hidden border border-[var(--po-border)] opacity-50"
-                      style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
+                      style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
                     >
                       <div className="p-3 flex items-center gap-3">
                         {set.logo_url ? (

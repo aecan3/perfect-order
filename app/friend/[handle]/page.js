@@ -177,7 +177,7 @@ export default function FriendOverviewPage() {
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";
-            const bg = set.theme_bg || "#0a0e0a";
+            const bg = set.theme_bg || "#050507";
             const val = (set.collectionValue || 0) * (RATES[currency]?.rate || 1);
             return (
               <Link

@@ -115,31 +115,66 @@ const BUCKET_LABELS = {
   shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
 };
 const RARITY_TINT = {
-  gx:                "rgba(59,130,246,0.38)",
-  v:                 "rgba(59,130,246,0.38)",
-  double_rare:       "rgba(59,130,246,0.38)",
-  ex:                "rgba(59,130,246,0.38)",
-  tera_ex:           "rgba(20,184,166,0.38)",
-  mega_ex:           "rgba(139,92,246,0.38)",
-  vmax:              "rgba(139,92,246,0.38)",
-  vstar:             "rgba(139,92,246,0.38)",
-  illustration_rare: "rgba(34,197,94,0.38)",
-  full_art:          "rgba(34,197,94,0.38)",
-  v_full_art:        "rgba(34,197,94,0.38)",
-  ultra_rare:        "rgba(249,115,22,0.38)",
-  alt_art:           "rgba(249,115,22,0.38)",
-  trainer_gallery:   "rgba(249,115,22,0.38)",
-  rainbow_rare:      "rgba(244,63,94,0.38)",
-  sir:               "rgba(244,63,94,0.38)",
-  mega_attack_rare:  "rgba(244,63,94,0.38)",
-  hyper_rare:        "rgba(234,179,8,0.38)",
-  mega_hyper_rare:   "rgba(234,179,8,0.38)",
-  gold_rare:         "rgba(234,179,8,0.38)",
-  shiny_rare:        "rgba(20,184,166,0.38)",
-  shiny_ultra_rare:  "rgba(20,184,166,0.38)",
-  shiny:             "rgba(20,184,166,0.38)",
-  ace_spec:          "rgba(239,68,68,0.38)",
-  prism_star:        "rgba(99,102,241,0.38)",
+  gx:                "rgba(59,130,246,0.35)",
+  v:                 "rgba(59,130,246,0.35)",
+  double_rare:       "rgba(59,130,246,0.35)",
+  ex:                "rgba(59,130,246,0.35)",
+  tera_ex:           "rgba(20,184,166,0.35)",
+  mega_ex:           "rgba(139,92,246,0.35)",
+  vmax:              "rgba(139,92,246,0.35)",
+  vstar:             "rgba(139,92,246,0.35)",
+  illustration_rare: "rgba(34,197,94,0.35)",
+  full_art:          "rgba(34,197,94,0.35)",
+  v_full_art:        "rgba(34,197,94,0.35)",
+  ultra_rare:        "rgba(249,115,22,0.35)",
+  alt_art:           "rgba(249,115,22,0.35)",
+  trainer_gallery:   "rgba(249,115,22,0.35)",
+  rainbow_rare:      "rgba(244,63,94,0.35)",
+  sir:               "rgba(215,107,255,0.35)",
+  mega_attack_rare:  "rgba(244,63,94,0.35)",
+  hyper_rare:        "rgba(234,179,8,0.35)",
+  mega_hyper_rare:   "rgba(234,179,8,0.35)",
+  gold_rare:         "rgba(234,179,8,0.35)",
+  shiny_rare:        "rgba(20,184,166,0.35)",
+  shiny_ultra_rare:  "rgba(20,184,166,0.35)",
+  shiny:             "rgba(20,184,166,0.35)",
+  ace_spec:          "rgba(239,68,68,0.35)",
+  prism_star:        "rgba(99,102,241,0.35)",
+};
+
+// Solid dot colors for rarity section headers (matching RARITY_TINT hues)
+const RARITY_DOT = {
+  common:            "#5fb6ff",
+  uncommon:          "#9b6bff",
+  rare:              "#5cd9a3",
+  rare_holo:         "#5cd9a3",
+  gx:                "#3b82f6",
+  v:                 "#3b82f6",
+  double_rare:       "#60a5fa",
+  ex:                "#ffb05a",
+  tera_ex:           "#2dd4bf",
+  mega_ex:           "#a78bfa",
+  vmax:              "#a78bfa",
+  vstar:             "#a78bfa",
+  illustration_rare: "#fde68a",
+  full_art:          "#4ade80",
+  v_full_art:        "#4ade80",
+  ultra_rare:        "#fb923c",
+  alt_art:           "#fb923c",
+  trainer_gallery:   "#fb923c",
+  rainbow_rare:      "#f43f5e",
+  sir:               "#d76bff",
+  mega_attack_rare:  "#f43f5e",
+  hyper_rare:        "#fbbf24",
+  mega_hyper_rare:   "#fbbf24",
+  gold_rare:         "#fbbf24",
+  shiny_rare:        "#2dd4bf",
+  shiny_ultra_rare:  "#2dd4bf",
+  shiny:             "#2dd4bf",
+  ace_spec:          "#ef4444",
+  prism_star:        "#818cf8",
+  promo:             "#94a3b8",
+  other:             "#64748b",
 };
 
 function CardArt({ src, name, ownershipState, themePrimary }) {
@@ -147,12 +182,12 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
   const imgClass =
     ownershipState === "complete" ? "" :
     ownershipState === "partial"  ? "opacity-60" :
-    "grayscale opacity-30";
+    "grayscale opacity-55";
   if (failed || !src) {
     return (
       <div
         className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${imgClass}`}
-        style={{ background: `linear-gradient(135deg, ${themePrimary}33, #0a0e0a)` }}
+        style={{ background: `linear-gradient(135deg, ${themePrimary}33, #050507)` }}
       >
         <div className="text-[11px] font-bold leading-tight line-clamp-3" style={{ color: themePrimary }}>
           {name || "—"}
@@ -186,7 +221,7 @@ export default function SetTrackerPage() {
   const [pickingCard, setPickingCard] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
-  const [masterSet, setMasterSet] = useState(false);
+  const [view, setView] = useState("rarity"); // "rarity" | "binder" | "missing"
   const [openSections, setOpenSections] = useState({});
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
@@ -196,13 +231,18 @@ export default function SetTrackerPage() {
   const dupTimersRef = useRef({});
   const ownedPrintingsRef = useRef({});
   ownedPrintingsRef.current = ownedPrintings; // always current — set every render
-  const [missingOnly, setMissingOnly] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
-    const m = localStorage.getItem("po:masterSet");
-    if (m !== null) setMasterSet(m === "true");
+    // Migrate from old po:masterSet boolean to new po:setView enum
+    const saved = localStorage.getItem("po:setView");
+    if (saved && ["rarity","binder","missing"].includes(saved)) {
+      setView(saved);
+    } else {
+      const legacy = localStorage.getItem("po:masterSet");
+      if (legacy === "true") setView("binder");
+    }
   }, []);
 
   useEffect(() => {
@@ -467,10 +507,11 @@ export default function SetTrackerPage() {
     const prints = printingsByCard[card.number] || [];
     return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
   };
-  const viewCards = missingOnly ? cards.filter(missingFilter) : cards;
-  // Keep section.cards original (used for owned/total counts in headers);
-  // displayCards is the filtered subset actually rendered.
-  const viewSections = missingOnly
+  // Binder and rarity show all cards; missing filters to only uncollected
+  const viewCards = view === "missing" ? cards.filter(missingFilter) : cards;
+  // section.cards is always full (for owned/total counts in headers);
+  // displayCards is the subset actually rendered in the grid
+  const viewSections = view === "missing"
     ? sections
         .map((s) => ({ ...s, displayCards: s.cards.filter(missingFilter) }))
         .filter((s) => s.displayCards.length > 0)
@@ -500,7 +541,12 @@ export default function SetTrackerPage() {
       <div key={card.id} className="flex flex-col">
         <div
           onClick={() => prints.length === 1 ? togglePrinting(prints[0]) : setPickingCard(card)}
-          className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md cursor-pointer select-none active:scale-[0.98] transition-transform"
+          className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
+          style={{
+            boxShadow: completionState === "complete"
+              ? `0 4px 20px rgba(0,0,0,0.5), 0 0 16px ${tint ? tint.replace(/[\d.]+\)$/, "0.4)") : "rgba(255,255,255,0.12)"}`
+              : "0 2px 10px rgba(0,0,0,0.4)",
+          }}
         >
           {photo ? (
             <img
@@ -596,37 +642,30 @@ export default function SetTrackerPage() {
     );
   };
 
+  const pct = totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0;
+
+  const switchView = (v) => {
+    setView(v);
+    localStorage.setItem("po:setView", v);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
       <header
-        className="sticky top-0 z-20 bg-[var(--po-bg)]/90 backdrop-blur border-b px-4 py-3"
-        style={{ borderBottomColor: `${themePrimary}40` }}
+        className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
+        style={{ background: "rgba(5,5,7,0.92)", borderBottom: `1px solid ${themePrimary}30` }}
       >
-        <div className="flex items-baseline justify-between">
+        {/* Top nav row */}
+        <div className="flex items-center justify-between mb-3">
+          <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg-soft)]" style={{ color: "var(--po-text-dim)" }}>
+            <ArrowLeft size={18} />
+          </Link>
           <div className="flex items-center gap-2">
-            <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-              <ArrowLeft size={20} />
-            </Link>
-            <div>
-              <h1
-                className="font-extrabold uppercase tracking-wider text-lg leading-none"
-                style={{
-                  background: `linear-gradient(180deg, #ffffff 0%, ${themePrimary} 100%)`,
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                {setRow.name}
-              </h1>
-              <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{profile?.handle}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
             <select
               value={currency}
               onChange={(e) => switchCurrency(e.target.value)}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
+              className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
+              style={{ color: "var(--po-text-dim)" }}
             >
               <option value="AUD">AUD</option>
               <option value="USD">USD</option>
@@ -634,104 +673,145 @@ export default function SetTrackerPage() {
             </select>
             <button
               onClick={() => setResetConfirm(true)}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] hover:text-rose-400"
+              className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
+              style={{ color: "var(--po-text-dim)" }}
             >
               Reset
             </button>
           </div>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-3xl font-black tabular-nums leading-none">
-              {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
+
+        {/* Set hero: logo + name + series */}
+        <div className="flex gap-3 items-center mb-4">
+          {setRow.logo_url && (
+            <img src={setRow.logo_url} alt={setRow.name}
+                 className="h-14 w-auto object-contain flex-shrink-0 drop-shadow-lg" />
+          )}
+          <div className="min-w-0">
+            <h1
+              className="font-black text-2xl leading-none truncate"
+              style={{
+                color: themePrimary,
+                textShadow: `0 0 18px ${themePrimary}55`,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {setRow.name}
+            </h1>
+            <div className="text-[10px] uppercase tracking-[0.18em] font-bold mt-1.5 truncate"
+                 style={{ color: "var(--po-text-faint)" }}>
+              {setRow.series}{profile?.handle ? ` · @${profile.handle}` : ""}
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              {remainingDisplay} printings to go
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
+                 style={{ color: "var(--po-text-faint)" }}>Owned</div>
+            <div className="text-[32px] font-black tabular-nums leading-none">{checkedDisplay}</div>
+            <div className="text-[11px] mt-1 tabular-nums" style={{ color: "var(--po-text-dim)" }}>
+              / {totalDisplay} · {remainingDisplay} to go
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
-              {fmtMoney(ownedValueDisplay, currency)}
+            <div className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
+                 style={{ color: "var(--po-text-faint)" }}>Value</div>
+            <div className="text-[28px] font-black tabular-nums leading-none"
+                 style={{ color: themePrimary }}>{fmtMoney(ownedValueDisplay, currency)}</div>
+            <div className="text-[11px] mt-1 tabular-nums" style={{ color: "var(--po-text-dim)" }}>
+              {fmtMoney(totalValueDisplay, currency)} all-in
             </div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              owned · {fmtMoney(remainingValueDisplay, currency)} to go
-            </div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-3">
+          <div className="w-full rounded-full overflow-hidden" style={{ height: 5, background: "var(--po-progress-track)" }}>
             <div
-              className="flex items-center justify-end gap-0.5 mt-0.5"
-              style={{ color: isStale(pricesUpdatedAt) ? "#f59e0b" : "var(--po-text-dim)" }}
-            >
+              className="h-full transition-all duration-300"
+              style={{
+                width: `${pct}%`,
+                background: `linear-gradient(90deg, ${themePrimary}, ${themeSecondary})`,
+                boxShadow: `0 0 12px ${themePrimary}80`,
+              }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <div className="text-[10px] flex items-center gap-1"
+                 style={{ color: isStale(pricesUpdatedAt) ? "#f59e0b" : "var(--po-text-faint)" }}>
               {isStale(pricesUpdatedAt) && <Clock size={9} />}
-              <span className="text-[9px]">{pricesLabel(pricesUpdatedAt)}</span>
+              {pricesLabel(pricesUpdatedAt)}
+            </div>
+            <div className="text-[10px] font-bold" style={{ color: themePrimary }}>
+              {pct.toFixed(0)}%
             </div>
           </div>
         </div>
-        <div className="mt-2 h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden">
-          <div
-            className="h-full transition-all duration-300"
-            style={{
-              width: `${totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0}%`,
-              background: `linear-gradient(90deg, ${themePrimary}, ${themeSecondary})`,
-              boxShadow: `0 0 12px ${themePrimary}80`,
-            }}
-          />
-        </div>
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-lg overflow-hidden border border-[var(--po-border)]">
-            <button
-              onClick={() => { setMasterSet(false); localStorage.setItem("po:masterSet", "false"); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold transition-colors ${!masterSet ? "text-black" : "text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
-              style={!masterSet ? { background: themePrimary } : undefined}
-            >
-              <LayoutGrid size={12} />
-              Rarity
-            </button>
-            <button
-              onClick={() => { setMasterSet(true); localStorage.setItem("po:masterSet", "true"); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-widest font-bold transition-colors ${masterSet ? "text-black" : "text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
-              style={masterSet ? { background: themePrimary } : undefined}
-            >
-              <BookOpen size={12} />
-              Binder
-            </button>
-          </div>
-          <button
-            onClick={() => setMissingOnly((v) => !v)}
-            className={`flex items-center px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border transition-colors ${missingOnly ? "text-black border-transparent" : "border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)]"}`}
-            style={missingOnly ? { background: themePrimary } : undefined}
-          >
-            Missing Only
-          </button>
+
+        {/* 3-way view toggle */}
+        <div className="flex gap-1.5 p-1 rounded-xl border border-[var(--po-border)]"
+             style={{ background: "var(--po-bg-soft)" }}>
+          {[
+            { v: "rarity",  label: "Rarity",  Icon: LayoutGrid },
+            { v: "binder",  label: "Binder",  Icon: BookOpen },
+            { v: "missing", label: "Missing", Icon: null },
+          ].map(({ v, label, Icon }) => {
+            const active = view === v;
+            return (
+              <button
+                key={v}
+                onClick={() => switchView(v)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] rounded-lg transition-colors"
+                style={{
+                  background: active ? themePrimary : "transparent",
+                  color: active ? "#000" : "var(--po-text-dim)",
+                  border: 0,
+                  cursor: "pointer",
+                }}
+              >
+                {Icon && <Icon size={12} />}
+                {label}
+              </button>
+            );
+          })}
         </div>
       </header>
 
       <main className="px-3 py-4">
-        {masterSet ? (
-          viewCards.length > 0
-            ? <div className="grid grid-cols-2 gap-3">{viewCards.map(renderCard)}</div>
-            : <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
-        ) : (
-          <div className="space-y-3">
+        {view === "rarity" ? (
+          <div className="space-y-2">
             {viewSections.length === 0 && (
               <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
             )}
             {viewSections.map((section) => {
               const isOpen = !!openSections[section.id];
+              const dot = RARITY_DOT[section.id] || "#ffffff";
+              const sectionOwned = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0);
+              const sectionTotal = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0);
+              const sectionPct = sectionTotal > 0 ? (sectionOwned / sectionTotal) * 100 : 0;
               return (
-                <div key={section.id} className="border border-[var(--po-border)] rounded-lg overflow-hidden bg-[var(--po-bg-soft)]">
+                <div key={section.id} className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--po-border)", background: "var(--po-bg-soft)" }}>
                   <button
                     onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-[var(--po-border)]"
+                    className="w-full flex items-center gap-3 px-4 py-3"
                   >
-                    <div className="text-left">
-                      <div className="font-bold text-sm">{section.label}</div>
-                      <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0)}/{section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0)}
+                    {/* Glowing rarity dot */}
+                    <span className="flex-shrink-0 rounded-full" style={{ width: 8, height: 8, background: dot, boxShadow: `0 0 10px ${dot}` }} />
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="font-bold text-[15px] leading-none">{section.label}</div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>{sectionOwned}/{sectionTotal}</span>
+                        <div className="flex-1 max-w-[90px] rounded-full overflow-hidden" style={{ height: 2, background: "var(--po-progress-track)" }}>
+                          <div style={{ width: `${sectionPct}%`, height: "100%", background: dot }} />
+                        </div>
                       </div>
                     </div>
-                    <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown size={14} style={{ color: "var(--po-text-dim)", flexShrink: 0, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                   </button>
                   {isOpen && (
-                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-[var(--po-border)]">
+                    <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3" style={{ borderTop: "1px solid var(--po-border)" }}>
                       {section.displayCards.map(renderCard)}
                     </div>
                   )}
@@ -739,6 +819,32 @@ export default function SetTrackerPage() {
               );
             })}
           </div>
+        ) : view === "binder" ? (
+          <div className="grid grid-cols-2 gap-3">
+            {viewCards.map(renderCard)}
+          </div>
+        ) : (
+          // Missing view
+          viewCards.length > 0 ? (
+            <div>
+              <div className="flex justify-between items-baseline mb-3 px-1">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em]">{viewCards.length} cards remaining</div>
+                <div className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>
+                  {fmtMoney(
+                    viewCards.reduce((s, c) => {
+                      const prints = printingsByCard[c.number] || [];
+                      const min = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
+                      return s + (Number.isFinite(min) ? min * (RATES[currency]?.rate || 1) : 0);
+                    }, 0),
+                    currency
+                  )} to complete
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">{viewCards.map(renderCard)}</div>
+            </div>
+          ) : (
+            <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
+          )
         )}
       </main>
 
