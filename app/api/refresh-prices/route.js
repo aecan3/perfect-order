@@ -347,6 +347,21 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
 
 // ── POST handler ─────────────────────────────────────────────────────────────
 export async function POST(request) {
+  const missingVars = [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "POKEMON_TCG_API_KEY",
+    "POKETRACE_API_KEY",
+  ].filter((k) => !process.env[k]);
+  if (missingVars.length > 0) {
+    console.error("[Config] Missing env vars:", missingVars.join(", "));
+    return Response.json(
+      { error: `Missing environment variables: ${missingVars.join(", ")}` },
+      { status: 500 }
+    );
+  }
+
   const cookieStore = await cookies();
   const authClient = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
