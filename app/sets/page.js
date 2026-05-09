@@ -115,6 +115,7 @@ const RARITY_COLOR = {
 };
 
 export default function SetBrowserPage() {
+  "use no memo";
   const router = useRouter();
   const supabase = createClient();
   const [user, setUser] = useState(null);
@@ -299,6 +300,7 @@ export default function SetBrowserPage() {
   };
 
   const ensureUserSet = async (setId) => {
+    if (!user?.id || !setId) return;
     if (activeSetIds.has(setId) || hiddenSetIds.has(setId)) {
       // If hidden, also clear hidden_at
       if (hiddenSetIds.has(setId)) {
@@ -314,6 +316,7 @@ export default function SetBrowserPage() {
   };
 
   const bulkInsertEntries = async (printings) => {
+    if (!user?.id || !wizardSet?.id) return 0;
     const rows = printings.map((p) => ({
       user_id: user.id,
       set_id: wizardSet.id,
@@ -334,6 +337,7 @@ export default function SetBrowserPage() {
 
   // "Pick up where you left off" — re-add set, navigate with existing data intact
   const resumeExisting = async () => {
+    if (!wizardSet?.id) return;
     setWizardBusy(true);
     await ensureUserSet(wizardSet.id);
     router.push(`/set/${wizardSet.id}`);
@@ -341,6 +345,7 @@ export default function SetBrowserPage() {
 
   // Confirmed delete of existing entries → clear warning, continue with wizard
   const confirmDeleteExisting = async () => {
+    if (!user?.id || !wizardSet?.id) return;
     setConfirmDeleteVisible(false);
     setWizardBusy(true);
     await supabase.from("collection_entries")
@@ -352,6 +357,7 @@ export default function SetBrowserPage() {
   };
 
   const selectMode = async (mode) => {
+    if (!wizardSet?.id) return;
     setWizardMode(mode);
     if (mode === "fresh") {
       setWizardBusy(true);
@@ -363,6 +369,7 @@ export default function SetBrowserPage() {
   };
 
   const confirmFull = async () => {
+    if (!wizardSet?.id) return;
     setWizardBusy(true);
     try {
       await ensureUserSet(wizardSet.id);
@@ -376,7 +383,7 @@ export default function SetBrowserPage() {
   };
 
   const confirmPartial = async () => {
-    if (!selectedBuckets.size) return;
+    if (!selectedBuckets.size || !wizardSet?.id) return;
     setWizardBusy(true);
     try {
       const toInsert = wizardPrintings.filter((p) => {
@@ -394,6 +401,7 @@ export default function SetBrowserPage() {
   };
 
   const skipPartial = async () => {
+    if (!wizardSet?.id) return;
     setWizardBusy(true);
     await ensureUserSet(wizardSet.id);
     router.push(`/set/${wizardSet.id}`);

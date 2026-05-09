@@ -611,7 +611,7 @@ export default function HomePage() {
           <button
             onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
             disabled={refreshing}
-            className="relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"
+            className="relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed"
             style={{
               color: refreshDone
                 ? "var(--po-green)"
@@ -621,9 +621,15 @@ export default function HomePage() {
             }}
           >
             {refreshDone ? (
-              "✓ Prices updated"
+              <>
+                <RefreshCw size={12} />
+                ✓ Updated
+              </>
             ) : refreshing ? (
-              refreshProgress || "Refreshing…"
+              <>
+                <RefreshCw size={12} className="animate-spin flex-shrink-0" />
+                <span className="truncate min-w-0">{refreshProgress || "Refreshing…"}</span>
+              </>
             ) : (
               <>
                 <RefreshCw size={12} />
