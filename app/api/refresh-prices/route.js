@@ -268,9 +268,9 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
 // ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
 // Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
 // Page contains text like "Market Price (TCG holofoil) $1.11".
-// Rate limit: 1 req/second (sequential, no batching).
-// Variant pricing: holofoil = market, normal = market × 0.6, reverse = market × 0.4
-async function tryPokeScope(setId, allPrintings) {
+// Rate limit: 1 req/second (sequential). me2pt5 has 295 cards → ~295s.
+// flushCallback is called every 25 cards to survive Vercel's 300s function limit.
+async function tryPokeScope(setId, allPrintings, flushCallback = null) {
   const printingsByNumber = new Map();
   for (const p of allPrintings) {
     const num = String(p.card_number);
@@ -281,6 +281,7 @@ async function tryPokeScope(setId, allPrintings) {
   const numbers = [...printingsByNumber.keys()];
   const priceMap = new Map();
   let requestsUsed = 0;
+  let cardCount = 0;
 
   for (const cardNumber of numbers) {
     try {
@@ -330,6 +331,12 @@ async function tryPokeScope(setId, allPrintings) {
       }
     } catch (err) {
       console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
+    }
+
+    cardCount++;
+    // Flush accumulated prices to DB every 25 cards so progress survives a timeout
+    if (flushCallback && cardCount % 25 === 0 && priceMap.size > 0) {
+      await flushCallback(new Map(priceMap));
     }
 
     await sleep(1000); // 1 req/second — be respectful to a small site
@@ -450,7 +457,19 @@ async function processSet(admin, userId, setId, slugMap) {
   }
 
   if (!result && ME_SETS.has(setId)) {
-    result = await tryPokeScope(setId, printings);
+    // Flush every 25 cards so prices are persisted even if function times out
+    // (me2pt5 has 295 cards × 1s/card ≈ 295s, close to Vercel's 300s limit)
+    const pokeFlush = async (partialMap) => {
+      const rows = [...partialMap.entries()].map(([id, prices]) => ({
+        id, ...prices, updated_at: new Date().toISOString(),
+      }));
+      console.log(`[PokeScope] Mid-scrape flush: writing ${rows.length} prices to DB`);
+      const { error } = await admin.from("printings").upsert(rows, { onConflict: "id" });
+      if (error) console.error(`[PokeScope] Flush error:`, error.message);
+      else console.log(`[PokeScope] Flush OK`);
+    };
+
+    result = await tryPokeScope(setId, printings, pokeFlush);
     if (result) {
       priceSource = "pokescope";
       requestsUsed += result.requestsUsed;
@@ -484,12 +503,18 @@ async function processSet(admin, userId, setId, slugMap) {
 
   // 4. Bulk-upsert in batches of 200
   const BATCH = 200;
+  console.log(`[DB Write] ${setId} (${priceSource}): upserting ${updates.length} rows`);
+  updates.slice(0, 3).forEach((u) => console.log(`  → ${u.id}: $${u.price_usd ?? "—"}`));
   for (let i = 0; i < updates.length; i += BATCH) {
     const { error: uErr } = await admin
       .from("printings")
       .upsert(updates.slice(i, i + BATCH), { onConflict: "id" });
-    if (uErr) throw new Error(uErr.message);
+    if (uErr) {
+      console.error(`[DB Write] ${setId} batch ${Math.floor(i / BATCH) + 1} FAILED:`, uErr.message);
+      throw new Error(uErr.message);
+    }
   }
+  console.log(`[DB Write] ${setId}: upsert complete`);
 
   // 5. Compute new collection value with updated prices
   const updatedMap = new Map(updates.map((u) => [u.id, u]));
