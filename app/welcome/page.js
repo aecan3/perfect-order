@@ -115,62 +115,34 @@ export default function WelcomePage() {
                   Apple only allows this through Safari &mdash; it won{"'"}t work in Chrome on iPhone.
                 </p>
                 <ol className="space-y-3">
-                  <li className="flex items-start gap-3">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
-                      style={{ background: "var(--po-green)", color: "#050507" }}
-                    >
-                      1
-                    </span>
-                    <p className="text-sm text-[var(--po-text)]">
-                      Open this page in <span className="font-bold">Safari</span>
-                    </p>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
-                      style={{ background: "var(--po-green)", color: "#050507" }}
-                    >
-                      2
-                    </span>
-                    <div>
-                      <p className="text-sm text-[var(--po-text)]">
-                        Tap the <span className="font-bold">Share icon</span> at the bottom of the screen
-                      </p>
-                      {/* iOS Share icon — box with arrow pointing up */}
-                      <svg
-                        className="mt-1.5"
-                        width="28" height="28" viewBox="0 0 24 24" fill="none"
-                        stroke="var(--po-text)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+                  {[
+                    { n: 1, text: <>Open this page in <span className="font-bold">Safari</span> (not Chrome)</> },
+                    { n: 2, text: <>Tap the <span className="font-bold">...</span> button in the bottom-right corner of Safari</>, icon: true },
+                    { n: 3, text: <>Tap <span className="font-bold">Share</span></> },
+                    { n: 4, text: <>Tap <span className="font-bold">View More</span></> },
+                    { n: 5, text: <>Tap <span className="font-bold">Add to Home Screen</span></> },
+                    { n: 6, text: <>Tap <span className="font-bold">Add</span> in the top right</> },
+                  ].map(({ n, text, icon }) => (
+                    <li key={n} className="flex items-start gap-3">
+                      <span
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
+                        style={{ background: "var(--po-green)", color: "#050507" }}
                       >
-                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                        <polyline points="16 6 12 2 8 6" />
-                        <line x1="12" y1="2" x2="12" y2="15" />
-                      </svg>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
-                      style={{ background: "var(--po-green)", color: "#050507" }}
-                    >
-                      3
-                    </span>
-                    <p className="text-sm text-[var(--po-text)]">
-                      Scroll down and tap <span className="font-bold">Add to Home Screen</span>
-                    </p>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
-                      style={{ background: "var(--po-green)", color: "#050507" }}
-                    >
-                      4
-                    </span>
-                    <p className="text-sm text-[var(--po-text)]">
-                      Tap <span className="font-bold">Add</span> in the top-right corner
-                    </p>
-                  </li>
+                        {n}
+                      </span>
+                      <div>
+                        <p className="text-sm text-[var(--po-text)]">{text}</p>
+                        {icon && (
+                          <div
+                            className="mt-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md"
+                            style={{ background: "var(--po-bg)", border: "1px solid var(--po-border)" }}
+                          >
+                            <span className="text-sm font-black tracking-tighter text-[var(--po-text)]">...</span>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
                 </ol>
               </div>
             )}
