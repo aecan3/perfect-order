@@ -92,25 +92,39 @@ body {
 
 /* ── Master set card glow ──────────────────────────────────── */
 
-@keyframes po-master-glow {
+@keyframes po-master-border-shift {
   0%, 100% {
+    background-position: 0% 50%;
     box-shadow:
-      0 0 0 1.5px var(--glow-a),
-      0 0 16px var(--glow-a-soft),
-      0 0 36px var(--glow-a-faint);
+      0 0 6px  var(--glow-a),
+      0 0 28px var(--glow-a-soft),
+      0 0 60px var(--glow-a-faint);
   }
   50% {
+    background-position: 100% 50%;
     box-shadow:
-      0 0 0 1.5px var(--glow-b),
-      0 0 20px var(--glow-b-soft),
-      0 0 48px var(--glow-b-faint);
+      0 0 6px  var(--glow-b),
+      0 0 32px var(--glow-b-soft),
+      0 0 70px var(--glow-b-faint);
   }
 }
 
-.po-master-card {
-  animation: po-master-glow 3.6s ease-in-out infinite;
-  border-color: transparent !important;
+/* Gradient-border wrapper — 2 px of gradient acts as the border */
+.po-master-border-wrap {
+  background: linear-gradient(135deg, var(--glow-a), var(--glow-b), var(--glow-a));
+  background-size: 200% 200%;
+  animation: po-master-border-shift 4s ease-in-out infinite;
+  padding: 2px;
 }
+
+/* ✦ star pulse — two phases so they alternate */
+@keyframes po-star-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1);    }
+  50%       { opacity: 0.45; transform: scale(0.75); }
+}
+
+.po-master-star   { display: inline-block; animation: po-star-pulse 2.6s ease-in-out infinite; }
+.po-master-star-b { animation-delay: 1.3s; }
 
 /* ── Master set celebration ────────────────────────────────── */
 

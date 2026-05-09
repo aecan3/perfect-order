@@ -439,20 +439,14 @@ export default function HomePage() {
 
     const touch = makeTouchHandlers(set.id);
 
-    return (
+    // Shared inner card content — used inside both master wrapper and plain wrapper
+    const cardContent = (
       <div
-        key={set.id}
-        className={`group relative rounded-2xl overflow-hidden border border-[var(--po-border)]${isMaster ? " po-master-card" : ""}`}
+        className="relative rounded-[16px] overflow-hidden"
         style={{
-          background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)`,
-          ...(isMaster ? {
-            "--glow-a":      primary,
-            "--glow-a-soft": `${primary}60`,
-            "--glow-a-faint":`${primary}1e`,
-            "--glow-b":      secondary,
-            "--glow-b-soft": `${secondary}60`,
-            "--glow-b-faint":`${secondary}1e`,
-          } : {}),
+          background: isMaster
+            ? `radial-gradient(ellipse at 0% 55%, ${primary}28 0%, transparent 58%), linear-gradient(135deg, ${bg} 0%, #050507 100%)`
+            : `linear-gradient(135deg, ${bg} 0%, #050507 100%)`,
         }}
       >
         {/* Desktop ··· menu */}
@@ -540,9 +534,7 @@ export default function HomePage() {
                         {fmtMoney(val, currency)}
                       </span>
                       {trend && (
-                        <span
-                          className={`font-bold ${trend.dir === "up" ? "text-green-400" : "text-red-400"}`}
-                        >
+                        <span className={`font-bold ${trend.dir === "up" ? "text-green-400" : "text-red-400"}`}>
                           {trend.dir === "up" ? "↑" : "↓"}{formatDiff(trend.diff, currency)}
                         </span>
                       )}
@@ -551,15 +543,17 @@ export default function HomePage() {
                 </div>
                 {isMaster ? (
                   <div
-                    className="mt-2.5 self-start inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.14em] leading-none"
+                    className="mt-2.5 w-full flex items-center justify-center gap-2 py-1.5 rounded-full text-[11px] font-black uppercase tracking-[0.14em] leading-none"
                     style={{
                       color: primary,
-                      background: `${primary}18`,
-                      border: `1px solid ${primary}50`,
-                      boxShadow: `0 0 10px ${primary}30`,
+                      background: `${primary}1a`,
+                      border: `1px solid ${primary}55`,
+                      boxShadow: `0 0 12px ${primary}30, inset 0 0 8px ${primary}10`,
                     }}
                   >
-                    ✦ Master Set ✦
+                    <span className="po-master-star">✦</span>
+                    Master Set
+                    <span className="po-master-star po-master-star-b">✦</span>
                   </div>
                 ) : (
                   <div className="mt-2.5 w-full rounded-full overflow-hidden" style={{ height: 4, background: "var(--po-progress-track)" }}>
@@ -595,6 +589,35 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+      </div>
+    );
+
+    if (isMaster) {
+      return (
+        <div
+          key={set.id}
+          className="group po-master-border-wrap rounded-[18px]"
+          style={{
+            "--glow-a":      primary,
+            "--glow-a-soft": `${primary}55`,
+            "--glow-a-faint":`${primary}1a`,
+            "--glow-b":      secondary,
+            "--glow-b-soft": `${secondary}55`,
+            "--glow-b-faint":`${secondary}1a`,
+          }}
+        >
+          {cardContent}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={set.id}
+        className="group relative rounded-2xl overflow-hidden border border-[var(--po-border)]"
+        style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
+      >
+        {cardContent}
       </div>
     );
   };
