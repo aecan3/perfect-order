@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, X, Check, LayoutGrid, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
@@ -165,9 +165,11 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
 export default function FriendSetTrackerPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const handle = params.handle;
   const setId = params.setId;
+  const backTo = searchParams.get("from") === "discover" ? "/discover" : `/friend/${handle}`;
 
   const [me, setMe] = useState(null);
   const [friend, setFriend] = useState(null);
@@ -450,7 +452,7 @@ export default function FriendSetTrackerPage() {
       >
         <div className="flex items-baseline justify-between">
           <div className="flex items-center gap-2">
-            <Link href={`/friend/${handle}`} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
+            <Link href={backTo} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
               <ArrowLeft size={20} />
             </Link>
             <div>

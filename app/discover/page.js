@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight, Check, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -19,6 +19,8 @@ const fmtMoney = (v, currency) => {
   return `${sym}${v.toFixed(2)}`;
 };
 
+const cardKey = (card) => `${card.printingId}:${card.friendHandle}`;
+
 export default function DiscoverPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -26,6 +28,7 @@ export default function DiscoverPage() {
   const [currency, setCurrency] = useState("AUD");
   const [filterSet, setFilterSet] = useState("all");
   const [minValue, setMinValue] = useState(0);
+  const [selected, setSelected] = useState(new Set());
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -102,15 +105,43 @@ export default function DiscoverPage() {
     return true;
   });
 
-  // Group by friend
   const grouped = filtered.reduce((acc, card) => {
     if (!acc[card.friendHandle]) acc[card.friendHandle] = [];
     acc[card.friendHandle].push(card);
     return acc;
   }, {});
 
+  const toggleCard = (card) => {
+    const key = cardKey(card);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(filtered.map(cardKey)));
+  const clearAll = () => setSelected(new Set());
+
+  // Group selected cards by friend for bulk messaging
+  const selectedCards = filtered.filter((c) => selected.has(cardKey(c)));
+  const selectedByFriend = selectedCards.reduce((acc, card) => {
+    if (!acc[card.friendHandle]) acc[card.friendHandle] = [];
+    acc[card.friendHandle].push(card);
+    return acc;
+  }, {});
+
+  const openMessageThread = (handle, friendCards) => {
+    const cardsParam = encodeURIComponent(JSON.stringify(
+      friendCards.map((c) => ({ cardName: c.cardName, setName: c.setName, imageUrl: c.imageUrl, priceUsd: c.priceUsd }))
+    ));
+    router.push(`/messages/${handle}?cards=${cardsParam}`);
+  };
+
+  const isSelecting = selected.size > 0;
+
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] pb-32">
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center gap-3 max-w-md mx-auto">
           <button onClick={() => router.back()} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
@@ -118,14 +149,32 @@ export default function DiscoverPage() {
           </button>
           <div className="flex-1">
             <h1 className="font-black text-base leading-tight">Discover</h1>
-            <p className="text-[10px] text-[var(--po-text-dim)]">Cards your friends have as duplicates</p>
+            {!isSelecting && <p className="text-[10px] text-[var(--po-text-dim)]">Cards your friends have as duplicates</p>}
+            {isSelecting && <p className="text-[10px]" style={{ color: "var(--po-green)" }}>{selected.size} selected</p>}
           </div>
+          {filtered.length > 0 && (
+            isSelecting ? (
+              <button
+                onClick={clearAll}
+                className="text-[11px] font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+              >
+                Clear
+              </button>
+            ) : (
+              <button
+                onClick={selectAll}
+                className="text-[11px] font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+              >
+                Select All
+              </button>
+            )
+          )}
         </div>
       </header>
 
       <main className="px-4 py-4 max-w-md mx-auto space-y-4">
-        {/* Filters */}
-        {cards && cards.length > 0 && (
+        {/* Filters — hidden during selection mode */}
+        {!isSelecting && cards && cards.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-1">
             <select
               value={filterSet}
@@ -165,48 +214,92 @@ export default function DiscoverPage() {
 
         {Object.entries(grouped).map(([handle, friendCards]) => (
           <div key={handle}>
-            <Link
-              href={`/friend/${handle}`}
-              className="flex items-center gap-2 mb-2 group"
-            >
-              <span className="text-sm font-black text-[var(--po-text)]">@{handle}</span>
-              <span className="text-[10px] text-[var(--po-text-faint)]">
-                {friendCards.length} card{friendCards.length !== 1 ? "s" : ""}
-              </span>
-              <ChevronRight size={12} className="text-[var(--po-text-faint)] group-hover:text-[var(--po-green)] transition-colors ml-auto" />
-            </Link>
+            <div className="flex items-center gap-2 mb-2">
+              <Link
+                href={`/friend/${handle}?from=discover`}
+                className="flex items-center gap-1.5 group"
+              >
+                <span className="text-sm font-black text-[var(--po-text)]">@{handle}</span>
+                <span className="text-[10px] text-[var(--po-text-faint)]">
+                  {friendCards.length} card{friendCards.length !== 1 ? "s" : ""}
+                </span>
+                <ChevronRight size={12} className="text-[var(--po-text-faint)] group-hover:text-[var(--po-green)] transition-colors" />
+              </Link>
+            </div>
             <div className="grid grid-cols-3 gap-2">
-              {friendCards.map((card, i) => (
-                <Link
-                  key={i}
-                  href={`/friend/${card.friendHandle}/${card.setId}`}
-                  className="relative rounded-lg overflow-hidden bg-black/40"
-                  style={{ aspectRatio: "2/3" }}
-                >
-                  {card.imageUrl ? (
-                    <img src={card.imageUrl} alt={card.cardName} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center p-2 text-center text-[8px] text-[var(--po-text-faint)] leading-tight">
-                      {card.cardName || card.setName}
-                    </div>
-                  )}
-                  <div
-                    className="absolute inset-x-0 bottom-0 px-1.5 py-1"
-                    style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)" }}
+              {friendCards.map((card, i) => {
+                const key = cardKey(card);
+                const isSelected = selected.has(key);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => toggleCard(card)}
+                    className="relative rounded-lg overflow-hidden bg-black/40 text-left"
+                    style={{
+                      aspectRatio: "2/3",
+                      outline: isSelected ? "2px solid var(--po-green)" : "none",
+                      outlineOffset: 2,
+                    }}
                   >
-                    <div className="text-[7px] text-white/60 truncate">{card.setName}</div>
-                    {card.priceUsd > 0 && (
-                      <div className="text-[9px] font-black" style={{ color: "var(--po-green)" }}>
-                        {fmtMoney(card.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                    {card.imageUrl ? (
+                      <img src={card.imageUrl} alt={card.cardName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center p-2 text-center text-[8px] text-[var(--po-text-faint)] leading-tight">
+                        {card.cardName || card.setName}
                       </div>
                     )}
-                  </div>
-                </Link>
-              ))}
+                    <div
+                      className="absolute inset-x-0 bottom-0 px-1.5 py-1"
+                      style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)" }}
+                    >
+                      <div className="text-[7px] text-white/60 truncate">{card.setName}</div>
+                      {card.priceUsd > 0 && (
+                        <div className="text-[9px] font-black" style={{ color: "var(--po-green)" }}>
+                          {fmtMoney(card.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                        </div>
+                      )}
+                    </div>
+                    {/* Selection checkmark */}
+                    {isSelected && (
+                      <div
+                        className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ background: "var(--po-green)" }}
+                      >
+                        <Check size={11} color="#050507" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}
       </main>
+
+      {/* Sticky bottom bar — shown when cards are selected */}
+      {isSelecting && (
+        <div className="fixed bottom-0 inset-x-0 z-20 border-t border-[var(--po-border)] bg-[var(--po-bg)]/95 backdrop-blur px-4 pt-3 pb-8">
+          <div className="max-w-md mx-auto space-y-2">
+            <p className="text-xs text-[var(--po-text-dim)] text-center mb-1">
+              {selected.size} card{selected.size !== 1 ? "s" : ""} selected
+            </p>
+            {Object.entries(selectedByFriend).map(([handle, friendCards]) => (
+              <button
+                key={handle}
+                onClick={() => openMessageThread(handle, friendCards)}
+                className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-bold text-sm transition-colors"
+                style={{ background: "var(--po-green)", color: "#050507" }}
+              >
+                <span>Message @{handle}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-xs opacity-70">{friendCards.length} card{friendCards.length !== 1 ? "s" : ""}</span>
+                  <MessageCircle size={15} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

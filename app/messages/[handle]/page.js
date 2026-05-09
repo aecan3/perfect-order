@@ -39,10 +39,19 @@ export default function ThreadPage() {
   const [currency, setCurrency] = useState("AUD");
 
   // Pre-populated trade message from discover panel
+  // Supports single ?card=<json> or bulk ?cards=<json-array>
   const prefill = searchParams.get("prefill");
-  const cardMeta = (() => {
-    try { return JSON.parse(searchParams.get("card") || "null"); } catch { return null; }
+  const cardsMeta = (() => {
+    try {
+      const multi = searchParams.get("cards");
+      if (multi) return JSON.parse(multi);
+      const single = searchParams.get("card");
+      if (single) return [JSON.parse(single)];
+      return null;
+    } catch { return null; }
   })();
+  // Keep legacy single reference for backwards-compat rendering
+  const cardMeta = cardsMeta?.[0] ?? null;
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -139,14 +148,14 @@ export default function ThreadPage() {
       sender_id: user.id,
       recipient_id: otherProfile.id,
       body: body.trim(),
-      message_type: cardMeta ? "trade_proposal" : "message",
-      metadata: cardMeta || null,
+      message_type: cardsMeta ? "trade_proposal" : "message",
+      metadata: cardsMeta ? { cards: cardsMeta } : null,
     };
     const { error } = await supabase.from("messages").insert(payload);
     if (!error) {
       setBody("");
-      // Clear card meta after first send so subsequent messages are plain
-      if (cardMeta) router.replace(`/messages/${handle}`);
+      // Clear card attachment after first send
+      if (cardsMeta) router.replace(`/messages/${handle}`);
     }
     setSending(false);
     inputRef.current?.focus();
@@ -202,26 +211,27 @@ export default function ThreadPage() {
 
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
-                    {/* Card preview for trade proposals */}
-                    {meta?.cardName && (
+                    {/* Card previews for trade proposals */}
+                    {(meta?.cards || (meta?.cardName ? [meta] : null))?.map((c, ci) => (
                       <div
+                        key={ci}
                         className="mb-1 rounded-xl overflow-hidden border border-[var(--po-border)] flex gap-2 p-2 max-w-[260px]"
                         style={{ background: "var(--po-bg-soft)" }}
                       >
-                        {meta.imageUrl && (
-                          <img src={meta.imageUrl} alt={meta.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
+                        {c.imageUrl && (
+                          <img src={c.imageUrl} alt={c.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
                         )}
                         <div className="flex flex-col justify-center min-w-0">
-                          <p className="text-xs font-bold truncate text-[var(--po-text)]">{meta.cardName}</p>
-                          <p className="text-[10px] text-[var(--po-text-dim)] truncate">{meta.setName}</p>
-                          {meta.priceUsd > 0 && (
+                          <p className="text-xs font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
+                          <p className="text-[10px] text-[var(--po-text-dim)] truncate">{c.setName}</p>
+                          {c.priceUsd > 0 && (
                             <p className="text-[10px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                              {fmtMoney(meta.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                              {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
                             </p>
                           )}
                         </div>
                       </div>
-                    )}
+                    ))}
 
                     <div
                       className="px-3 py-2 rounded-2xl max-w-[75%] text-sm leading-relaxed"
@@ -246,26 +256,29 @@ export default function ThreadPage() {
         <div ref={bottomRef} />
       </main>
 
-      {/* Card preview above input when coming from Discover */}
-      {cardMeta?.cardName && (
-        <div className="max-w-md mx-auto w-full px-4 pb-1">
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
-            style={{ background: "var(--po-bg-soft)" }}
-          >
-            {cardMeta.imageUrl && (
-              <img src={cardMeta.imageUrl} alt={cardMeta.cardName} className="w-8 h-10 object-cover rounded flex-shrink-0" />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="font-bold truncate text-[var(--po-text)]">{cardMeta.cardName}</p>
-              <p className="text-[var(--po-text-faint)] truncate">{cardMeta.setName}</p>
+      {/* Card previews above input when arriving from Discover */}
+      {cardsMeta?.length > 0 && (
+        <div className="max-w-md mx-auto w-full px-4 pb-1 space-y-1">
+          {cardsMeta.map((c, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
+              style={{ background: "var(--po-bg-soft)" }}
+            >
+              {c.imageUrl && (
+                <img src={c.imageUrl} alt={c.cardName} className="w-8 h-10 object-cover rounded flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
+                <p className="text-[var(--po-text-faint)] truncate">{c.setName}</p>
+              </div>
+              {c.priceUsd > 0 && (
+                <span className="font-black flex-shrink-0" style={{ color: "var(--po-green)" }}>
+                  {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                </span>
+              )}
             </div>
-            {cardMeta.priceUsd > 0 && (
-              <span className="font-black flex-shrink-0" style={{ color: "var(--po-green)" }}>
-                {fmtMoney(cardMeta.priceUsd * (RATES[currency]?.rate || 1), currency)}
-              </span>
-            )}
-          </div>
+          ))}
         </div>
       )}
 
