@@ -296,10 +296,12 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
     printingsByNumber.get(num).push(p);
   }
 
-  // Skip cards where all printings already have a price — resume from unpriced only
-  const numbers = [...printingsByNumber.keys()].filter(
-    (num) => !printingsByNumber.get(num).some((p) => p.price_usd > 0)
-  );
+  // On first run (all prices null) skip already-priced cards for timeout resilience.
+  // On a refresh (some prices exist) scrape everything to keep prices current.
+  const allUnpriced = allPrintings.every((p) => !(p.price_usd > 0));
+  const numbers = allUnpriced
+    ? [...printingsByNumber.keys()].filter((num) => !printingsByNumber.get(num).some((p) => p.price_usd > 0))
+    : [...printingsByNumber.keys()];
   const priceMap = new Map();
   let requestsUsed = 0;
   let cardCount = 0;
