@@ -516,6 +516,7 @@ export default function SetTrackerPage() {
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const [shimmerMain, setShimmerMain] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [justCollected, setJustCollected] = useState(new Set());
   const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -666,6 +667,9 @@ export default function SetTrackerPage() {
         ...prev,
         [printing.id]: { ...cur, checked: willOwn, card_number: printing.card_number },
       }));
+      if (willOwn) {
+        setJustCollected((prev) => new Set([...prev, printing.card_number]));
+      }
       await supabase.from("collection_entries").upsert(
         {
           user_id: user.id,
@@ -812,6 +816,7 @@ export default function SetTrackerPage() {
   const themeSecondary = setRow.theme_secondary || "#c084fc";
 
   const missingFilter = (card) => {
+    if (justCollected.has(card.number)) return true;
     const prints = printingsByCard[card.number] || [];
     return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
   };
@@ -844,6 +849,7 @@ export default function SetTrackerPage() {
       "grayscale opacity-30";
     const firstOwned = prints.find((p) => ownedPrintings[p.id]?.checked);
     const dupCount = firstOwned ? (ownedPrintings[firstOwned.id]?.duplicate_count || 0) : 0;
+    const isJustCollected = view === "missing" && justCollected.has(card.number);
 
     return (
       <div key={card.id} className="flex flex-col">
@@ -851,7 +857,9 @@ export default function SetTrackerPage() {
           onClick={() => prints.length === 1 ? togglePrinting(prints[0]) : setPickingCard(card)}
           className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
           style={{
-            boxShadow: completionState === "complete"
+            boxShadow: isJustCollected
+              ? "0 0 0 2px #22c55e, 0 0 18px rgba(34,197,94,0.5)"
+              : completionState === "complete"
               ? `0 4px 20px rgba(0,0,0,0.5), 0 0 16px ${tint ? tint.replace(/[\d.]+\)$/, "0.4)") : "rgba(255,255,255,0.12)"}`
               : "0 2px 10px rgba(0,0,0,0.4)",
           }}
