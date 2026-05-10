@@ -508,7 +508,7 @@ export default function SetBrowserPage() {
                     {set.name}
                   </div>
                   <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                    {set.series || "â€”"} Â· {total} cards
+                    {set.series || “—“} · {total} cards
                   </div>
                 </div>
                 {isActive ? (

@@ -524,7 +524,7 @@ export default function HomePage() {
             : `linear-gradient(135deg, ${bg} 0%, #050507 100%)`,
         }}
       >
-        {/* Desktop Â·Â·Â· menu */}
+        {/* Desktop ··· menu */}
         <div
           className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
@@ -600,7 +600,7 @@ export default function HomePage() {
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
                     <span className="text-xs text-[var(--po-text-dim)]">
-                      / {total}{!isMaster && ` Â· ${pct}%`}
+                      / {total}{!isMaster && ` · ${pct}%`}
                     </span>
                   </div>
                   {val > 0 && (
@@ -781,7 +781,7 @@ export default function HomePage() {
           {/* Meta: set count + staleness */}
           <div className="mt-2 flex items-center gap-2 text-[11px]" style={{ color: "var(--po-text-dim)" }}>
             <span>Across {totalSets} set{totalSets !== 1 ? "s" : ""}</span>
-            {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>Â·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
+            {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
           </div>
 
           {/* Trend line â€” hidden until first refresh */}
@@ -811,7 +811,7 @@ export default function HomePage() {
             {stale && <Clock size={9} />}
             <span>
               Across {totalSets} set{totalSets !== 1 ? "s" : ""}
-              {updatedLabel ? ` Â· ${updatedLabel}` : ""}
+              {updatedLabel ? ` · ${updatedLabel}` : ""}
             </span>
           </div>
         </div>

@@ -376,7 +376,7 @@ export default function FriendsPage() {
                     <div>
                       <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
                       <div className="text-xs text-[var(--po-text-dim)]">
-                        @{p?.handle} Â· awaiting response
+                        @{p?.handle} · awaiting response
                       </div>
                     </div>
                     <button
