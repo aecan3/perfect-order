@@ -183,7 +183,7 @@ export default function SetBrowserPage() {
     })();
   }, [router, supabase]);
 
-  // â”€â”€ Wizard derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Wizard derived values â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   const wizardBuckets = useMemo(() => {
     if (!wizardPrintings.length) return [];
@@ -213,7 +213,7 @@ export default function SetBrowserPage() {
     }).length;
   }, [wizardPrintings, selectedBuckets, wizardSet]);
 
-  // â”€â”€ Browser derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Browser derived values â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   const seriesList = useMemo(() => {
     const s = new Set(allSets.map((x) => x.series).filter(Boolean));
@@ -233,10 +233,10 @@ export default function SetBrowserPage() {
     });
   }, [allSets, query, seriesFilter]);
 
-  // â”€â”€ Wizard actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Wizard actions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   const handleAddTap = async (set) => {
-    // Case 2: set is hidden â†’ unhide and navigate, no wizard
+    // Case 2: set is hidden â†' unhide and navigate, no wizard
     if (hiddenSetIds.has(set.id)) {
       await supabase.from("user_sets")
         .update({ hidden_at: null })
@@ -248,7 +248,7 @@ export default function SetBrowserPage() {
       return;
     }
 
-    // Cases 1, 3, 4: set not in user_sets â€” check for orphaned collection_entries
+    // Cases 1, 3, 4: set not in user_sets â€" check for orphaned collection_entries
     const { count } = await supabase
       .from("collection_entries")
       .select("*", { count: "exact", head: true })
@@ -335,7 +335,7 @@ export default function SetBrowserPage() {
     return rows.length;
   };
 
-  // "Pick up where you left off" â€” re-add set, navigate with existing data intact
+  // "Pick up where you left off" â€" re-add set, navigate with existing data intact
   const resumeExisting = async () => {
     if (!wizardSet?.id) return;
     setWizardBusy(true);
@@ -343,7 +343,7 @@ export default function SetBrowserPage() {
     router.push(`/set/${wizardSet.id}`);
   };
 
-  // Confirmed delete of existing entries â†’ clear warning, continue with wizard
+  // Confirmed delete of existing entries â†' clear warning, continue with wizard
   const confirmDeleteExisting = async () => {
     if (!user?.id || !wizardSet?.id) return;
     setConfirmDeleteVisible(false);
@@ -416,7 +416,7 @@ export default function SetBrowserPage() {
     });
   };
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Render â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   if (loading) {
     return (
@@ -508,7 +508,7 @@ export default function SetBrowserPage() {
                     {set.name}
                   </div>
                   <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                    {set.series || “—“} · {total} cards
+                    {set.series || "—"} · {total} cards
                   </div>
                 </div>
                 {isActive ? (
@@ -544,7 +544,7 @@ export default function SetBrowserPage() {
         )}
       </main>
 
-      {/* â”€â”€ Setup wizard bottom sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* â"€â"€ Setup wizard bottom sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       {wizardSet && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={closeWizard} />
@@ -731,7 +731,7 @@ export default function SetBrowserPage() {
                       disabled={wizardBusy}
                       className="flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
                     >
-                      Skip â€” start empty
+                      Skip â€" start empty
                     </button>
                     <button
                       onClick={confirmPartial}
@@ -785,7 +785,7 @@ export default function SetBrowserPage() {
             )}
           </div>
 
-          {/* â”€â”€ Delete confirmation sub-modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* â"€â"€ Delete confirmation sub-modal â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
           {confirmDeleteVisible && (
             <>
               <div
