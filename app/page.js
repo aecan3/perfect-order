@@ -72,6 +72,7 @@ export default function HomePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshDone, setRefreshDone] = useState(false);
   const [refreshErrors, setRefreshErrors] = useState([]); // set names that failed
+  const [refreshProgress, setRefreshProgress] = useState(null); // { done, total, name }
   const refreshTimerRef = useRef(null);
 
   // Trend state: { [setId]: { dir: "up"|"down", diff: number (USD) } }
@@ -307,78 +308,82 @@ export default function HomePage() {
     setRefreshDone(false);
     setRefreshErrors([]);
     setPortfolioTrend(null);
+    setRefreshProgress({ done: 0, total: visible.length, name: "" });
 
-    // Fire a single batched request with all set IDs — do not await, return immediately
-    fetch("/api/refresh-prices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setIds: visible.map((s) => s.id) }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const results = data.results || [];
-        const errors = [];
-        let allPreviousTotal = 0;
-        let allNewTotal = 0;
-        const newTrendsMap = {};
-        const newValues = {};
+    // Accumulator shared across concurrent completions
+    const acc = { done: 0, allPrev: 0, allNew: 0, newValues: {}, newTrends: {}, errors: [] };
 
-        for (const r of results) {
-          if (r.error) {
-            const name = visible.find((s) => s.id === r.setId)?.name ?? r.setId;
-            errors.push(name);
-            continue;
-          }
-          const { setId, previousValue, newValue } = r;
-          newValues[setId] = newValue;
-
-          const oldDisplay =
-            animTargetsRef.current[setId]?.to ??
-            displayValues[setId] ??
-            setValues[setId] ??
-            0;
-          if (Math.abs(newValue - oldDisplay) > 0.005) {
-            startAnimations({ [setId]: { from: oldDisplay, to: newValue } });
-          }
-
-          const prev = previousValue ?? 0;
-          const diff = newValue - prev;
-          if (Math.abs(diff) > 0.005) {
-            newTrendsMap[setId] = { dir: diff > 0 ? "up" : "down", diff: Math.abs(diff) };
-          }
-          allPreviousTotal += prev;
-          allNewTotal += newValue;
-        }
-
-        setSetValues((prev) => ({ ...prev, ...newValues }));
-        setTrends(newTrendsMap);
-
-        const now = new Date().toISOString();
-        const refreshedIds = new Set(visible.map((s) => s.id));
-        const stampUpdatedAt = (s) => refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
-        setUserSets((prev) => prev.map(stampUpdatedAt));
-        setHiddenSets((prev) => prev.map(stampUpdatedAt));
-        setLastRefreshedAt(now);
-
-        if (allPreviousTotal > 0.01) {
-          const diff = allNewTotal - allPreviousTotal;
-          setPortfolioTrend({ diff, pct: (diff / allPreviousTotal) * 100 });
-        }
-
-        setTotalFlash(true);
-        setTimeout(() => setTotalFlash(false), 600);
-
-        if (errors.length) setRefreshErrors(errors);
-        setRefreshing(false);
-        setRefreshDone(true);
-        refreshTimerRef.current = setTimeout(() => setRefreshDone(false), 3000);
+    // Fire one request per set — all in parallel. Progress updates as each resolves.
+    const promises = visible.map((set) =>
+      fetch("/api/refresh-prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setIds: [set.id] }),
       })
-      .catch(() => {
-        setRefreshErrors(["Network error — prices not updated"]);
-        setRefreshing(false);
-      });
+        .then((res) => res.json())
+        .then((data) => {
+          const r = data.results?.[0];
+          acc.done++;
+          setRefreshProgress({ done: acc.done, total: visible.length, name: set.name });
 
-    // Returns here — UI is immediately unblocked
+          if (r && !r.error) {
+            const { setId, previousValue, newValue } = r;
+            acc.newValues[setId] = newValue;
+            const oldDisplay =
+              animTargetsRef.current[setId]?.to ??
+              displayValues[setId] ??
+              setValues[setId] ??
+              0;
+            if (Math.abs(newValue - oldDisplay) > 0.005) {
+              startAnimations({ [setId]: { from: oldDisplay, to: newValue } });
+            }
+            const prev = previousValue ?? 0;
+            const diff = newValue - prev;
+            if (Math.abs(diff) > 0.005) {
+              acc.newTrends[setId] = { dir: diff > 0 ? "up" : "down", diff: Math.abs(diff) };
+            }
+            acc.allPrev += prev;
+            acc.allNew += newValue;
+          } else {
+            acc.errors.push(set.name);
+          }
+        })
+        .catch(() => {
+          acc.done++;
+          acc.errors.push(set.name);
+          setRefreshProgress({ done: acc.done, total: visible.length, name: set.name });
+        })
+    );
+
+    Promise.all(promises).then(() => {
+      setSetValues((prev) => ({ ...prev, ...acc.newValues }));
+      setTrends(acc.newTrends);
+
+      const now = new Date().toISOString();
+      const refreshedIds = new Set(visible.map((s) => s.id));
+      const stampUpdatedAt = (s) => refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
+      setUserSets((prev) => prev.map(stampUpdatedAt));
+      setHiddenSets((prev) => prev.map(stampUpdatedAt));
+      setLastRefreshedAt(now);
+
+      if (acc.allPrev > 0.01) {
+        const diff = acc.allNew - acc.allPrev;
+        setPortfolioTrend({ diff, pct: (diff / acc.allPrev) * 100 });
+      }
+
+      setTotalFlash(true);
+      setTimeout(() => setTotalFlash(false), 600);
+
+      if (acc.errors.length) setRefreshErrors(acc.errors);
+      setRefreshProgress(null);
+      setRefreshing(false);
+      setRefreshDone(true);
+      refreshTimerRef.current = setTimeout(() => setRefreshDone(false), 3000);
+    }).catch(() => {
+      setRefreshErrors(["Network error — prices not updated"]);
+      setRefreshProgress(null);
+      setRefreshing(false);
+    });
   };
 
   // â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -767,7 +772,11 @@ export default function HomePage() {
             {refreshing && (
               <span className="flex items-center gap-1" style={{ color: "var(--po-green)" }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                <span className="text-[9px] normal-case tracking-normal">Updating</span>
+                <span className="text-[9px] normal-case tracking-normal">
+                  {refreshProgress && refreshProgress.total > 1
+                    ? `${refreshProgress.done}/${refreshProgress.total}`
+                    : "Updating"}
+                </span>
               </span>
             )}
           </div>
@@ -839,7 +848,17 @@ export default function HomePage() {
             {refreshDone ? (
               <><RefreshCw size={12} /> ✓ Updated</>
             ) : refreshing ? (
-              <><RefreshCw size={12} className="animate-spin flex-shrink-0" /> Updating…</>
+              <>
+                <RefreshCw size={12} className="animate-spin flex-shrink-0" />
+                <span className="truncate normal-case">
+                  {refreshProgress?.name || "Updating…"}
+                </span>
+                {refreshProgress && refreshProgress.total > 1 && (
+                  <span className="flex-shrink-0 opacity-60">
+                    ({refreshProgress.done}/{refreshProgress.total})
+                  </span>
+                )}
+              </>
             ) : (
               <><RefreshCw size={12} /> Refresh Prices</>
             )}

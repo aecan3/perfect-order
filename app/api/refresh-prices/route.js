@@ -429,15 +429,21 @@ export async function POST(request) {
   const slugMap = await getSlugCache();
   const results = [];
   let totalRequests = 0;
+  const BATCH = 3;
 
-  for (const setId of setIds) {
-    try {
-      const r = await processSet(admin, user.id, setId, slugMap);
-      totalRequests += r.requestsUsed ?? 0;
-      results.push(r);
-    } catch (err) {
-      results.push({ setId, error: err.message });
-    }
+  for (let i = 0; i < setIds.length; i += BATCH) {
+    const batch = setIds.slice(i, i + BATCH);
+    const settled = await Promise.allSettled(
+      batch.map((setId) => processSet(admin, user.id, setId, slugMap))
+    );
+    settled.forEach((outcome, j) => {
+      if (outcome.status === "fulfilled") {
+        totalRequests += outcome.value.requestsUsed ?? 0;
+        results.push(outcome.value);
+      } else {
+        results.push({ setId: batch[j], error: outcome.reason?.message ?? "unknown" });
+      }
+    });
   }
 
   console.log(`[Pricing] Session total API requests: ${totalRequests}`);
