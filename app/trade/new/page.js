@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowLeftRight, Check, AlertTriangle, ChevronDown } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -20,7 +20,11 @@ const fmtMoney = (usd, currency) => {
 
 export default function TradeNewPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">Loading...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
+        Loading...
+      </div>
+    }>
       <TradeNewInner />
     </Suspense>
   );
@@ -33,7 +37,7 @@ function TradeNewInner() {
 
   const recipientHandle = searchParams.get("with") || "";
 
-  // Discover passes a JSON array via `requests`; friend-set page passes individual params
+  // Parse requested cards — array from Discover (?requests=json) or single from friend-set page
   const requestedCards = (() => {
     const raw = searchParams.get("requests");
     if (raw) {
@@ -42,7 +46,6 @@ function TradeNewInner() {
         if (Array.isArray(parsed) && parsed.length) return parsed;
       } catch {}
     }
-    // Fallback: single-card params from friend set page
     const id = searchParams.get("request");
     if (!id) return [];
     return [{
@@ -59,15 +62,16 @@ function TradeNewInner() {
   const requestTotalPrice = requestedCards.reduce((s, c) => s + (Number(c.priceUsd) || 0), 0);
 
   const [currency, setCurrency] = useState("AUD");
-  const [me, setMe] = useState(null);
-  const [myCollection, setMyCollection] = useState([]);
+  const [allRows, setAllRows] = useState([]);
   const [showAll, setShowAll] = useState(false);
   const [selected, setSelected] = useState({});
-  const [openSets, setOpenSets] = useState({});
+  const [expandedSet, setExpandedSet] = useState(null);
+  const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
   const [understood, setUnderstood] = useState(false);
   const [status, setStatus] = useState("loading");
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -78,45 +82,115 @@ function TradeNewInner() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/welcome"); return; }
-      setMe(user);
 
+      // Step 1: collection_entries — flat, no joins (avoids PostgREST ambiguity)
       const PAGE = 1000;
-      const rows = [];
+      const entryRows = [];
       let from = 0;
       while (true) {
         const { data, error: fetchErr } = await supabase
           .from("collection_entries")
-          .select("printing_id, set_id, card_number, duplicate_count, is_graded, printing:printings(id, card_name, printing_label, image_url, price_usd, set_id, set:sets(name))")
+          .select("printing_id, set_id, card_number, duplicate_count")
           .eq("user_id", user.id)
           .eq("checked", true)
           .eq("is_graded", false)
           .range(from, from + PAGE - 1);
-        if (fetchErr) { setError(fetchErr.message); setStatus("error"); return; }
-        rows.push(...data);
-        if (data.length < PAGE) break;
+        if (fetchErr) { setLoadError(fetchErr.message); setStatus("error"); return; }
+        entryRows.push(...(data || []));
+        if ((data || []).length < PAGE) break;
         from += PAGE;
       }
 
-      const withPrinting = rows.filter((r) => r.printing);
-      setMyCollection(withPrinting);
+      if (entryRows.length === 0) {
+        setAllRows([]);
+        setStatus("ok");
+        return;
+      }
+
+      const printingIds = [...new Set(entryRows.map((e) => e.printing_id).filter(Boolean))];
+      const setIds = [...new Set(entryRows.map((e) => e.set_id).filter(Boolean))];
+
+      // Step 2: printings + sets in parallel
+      const [{ data: printingsData, error: pErr }, { data: setsData, error: sErr }] = await Promise.all([
+        supabase.from("printings").select("id, card_id, printing_label, image_url, price_usd").in("id", printingIds),
+        supabase.from("sets").select("id, name, logo_url, theme_primary").in("id", setIds),
+      ]);
+      if (pErr) { setLoadError(pErr.message); setStatus("error"); return; }
+      if (sErr) { setLoadError(sErr.message); setStatus("error"); return; }
+
+      // Step 3: card names from cards table
+      const cardIds = [...new Set((printingsData || []).map((p) => p.card_id).filter(Boolean))];
+      const { data: cardsData, error: cErr } = await supabase
+        .from("cards")
+        .select("id, name")
+        .in("id", cardIds);
+      if (cErr) { setLoadError(cErr.message); setStatus("error"); return; }
+
+      // Build lookup maps
+      const printingMap = Object.fromEntries((printingsData || []).map((p) => [p.id, p]));
+      const setMap = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
+      const cardMap = Object.fromEntries((cardsData || []).map((c) => [c.id, c]));
+
+      // Join client-side
+      const joined = entryRows
+        .filter((e) => e.printing_id && printingMap[e.printing_id])
+        .map((e) => {
+          const p = printingMap[e.printing_id];
+          const s = setMap[e.set_id] || {};
+          const c = cardMap[p.card_id] || {};
+          return {
+            printing_id: e.printing_id,
+            set_id: e.set_id,
+            card_number: e.card_number,
+            duplicate_count: e.duplicate_count || 0,
+            cardName: c.name || "",
+            printingLabel: p.printing_label || "",
+            imageUrl: p.image_url || "",
+            priceUsd: Number(p.price_usd) || 0,
+            setName: s.name || e.set_id,
+            setLogoUrl: s.logo_url || "",
+            setThemePrimary: s.theme_primary || "#b9ff3c",
+          };
+        });
+
+      setAllRows(joined);
       setStatus("ok");
     })();
   }, []);
 
-  const visibleCollection = useMemo(() => {
-    if (showAll) return myCollection;
-    return myCollection.filter((r) => (r.duplicate_count || 0) >= 1);
-  }, [myCollection, showAll]);
+  const visibleRows = useMemo(
+    () => (showAll ? allRows : allRows.filter((r) => r.duplicate_count >= 1)),
+    [allRows, showAll]
+  );
 
-  const groupedBySet = useMemo(() => {
+  const setGroups = useMemo(() => {
     const groups = {};
-    for (const row of visibleCollection) {
-      const setName = row.printing?.set?.name || row.set_id;
-      if (!groups[setName]) groups[setName] = [];
-      groups[setName].push(row);
+    for (const row of visibleRows) {
+      if (!groups[row.set_id]) {
+        groups[row.set_id] = {
+          setId: row.set_id,
+          setName: row.setName,
+          setLogoUrl: row.setLogoUrl,
+          setThemePrimary: row.setThemePrimary,
+          rows: [],
+        };
+      }
+      groups[row.set_id].rows.push(row);
     }
-    return groups;
-  }, [visibleCollection]);
+    return Object.values(groups).sort((a, b) => a.setName.localeCompare(b.setName));
+  }, [visibleRows]);
+
+  const searchLower = search.toLowerCase().trim();
+  const isSearching = searchLower.length > 0;
+  const searchResults = useMemo(() => {
+    if (!isSearching) return [];
+    return visibleRows.filter(
+      (r) =>
+        r.cardName.toLowerCase().includes(searchLower) ||
+        r.setName.toLowerCase().includes(searchLower) ||
+        String(r.card_number).includes(searchLower)
+    );
+  }, [visibleRows, searchLower, isSearching]);
 
   const toggleSelect = (printingId) => {
     setSelected((prev) => {
@@ -127,27 +201,32 @@ function TradeNewInner() {
     });
   };
 
-  const selectedRows = visibleCollection.filter((r) => selected[r.printing_id]);
-  const offerTotal = selectedRows.reduce((s, r) => s + (Number(r.printing?.price_usd) || 0), 0);
+  const selectedRows = useMemo(
+    () => visibleRows.filter((r) => selected[r.printing_id]),
+    [visibleRows, selected]
+  );
+  const offerTotal = useMemo(
+    () => selectedRows.reduce((s, r) => s + r.priceUsd, 0),
+    [selectedRows]
+  );
   const ratio = requestTotalPrice > 0 ? offerTotal / requestTotalPrice : null;
   const undervalued = ratio !== null && ratio < 0.75;
-
   const canSubmit = selectedRows.length > 0 && (!undervalued || understood);
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setSubmitError(null);
 
     const offerItems = selectedRows.map((r) => ({
       printing_id: r.printing_id,
-      card_name: r.printing?.card_name || "",
-      set_name: r.printing?.set?.name || "",
+      card_name: r.cardName,
+      set_name: r.setName,
       set_id: r.set_id,
       card_number: r.card_number,
-      price_usd: r.printing?.price_usd || null,
-      image_url: r.printing?.image_url || null,
-      printing_label: r.printing?.printing_label || null,
+      price_usd: r.priceUsd || null,
+      image_url: r.imageUrl || null,
+      printing_label: r.printingLabel || null,
     }));
 
     const requestItems = requestedCards.map((c) => ({
@@ -168,7 +247,7 @@ function TradeNewInner() {
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error || "Failed to propose trade");
+      setSubmitError(data.error || "Failed to propose trade");
       setSubmitting(false);
       return;
     }
@@ -179,209 +258,304 @@ function TradeNewInner() {
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading your duplicates...
+        Loading your collection…
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-6 gap-4">
+        <p className="text-sm text-rose-300 text-center">{loadError}</p>
+        <button onClick={() => router.back()} className="text-[var(--po-green)] underline text-sm">Go back</button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] flex flex-col max-w-sm mx-auto">
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/95 backdrop-blur px-4 pt-4 pb-3 border-b border-[var(--po-border)]">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-[var(--po-text-dim)] text-sm mb-3"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
-        <h1 className="font-black text-lg uppercase tracking-tight">Propose Trade</h1>
-        <p className="text-xs text-[var(--po-text-dim)] mt-0.5">with @{recipientHandle}</p>
-      </header>
+    <div className="h-screen bg-[var(--po-bg)] text-[var(--po-text)] overflow-hidden">
+      <div className="flex flex-col h-full max-w-sm mx-auto">
 
-      <div className="px-4 py-4 space-y-4 flex-1 overflow-y-auto pb-32">
-        {/* Requesting section */}
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
-            You want{requestedCards.length > 1 ? ` (${requestedCards.length} cards)` : ""}
-          </p>
-          {requestedCards.length === 1 ? (
-            <div className="flex items-center gap-3 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-xl p-3">
-              {requestedCards[0].imageUrl ? (
-                <img src={requestedCards[0].imageUrl} alt={requestedCards[0].cardName} className="w-14 h-20 object-cover rounded-lg flex-shrink-0" />
-              ) : (
-                <div className="w-14 h-20 rounded-lg bg-[var(--po-bg)] flex-shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-sm leading-tight">{requestedCards[0].cardName}</div>
-                {requestedCards[0].printingLabel && <div className="text-[10px] text-[var(--po-text-dim)] mt-0.5">{requestedCards[0].printingLabel}</div>}
-                <div className="text-[10px] text-[var(--po-text-dim)] mt-0.5">{requestedCards[0].setName}</div>
-                {requestedCards[0].priceUsd > 0 && (
-                  <div className="text-xs font-bold mt-1" style={{ color: "var(--po-green)" }}>
-                    {fmtMoney(requestedCards[0].priceUsd, currency)}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
-              {requestedCards.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex-none rounded-xl border border-[var(--po-border)] overflow-hidden bg-[var(--po-bg-soft)]"
-                  style={{ width: 100, scrollSnapAlign: "start" }}
-                >
-                  {c.imageUrl ? (
-                    <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 140 }} />
+        {/* Header */}
+        <header className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-[var(--po-border)]">
+          <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[var(--po-text-dim)] text-sm mb-2">
+            <ArrowLeft size={15} /> Back
+          </button>
+          <h1 className="font-black text-base uppercase tracking-tight">Propose Trade</h1>
+          <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">with @{recipientHandle}</p>
+        </header>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* You want — scrolls away */}
+          {requestedCards.length > 0 && (
+            <div className="px-4 py-3 border-b border-[var(--po-border)]">
+              <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
+                You want{requestedCards.length > 1 ? ` (${requestedCards.length})` : ""}
+              </p>
+              {requestedCards.length === 1 ? (
+                <div className="flex items-center gap-3 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-xl p-3">
+                  {requestedCards[0].imageUrl ? (
+                    <img src={requestedCards[0].imageUrl} alt={requestedCards[0].cardName} className="w-12 h-[68px] object-cover rounded-lg flex-shrink-0" />
                   ) : (
-                    <div className="flex items-center justify-center p-2 text-center text-[8px] text-[var(--po-text-dim)]" style={{ height: 140 }}>
-                      {c.cardName}
-                    </div>
+                    <div className="w-12 h-[68px] rounded-lg bg-[var(--po-bg)] flex-shrink-0" />
                   )}
-                  <div className="px-2 py-1.5">
-                    <div className="text-[9px] font-bold leading-tight line-clamp-2">{c.cardName}</div>
-                    {c.priceUsd > 0 && (
-                      <div className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                        {fmtMoney(c.priceUsd, currency)}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm leading-tight">{requestedCards[0].cardName}</div>
+                    {requestedCards[0].printingLabel && (
+                      <div className="text-[10px] text-[var(--po-text-dim)] mt-0.5">{requestedCards[0].printingLabel}</div>
+                    )}
+                    <div className="text-[10px] text-[var(--po-text-dim)] mt-0.5">{requestedCards[0].setName}</div>
+                    {requestedCards[0].priceUsd > 0 && (
+                      <div className="text-xs font-bold mt-1" style={{ color: "var(--po-green)" }}>
+                        {fmtMoney(requestedCards[0].priceUsd, currency)}
                       </div>
                     )}
                   </div>
                 </div>
-              ))}
+              ) : (
+                <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
+                  {requestedCards.map((c, i) => (
+                    <div key={i} className="flex-none rounded-xl border border-[var(--po-border)] overflow-hidden bg-[var(--po-bg-soft)]" style={{ width: 88, scrollSnapAlign: "start" }}>
+                      {c.imageUrl ? (
+                        <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} />
+                      ) : (
+                        <div className="flex items-center justify-center p-2 text-center text-[8px] text-[var(--po-text-dim)]" style={{ height: 120 }}>{c.cardName}</div>
+                      )}
+                      <div className="px-1.5 py-1.5">
+                        <div className="text-[9px] font-bold leading-tight line-clamp-2">{c.cardName}</div>
+                        {c.priceUsd > 0 && <div className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>{fmtMoney(c.priceUsd, currency)}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* Value bar */}
-        {requestTotalPrice > 0 && (
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[var(--po-text-dim)]">Your offer value</span>
-            <span className="font-bold tabular-nums" style={{ color: undervalued ? "#f87171" : "var(--po-green)" }}>
-              {fmtMoney(offerTotal, currency)}
-              {ratio !== null && (
-                <span className="ml-1 font-normal text-[var(--po-text-dim)]">
-                  ({Math.round(ratio * 100)}%)
+          {/* Sticky controls — sticks inside scroll container once "You want" scrolls off */}
+          <div className="sticky top-0 z-10 bg-[var(--po-bg)]/95 backdrop-blur border-b border-[var(--po-border)] px-4 py-3 space-y-2">
+            {/* Value bar */}
+            {requestTotalPrice > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[var(--po-text-dim)]">Your offer</span>
+                <span className="font-bold tabular-nums" style={{ color: undervalued ? "#f87171" : "var(--po-green)" }}>
+                  {fmtMoney(offerTotal, currency)}
+                  {ratio !== null && (
+                    <span className="ml-1 font-normal text-[var(--po-text-dim)]">
+                      ({Math.round(ratio * 100)}%)
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-          </div>
-        )}
+              </div>
+            )}
 
-        {undervalued && !understood && (
-          <div className="rounded-xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2 text-amber-400 text-xs font-bold">
-              <AlertTriangle size={14} />
-              Offer is less than 75% of card value
+            {/* 75% warning */}
+            {undervalued && !understood && (
+              <div className="rounded-xl border border-amber-700/60 bg-amber-950/40 px-3 py-2 space-y-1">
+                <div className="flex items-center gap-2 text-amber-400 text-xs font-bold">
+                  <AlertTriangle size={12} /> Offer under 75% of card value
+                </div>
+                <p className="text-[10px] text-amber-200/70 leading-relaxed">Your friend may decline this offer.</p>
+                <button onClick={() => setUnderstood(true)} className="text-[10px] font-bold text-amber-400 underline">
+                  I understand, send anyway
+                </button>
+              </div>
+            )}
+
+            {/* Toggle + search row */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
+                {showAll ? "Your collection" : "Your duplicates"}
+              </span>
+              <button
+                onClick={() => { setShowAll((v) => !v); setSelected({}); }}
+                className="text-[10px] font-bold uppercase tracking-widest"
+                style={{ color: "var(--po-green)" }}
+              >
+                {showAll ? "Dupes only" : "All cards"}
+              </button>
             </div>
-            <p className="text-xs text-amber-200/70 leading-relaxed">
-              The cards you are offering are worth significantly less than the card you are requesting. Your friend may decline.
-            </p>
-            <button
-              onClick={() => setUnderstood(true)}
-              className="text-xs font-bold text-amber-400 underline"
-            >
-              I understand, send anyway
-            </button>
-          </div>
-        )}
 
-        {/* Offer selection */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
-              {showAll ? "Your collection" : "Your duplicates"}
-            </p>
-            <button
-              onClick={() => { setShowAll((v) => !v); setSelected({}); }}
-              className="text-[10px] font-bold uppercase tracking-widest"
-              style={{ color: "var(--po-green)" }}
-            >
-              {showAll ? "Duplicates only" : "Show all cards"}
-            </button>
+            <div className="relative">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--po-text-dim)] pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search cards or sets…"
+                className="w-full pl-8 pr-7 py-2 text-xs bg-[var(--po-bg)] border border-[var(--po-border)] rounded-xl text-[var(--po-text)] placeholder:text-[var(--po-text-dim)] focus:outline-none focus:border-[var(--po-green)]"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                  <X size={12} className="text-[var(--po-text-dim)]" />
+                </button>
+              )}
+            </div>
           </div>
-          {visibleCollection.length === 0 ? (
-            <p className="text-sm text-[var(--po-text-dim)] py-4 text-center">
-              {showAll ? "No cards in your collection yet." : "No duplicates yet — tap 'Show all cards' to offer any card."}
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(groupedBySet).map(([setName, rows]) => {
-                const isOpen = openSets[setName] !== false;
-                return (
-                  <div key={setName} className="rounded-xl border border-[var(--po-border)] overflow-hidden">
+
+          {/* Card list */}
+          <div className="px-4 pt-3 pb-8">
+            {visibleRows.length === 0 && (
+              <p className="text-sm text-[var(--po-text-dim)] py-8 text-center">
+                {showAll
+                  ? "No cards in your collection yet."
+                  : "No duplicates yet — tap 'All cards' to offer any card."}
+              </p>
+            )}
+
+            {isSearching ? (
+              /* Flat search results */
+              <div className="space-y-1">
+                {searchResults.length === 0 && visibleRows.length > 0 && (
+                  <p className="text-sm text-[var(--po-text-dim)] py-8 text-center">No cards match "{search}"</p>
+                )}
+                {searchResults.map((row) => {
+                  const isSel = !!selected[row.printing_id];
+                  return (
                     <button
-                      onClick={() => setOpenSets((p) => ({ ...p, [setName]: !isOpen }))}
-                      className="w-full flex items-center justify-between px-3 py-2.5 bg-[var(--po-bg-soft)]"
+                      key={row.printing_id}
+                      onClick={() => toggleSelect(row.printing_id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left"
+                      style={{
+                        borderColor: isSel ? "var(--po-green)" : "var(--po-border)",
+                        background: isSel ? "rgba(200,255,74,0.06)" : "transparent",
+                      }}
                     >
-                      <span className="text-xs font-bold">{setName}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-[var(--po-text-dim)]">
-                          {rows.filter((r) => selected[r.printing_id]).length}/{rows.length}
-                        </span>
-                        <ChevronDown size={14} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                      <div
+                        className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: isSel ? "var(--po-green)" : "transparent",
+                          border: `2px solid ${isSel ? "var(--po-green)" : "var(--po-border)"}`,
+                        }}
+                      >
+                        {isSel && <Check size={11} strokeWidth={3} className="text-black" />}
                       </div>
+                      {row.imageUrl && (
+                        <img src={row.imageUrl} alt={row.cardName} className="w-8 h-11 object-cover rounded flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold truncate">{row.cardName}</div>
+                        <div className="text-[10px] text-[var(--po-text-dim)] truncate">{row.setName} · {row.printingLabel}</div>
+                      </div>
+                      {row.priceUsd > 0 && (
+                        <span className="text-xs font-bold flex-shrink-0 tabular-nums" style={{ color: "var(--po-green)" }}>
+                          {fmtMoney(row.priceUsd, currency)}
+                        </span>
+                      )}
                     </button>
-                    {isOpen && (
-                      <div className="divide-y divide-[var(--po-border)]">
-                        {rows.map((row) => {
-                          const p = row.printing;
-                          const isSelected = !!selected[row.printing_id];
-                          return (
-                            <button
-                              key={row.printing_id}
-                              onClick={() => toggleSelect(row.printing_id)}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
-                              style={{ background: isSelected ? "rgba(200,255,74,0.06)" : undefined }}
-                            >
-                              <div
-                                className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                  );
+                })}
+              </div>
+            ) : (
+              /* Set-grouped view */
+              <div className="space-y-2">
+                {setGroups.map((group) => {
+                  const isExpanded = expandedSet === group.setId;
+                  const selCount = group.rows.filter((r) => selected[r.printing_id]).length;
+                  return (
+                    <div key={group.setId} className="rounded-xl overflow-hidden border border-[var(--po-border)]">
+                      <button
+                        onClick={() => setExpandedSet(isExpanded ? null : group.setId)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                        style={{ background: "var(--po-bg-soft)" }}
+                      >
+                        {group.setLogoUrl ? (
+                          <img src={group.setLogoUrl} alt={group.setName} className="h-6 w-auto flex-shrink-0 object-contain" style={{ maxWidth: 48 }} />
+                        ) : (
+                          <div className="w-8 h-6 rounded flex-shrink-0" style={{ background: group.setThemePrimary + "30" }} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-bold block truncate">{group.setName}</span>
+                          <span className="text-[10px] text-[var(--po-text-dim)]">
+                            {group.rows.length} card{group.rows.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        {selCount > 0 && (
+                          <span
+                            className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            style={{ background: "var(--po-green)", color: "#050507" }}
+                          >
+                            {selCount}
+                          </span>
+                        )}
+                        <ChevronDown
+                          size={14}
+                          className={`text-[var(--po-text-dim)] transition-transform flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`}
+                        />
+                      </button>
+
+                      {isExpanded && (
+                        <div className="grid grid-cols-3 gap-2 p-2 border-t border-[var(--po-border)]" style={{ background: "var(--po-bg)" }}>
+                          {group.rows.map((row) => {
+                            const isSel = !!selected[row.printing_id];
+                            return (
+                              <button
+                                key={row.printing_id}
+                                onClick={() => toggleSelect(row.printing_id)}
+                                className="relative flex flex-col rounded-lg overflow-hidden text-left"
                                 style={{
-                                  background: isSelected ? "var(--po-green)" : "transparent",
-                                  border: `2px solid ${isSelected ? "var(--po-green)" : "var(--po-border)"}`,
+                                  outline: isSel ? "2px solid var(--po-green)" : "2px solid transparent",
+                                  outlineOffset: 1,
                                 }}
                               >
-                                {isSelected && <Check size={11} strokeWidth={3} className="text-black" />}
-                              </div>
-                              {p?.image_url && (
-                                <img src={p.image_url} alt={p.card_name} className="w-8 h-11 object-cover rounded flex-shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold truncate">{p?.card_name}</div>
-                                <div className="text-[10px] text-[var(--po-text-dim)]">{p?.printing_label}</div>
-                                {(row.duplicate_count || 0) > 1 && (
-                                  <div className="text-[10px] text-[var(--po-text-dim)]">x{row.duplicate_count} dupes</div>
-                                )}
-                              </div>
-                              {p?.price_usd > 0 && (
-                                <span className="text-xs font-bold flex-shrink-0 tabular-nums" style={{ color: "var(--po-green)" }}>
-                                  {fmtMoney(p.price_usd, currency)}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                                <div className="relative bg-black/20" style={{ aspectRatio: "2.5/3.5" }}>
+                                  {row.imageUrl ? (
+                                    <img src={row.imageUrl} alt={row.cardName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center p-1 text-center text-[7px] text-[var(--po-text-dim)]">
+                                      {row.cardName}
+                                    </div>
+                                  )}
+                                  {isSel && (
+                                    <div
+                                      className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
+                                      style={{ background: "var(--po-green)" }}
+                                    >
+                                      <Check size={9} strokeWidth={3} className="text-black" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="px-1 pt-1 pb-1.5" style={{ background: "var(--po-bg-soft)" }}>
+                                  <p className="text-[8px] font-bold leading-tight line-clamp-1 text-[var(--po-text)]">{row.cardName}</p>
+                                  {row.priceUsd > 0 && (
+                                    <p className="text-[8px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
+                                      {fmtMoney(row.priceUsd, currency)}
+                                    </p>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Sticky footer */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-sm mx-auto px-4 pb-6 pt-3 bg-[var(--po-bg)]/95 backdrop-blur border-t border-[var(--po-border)]">
-        {error && (
-          <p className="text-xs text-rose-400 mb-2 text-center">{error}</p>
-        )}
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit || submitting}
-          className="w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-40 po-glow-green flex items-center justify-center gap-2"
-          style={{ background: "var(--po-green)" }}
-        >
-          <ArrowLeftRight size={14} />
-          {submitting ? "Sending..." : selectedRows.length === 0 ? "Select cards to offer" : `Propose Trade (${selectedRows.length} card${selectedRows.length !== 1 ? "s" : ""})`}
-        </button>
+        {/* Footer — always visible at bottom */}
+        <div className="flex-shrink-0 border-t border-[var(--po-border)] px-4 py-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+          {submitError && <p className="text-xs text-rose-400 mb-2 text-center">{submitError}</p>}
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit || submitting}
+            className="w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-40 po-glow-green flex items-center justify-center gap-2"
+            style={{ background: "var(--po-green)" }}
+          >
+            <ArrowLeftRight size={14} />
+            {submitting
+              ? "Sending…"
+              : selectedRows.length === 0
+              ? "Select cards to offer"
+              : `Propose Trade (${selectedRows.length} card${selectedRows.length !== 1 ? "s" : ""})`}
+          </button>
+        </div>
+
       </div>
     </div>
   );
