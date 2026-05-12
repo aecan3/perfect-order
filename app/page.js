@@ -9,6 +9,7 @@ import {
   RefreshCw, Clock, MessageCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { BracketHeading } from "@/components/BracketHeading";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -856,7 +857,7 @@ export default function HomePage() {
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="po-wordmark text-2xl">My Sets</h1>
+            <BracketHeading className="text-2xl">My Sets</BracketHeading>
             <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{profile?.handle}</p>
           </div>
           <div className="flex items-center gap-3">

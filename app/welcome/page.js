@@ -54,7 +54,7 @@ export default function WelcomePage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] flex flex-col px-6 py-12 max-w-sm mx-auto">
       <div className="flex-1 flex flex-col justify-center">
-        <MasterSetterLogo variant="stacked" height={96} className="mb-3" />
+        <MasterSetterLogo variant="stacked" height={96} className="mb-3 mx-auto" />
         <p className="text-[var(--po-text-dim)] text-base leading-relaxed mb-10">
           Track your collection.<br />Trade with friends.
         </p>

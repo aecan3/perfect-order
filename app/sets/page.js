@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { BracketHeading } from "@/components/BracketHeading";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -442,7 +443,7 @@ export default function SetBrowserPage() {
           <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="po-wordmark text-xl">Add a Set</h1>
+          <BracketHeading className="text-xl">Add a Set</BracketHeading>
         </div>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--po-text-dim)]" />
