@@ -34,6 +34,33 @@ const withTimeout = (promise, ms, label) =>
     ),
   ]);
 
+// -- Per-source health tracking -----------------------------------------------
+// In-memory cache that records whether a source returned prices for a given set.
+// Survives for the lifetime of the Function instance (Fluid Compute reuses them).
+// After 24h the record expires and the source is retried from scratch.
+//
+// Keys:  "${setId}:${source}"   (source = poketrace | ptcgio | ppt | pokescope)
+// Value: { ok: boolean, at: number (timestamp) }
+//
+// "skip" means: this source returned null for this set on the last attempt.
+// "unknown" means: never tried, or the record expired.
+const _health = new Map();
+const HEALTH_TTL_MS = 24 * 60 * 60 * 1000;
+
+function sourceStatus(setId, source) {
+  const entry = _health.get(`${setId}:${source}`);
+  if (!entry) return "unknown";
+  if (Date.now() - entry.at > HEALTH_TTL_MS) {
+    _health.delete(`${setId}:${source}`);
+    return "unknown";
+  }
+  return entry.ok ? "ok" : "skip";
+}
+
+function recordSource(setId, source, ok) {
+  _health.set(`${setId}:${source}`, { ok, at: Date.now() });
+}
+
 // -- PokeTrace slug cache -----------------------------------------------------
 // setName.toLowerCase() -> slug; built once, survives instance lifetime (~27 API calls)
 let _slugCache = null;
@@ -66,8 +93,41 @@ async function getSlugCache() {
 // -- Source 1: PokeTrace ------------------------------------------------------
 // Returns { map: Map<printingId, {price_usd?, price_eur?}>, requestsUsed } | null
 // Null when 0 singles found (only sealed products or no data for this tier).
+//
+// Strategy: probe first with limit=1 and a short timeout (4s). If the probe
+// returns no singles or times out, we skip the slug immediately rather than
+// waiting up to FETCH_MS for every pagination page to timeout. This turns a
+// potential 12s+ hang into a <4s fast-fail for slugs that map to the wrong set
+// or to sealed-product-only listings.
 async function tryPokeTrace(slug, allPrintings) {
-  // cardNumber(int) -> [printingId]  (same price applied to all variants of a card)
+  // -- Probe: verify slug has singles before committing to paginated fetch -----
+  const PROBE_MS = 4_000;
+  try {
+    const probe = await fetch(
+      `${POKETRACE_BASE}/cards?set=${encodeURIComponent(slug)}&limit=1`,
+      {
+        headers: { "X-API-Key": process.env.POKETRACE_API_KEY },
+        signal: AbortSignal.timeout(PROBE_MS),
+      }
+    );
+    if (!probe.ok) {
+      console.warn(`[PokeTrace] probe ${probe.status} for slug "${slug}" - skipping`);
+      return null;
+    }
+    const probeJson = await probe.json();
+    const singles = (probeJson.data ?? []).filter(
+      (c) => c.productType !== "sealed" && c.cardNumber != null
+    );
+    if (singles.length === 0) {
+      console.warn(`[PokeTrace] probe: no singles for slug "${slug}" - skipping (sealed-only or wrong slug)`);
+      return null;
+    }
+  } catch (err) {
+    console.warn(`[PokeTrace] probe failed for slug "${slug}": ${err.message} - skipping`);
+    return null;
+  }
+
+  // -- Full paginated fetch (slug verified) ------------------------------------
   const byNumber = new Map();
   for (const p of allPrintings) {
     if (!byNumber.has(p.card_number)) byNumber.set(p.card_number, []);
@@ -91,7 +151,7 @@ async function tryPokeTrace(slug, allPrintings) {
       });
       requestsUsed++;
     } catch (err) {
-      console.warn(`[PokeTrace] fetch error for ${slug} (page cursor=${cursor ?? "start"}): ${err.message}`);
+      console.warn(`[PokeTrace] fetch error for ${slug} (cursor=${cursor ?? "start"}): ${err.message}`);
       break;
     }
     if (!res.ok) {
@@ -494,63 +554,97 @@ async function processSet(admin, userId, setId, slugMap) {
     return { setId, cardsUpdated: 0, previousValue, newValue: previousValue, requestsUsed: 0, priceSource: "cached" };
   }
 
-  // 2. Waterfall - PokeTrace -> pokemontcg.io -> PPT -> PokeScope (ME only)
+  // 2. Waterfall - PokeTrace -> ptcgio -> PPT -> PokeScope (ME only)
+  //
+  // Source selection is data-driven via health tracking:
+  //   - "unknown": never tried, or 24h TTL expired -> attempt
+  //   - "ok":      succeeded last time -> attempt (prices may have changed)
+  //   - "skip":    returned null last time -> skip until TTL expires
+  //
+  // PPT is coupled to ptcgio: PPT resolves card prices by numeric TCGPlayer ID
+  // which it derives from ptcgio card data. If ptcgio has no data for a set
+  // (e.g. custom internal IDs like rsv10pt5 that aren't in ptcgio's DB), PPT
+  // will also return nothing. We record both as skip simultaneously.
   const setName = setRow?.name ?? "";
   const slug = ME_SETS.has(setId) ? null : (slugMap[setName.toLowerCase()] ?? null);
   const L = `[${setId}/${setName || "?"}]`;
 
-  console.log(`${L} processSet: ${printings.length} printings, slug=${slug ?? "none"}, isME=${ME_SETS.has(setId)}`);
+  console.log(`${L} start: ${printings.length} printings, slug=${slug ?? "none"}, isME=${ME_SETS.has(setId)}`);
 
   let result = null;
   let priceSource = "none";
   let requestsUsed = 0;
 
+  // -- PokeTrace ---------------------------------------------------------------
   if (slug) {
-    const t = Date.now();
-    console.log(`${L} trying PokeTrace slug="${slug}"`);
-    try {
-      result = await tryPokeTrace(slug, printings);
-    } catch (err) {
-      console.warn(`${L} PokeTrace threw: ${err.message}`);
+    const status = sourceStatus(setId, "poketrace");
+    if (status === "skip") {
+      console.log(`${L} PokeTrace: skipped (returned null within last 24h)`);
+    } else {
+      const t = Date.now();
+      console.log(`${L} PokeTrace: trying slug="${slug}"`);
+      try { result = await tryPokeTrace(slug, printings); }
+      catch (err) { console.warn(`${L} PokeTrace threw: ${err.message}`); }
+      recordSource(setId, "poketrace", result !== null);
+      console.log(`${L} PokeTrace: ${result ? `${result.map.size} prices` : "null"} in ${Date.now() - t}ms`);
+      if (result) { priceSource = "poketrace"; requestsUsed += result.requestsUsed; }
     }
-    console.log(`${L} PokeTrace done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
-    if (result) { priceSource = "poketrace"; requestsUsed += result.requestsUsed; }
   }
 
+  // -- pokemontcg.io -----------------------------------------------------------
   if (!result) {
-    const t = Date.now();
-    console.log(`${L} trying ptcgio setId="${setId}"`);
-    try {
-      result = await tryPtcgio(setId, printings);
-    } catch (err) {
-      console.warn(`${L} ptcgio threw: ${err.message}`);
+    const status = sourceStatus(setId, "ptcgio");
+    if (status === "skip") {
+      console.log(`${L} ptcgio: skipped (returned null within last 24h)`);
+    } else {
+      const t = Date.now();
+      console.log(`${L} ptcgio: trying setId="${setId}"`);
+      try { result = await tryPtcgio(setId, printings); }
+      catch (err) { console.warn(`${L} ptcgio threw: ${err.message}`); }
+      const ptcgioOk = result !== null;
+      recordSource(setId, "ptcgio", ptcgioOk);
+      if (!ptcgioOk) {
+        // PPT resolves prices via ptcgio card IDs - no point trying if ptcgio has no data
+        recordSource(setId, "ppt", false);
+        console.warn(`${L} ptcgio: null in ${Date.now() - t}ms - marking ppt as skip too`);
+      } else {
+        console.log(`${L} ptcgio: ${result.map.size} prices in ${Date.now() - t}ms`);
+        priceSource = "ptcgio";
+        requestsUsed += result.requestsUsed;
+      }
     }
-    console.log(`${L} ptcgio done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
-    if (result) { priceSource = "ptcgio"; requestsUsed += result.requestsUsed; }
   }
 
+  // -- PokemonPriceTracker -----------------------------------------------------
   if (!result) {
-    const t = Date.now();
-    console.log(`${L} trying PPT setId="${setId}"`);
-    try {
-      result = await tryPpt(setId, printings);
-    } catch (err) {
-      console.warn(`${L} PPT threw: ${err.message}`);
+    const status = sourceStatus(setId, "ppt");
+    if (status === "skip") {
+      console.log(`${L} PPT: skipped (ptcgio had no data for this set in last 24h)`);
+    } else {
+      const t = Date.now();
+      console.log(`${L} PPT: trying setId="${setId}"`);
+      try { result = await tryPpt(setId, printings); }
+      catch (err) { console.warn(`${L} PPT threw: ${err.message}`); }
+      recordSource(setId, "ppt", result !== null);
+      console.log(`${L} PPT: ${result ? `${result.map.size} prices` : "null"} in ${Date.now() - t}ms`);
+      if (result) { priceSource = "ppt"; requestsUsed += result.requestsUsed; }
     }
-    console.log(`${L} PPT done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
-    if (result) { priceSource = "ppt"; requestsUsed += result.requestsUsed; }
   }
 
+  // -- PokeScope (ME sets only) ------------------------------------------------
   if (!result && ME_SETS.has(setId)) {
-    const t = Date.now();
-    console.log(`${L} trying PokeScope`);
-    try {
-      result = await tryPokeScope(setId, printings);
-    } catch (err) {
-      console.warn(`${L} PokeScope threw: ${err.message}`);
+    const status = sourceStatus(setId, "pokescope");
+    if (status === "skip") {
+      console.log(`${L} PokeScope: skipped (returned null within last 24h)`);
+    } else {
+      const t = Date.now();
+      console.log(`${L} PokeScope: trying`);
+      try { result = await tryPokeScope(setId, printings); }
+      catch (err) { console.warn(`${L} PokeScope threw: ${err.message}`); }
+      recordSource(setId, "pokescope", result !== null);
+      console.log(`${L} PokeScope: ${result ? `${result.map.size} prices` : "null"} in ${Date.now() - t}ms`);
+      if (result) { priceSource = "pokescope"; requestsUsed += result.requestsUsed; }
     }
-    console.log(`${L} PokeScope done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
-    if (result) { priceSource = "pokescope"; requestsUsed += result.requestsUsed; }
   }
 
   console.log(
