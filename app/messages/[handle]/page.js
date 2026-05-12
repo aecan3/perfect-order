@@ -247,6 +247,9 @@ export default function ThreadPage() {
                             )}
                           </div>
                           <p className="text-[8px] text-[var(--po-text-faint)] leading-relaxed">
+                            This photo will be automatically deleted when the trade completes.
+                          </p>
+                          <p className="text-[8px] text-[var(--po-text-faint)] leading-relaxed">
                             Photo confirmation only. Master Setter does not authenticate or guarantee card condition.
                           </p>
                         </div>

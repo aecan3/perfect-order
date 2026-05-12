@@ -107,9 +107,14 @@ export function CameraCapture({ onCapture, onClose }) {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext("2d").drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    setCaptured(dataUrl);
-    stopCamera();
+    canvas.toBlob((blob) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCaptured(reader.result);
+        stopCamera();
+      };
+      reader.readAsDataURL(blob);
+    }, "image/jpeg", 0.7);
   };
 
   const retake = () => {

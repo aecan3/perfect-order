@@ -274,9 +274,14 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
               )}
 
               {myVerification?.confirmed && (
-                <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)] border-t border-[var(--po-border)] pt-3">
-                  {DISCLAIMER}
-                </p>
+                <div className="border-t border-[var(--po-border)] pt-3 space-y-2">
+                  <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)]">
+                    Your verification photo will be automatically deleted when the trade completes.
+                  </p>
+                  <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)]">
+                    {DISCLAIMER}
+                  </p>
+                </div>
               )}
 
               {bothVerified && (
