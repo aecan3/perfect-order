@@ -1,26 +1,24 @@
-﻿import { createServerClient } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-// â”€â”€ API bases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- API bases ----------------------------------------------------------------
 const POKETRACE_BASE  = "https://api.poketrace.com/v1";
 const PTCG_BASE       = "https://api.pokemontcg.io/v2/cards";
 const PPT_BASE        = "https://www.pokemonpricetracker.com/api/v2";
 const POKESCOPE_BASE  = "https://pokescope.app/card";
 
-// ME sets have no PokeTrace individual card data â€” skip source 1 for these
+// ME sets have no PokeTrace individual card data - skip source 1 for these
 const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
 
 // Skip external API fetch if prices were refreshed within this window
 const PRICE_STALENESS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-// pokemontcg.io price key camelCase â†’ snake_case (builds printing ID suffix)
+// pokemontcg.io price key camelCase -> snake_case (builds printing ID suffix)
 const toSnake = (s) => s.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// â”€â”€ PokeTrace slug cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// setName.toLowerCase() â†’ slug; built once, survives instance lifetime (~27 API calls)
+// -- PokeTrace slug cache -----------------------------------------------------
+// setName.toLowerCase() -> slug; built once, survives instance lifetime (~27 API calls)
 let _slugCache = null;
 let _slugCachePromise = null;
 
@@ -41,7 +39,6 @@ async function getSlugCache() {
       const json = await res.json();
       for (const s of json.data ?? []) map[s.name.toLowerCase()] = s.slug;
       cursor = json.pagination?.hasMore ? json.pagination.nextCursor : null;
-      if (cursor) await sleep(500);
     } while (cursor);
     _slugCache = map;
     return map;
@@ -49,11 +46,11 @@ async function getSlugCache() {
   return _slugCachePromise;
 }
 
-// â”€â”€ Source 1: PokeTrace â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Source 1: PokeTrace ------------------------------------------------------
 // Returns { map: Map<printingId, {price_usd?, price_eur?}>, requestsUsed } | null
 // Null when 0 singles found (only sealed products or no data for this tier).
 async function tryPokeTrace(slug, allPrintings) {
-  // cardNumber(int) â†’ [printingId]  (same price applied to all variants of a card)
+  // cardNumber(int) -> [printingId]  (same price applied to all variants of a card)
   const byNumber = new Map();
   for (const p of allPrintings) {
     if (!byNumber.has(p.card_number)) byNumber.set(p.card_number, []);
@@ -91,7 +88,6 @@ async function tryPokeTrace(slug, allPrintings) {
     }
 
     cursor = json.pagination?.hasMore ? json.pagination.nextCursor : null;
-    if (cursor) await sleep(400);
   } while (cursor);
 
   if (singlesFound === 0) return null;
@@ -109,7 +105,7 @@ async function tryPokeTrace(slug, allPrintings) {
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// â”€â”€ Source 2: pokemontcg.io â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Source 2: pokemontcg.io --------------------------------------------------
 // Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
 // Matches by printing ID directly (printing type encoded in the ID suffix).
 async function tryPtcgio(setId, allPrintings) {
@@ -151,10 +147,10 @@ async function tryPtcgio(setId, allPrintings) {
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// â”€â”€ Source 3: PokemonPriceTracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Source 3: PokemonPriceTracker --------------------------------------------
 // Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
 // PPT requires numeric TCGPlayer product IDs. Resolution flow per card:
-//   pokemontcg.io tcgplayer.url â†’ prices.pokemontcg.io proxy 302 â†’ product/{numericId}
+//   pokemontcg.io tcgplayer.url -> prices.pokemontcg.io proxy 302 -> product/{numericId}
 // One PPT call per card covers all printing variants via prices.variants map.
 async function tryPpt(setId, allPrintings) {
   if (!process.env.POKEMON_PRICE_TRACKER_KEY) return null;
@@ -184,28 +180,23 @@ async function tryPpt(setId, allPrintings) {
   if (!tcgCards.length) return null;
 
   // Step 2: follow pokemontcg.io proxy redirects to resolve numeric product IDs
-  const productIdByNumber = new Map(); // cardNumber(str) â†’ numericId(str)
-  const PARALLEL = 20;
+  const productIdByNumber = new Map(); // cardNumber(str) -> numericId(str)
   const cardsWithUrl = tcgCards.filter((c) => c.tcgplayer?.url);
 
-  for (let i = 0; i < cardsWithUrl.length; i += PARALLEL) {
-    const batch = cardsWithUrl.slice(i, i + PARALLEL);
-    await Promise.all(
-      batch.map(async (card) => {
-        try {
-          const res = await fetch(
-            `https://prices.pokemontcg.io/tcgplayer/${card.id}`,
-            { redirect: "manual" }
-          );
-          requestsUsed++;
-          const location = res.headers.get("location") ?? "";
-          const match = location.match(/product\/(\d+)/);
-          if (match) productIdByNumber.set(card.number, match[1]);
-        } catch {}
-      })
-    );
-    if (i + PARALLEL < cardsWithUrl.length) await sleep(200);
-  }
+  await Promise.all(
+    cardsWithUrl.map(async (card) => {
+      try {
+        const res = await fetch(
+          `https://prices.pokemontcg.io/tcgplayer/${card.id}`,
+          { redirect: "manual" }
+        );
+        requestsUsed++;
+        const location = res.headers.get("location") ?? "";
+        const match = location.match(/product\/(\d+)/);
+        if (match) productIdByNumber.set(card.number, match[1]);
+      } catch {}
+    })
+  );
 
   if (!productIdByNumber.size) return null;
 
@@ -221,35 +212,31 @@ async function tryPpt(setId, allPrintings) {
   const priceMap = new Map();
   const entries = [...productIdByNumber.entries()];
 
-  for (let i = 0; i < entries.length; i += PARALLEL) {
-    const batch = entries.slice(i, i + PARALLEL);
-    await Promise.all(
-      batch.map(async ([cardNumber, productId]) => {
-        try {
-          const res = await fetch(
-            `${PPT_BASE}/cards?tcgPlayerId=${encodeURIComponent(productId)}&includeHistory=false`,
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.POKEMON_PRICE_TRACKER_KEY}`,
-                Accept: "application/json",
-              },
-            }
-          );
-          requestsUsed++;
-          if (!res.ok) return;
-          const json = await res.json();
-          const prices = (Array.isArray(json.data) ? null : json.data)?.prices;
-          if (!prices) return;
-
-          for (const p of printingsByNumber.get(cardNumber) ?? []) {
-            const price = pptVariantPrice(p.id, setId, cardNumber, prices);
-            if (price != null && price > 0) priceMap.set(p.id, { price_usd: price });
+  await Promise.all(
+    entries.map(async ([cardNumber, productId]) => {
+      try {
+        const res = await fetch(
+          `${PPT_BASE}/cards?tcgPlayerId=${encodeURIComponent(productId)}&includeHistory=false`,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.POKEMON_PRICE_TRACKER_KEY}`,
+              Accept: "application/json",
+            },
           }
-        } catch {}
-      })
-    );
-    if (i + PARALLEL < entries.length) await sleep(200);
-  }
+        );
+        requestsUsed++;
+        if (!res.ok) return;
+        const json = await res.json();
+        const prices = (Array.isArray(json.data) ? null : json.data)?.prices;
+        if (!prices) return;
+
+        for (const p of printingsByNumber.get(cardNumber) ?? []) {
+          const price = pptVariantPrice(p.id, setId, cardNumber, prices);
+          if (price != null && price > 0) priceMap.set(p.id, { price_usd: price });
+        }
+      } catch {}
+    })
+  );
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
@@ -268,8 +255,8 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
   }
 }
 
-// â”€â”€ DB write helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// UPDATE only â€” never INSERT. Printing rows are seeded separately; this route
+// -- DB write helper ----------------------------------------------------------
+// UPDATE only - never INSERT. Printing rows are seeded separately; this route
 // only writes price columns on existing rows. Upsert would fail with NOT NULL
 // violations on card_id and other required columns.
 async function batchUpdate(admin, updates) {
@@ -285,13 +272,11 @@ async function batchUpdate(admin, updates) {
   }
 }
 
-// â”€â”€ Source 4: PokeScope (ME sets only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Source 4: PokeScope (ME sets only) ---------------------------------------
 // Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
 // Page contains text like "Market Price (TCG holofoil) $1.11".
-// Rate limit: 800ms between requests. me2pt5 has 295 cards â†’ ~240s.
-// Skips cards that already have a price so partial scrapes resume efficiently.
-// flushCallback is called every 25 cards to survive Vercel's 300s function limit.
-async function tryPokeScope(setId, allPrintings, flushCallback = null) {
+// All cards are fetched in parallel.
+async function tryPokeScope(setId, allPrintings) {
   const printingsByNumber = new Map();
   for (const p of allPrintings) {
     const num = String(p.card_number);
@@ -299,86 +284,69 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
     printingsByNumber.get(num).push(p);
   }
 
-  // On first run (all prices null) skip already-priced cards for timeout resilience.
-  // On a refresh (some prices exist) scrape everything to keep prices current.
-  const allUnpriced = allPrintings.every((p) => !(p.price_usd > 0));
-  const numbers = allUnpriced
-    ? [...printingsByNumber.keys()].filter((num) => !printingsByNumber.get(num).some((p) => p.price_usd > 0))
-    : [...printingsByNumber.keys()];
+  const numbers = [...printingsByNumber.keys()];
   const priceMap = new Map();
   let requestsUsed = 0;
-  let cardCount = 0;
 
-  for (const cardNumber of numbers) {
-    try {
-      const url = `${POKESCOPE_BASE}/${setId}-${cardNumber}`;
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5",
-        },
-      });
-      requestsUsed++;
+  await Promise.all(
+    numbers.map(async (cardNumber) => {
+      try {
+        const url = `${POKESCOPE_BASE}/${setId}-${cardNumber}`;
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+          },
+        });
+        requestsUsed++;
 
-      if (!res.ok) {
-        console.warn(`[PokeScope] ${res.status} for ${setId}-${cardNumber}`);
-        await sleep(1000);
-        continue;
-      }
-
-      const html = await res.text();
-      // Scan all "market price" occurrences â€” the first few are in meta tags (no $).
-      // React also injects <!-- --> comment nodes around text, so strip those first.
-      // Stop at the first occurrence whose 500-char window contains a dollar amount.
-      const lowerHtml = html.toLowerCase();
-      let amtMatch = null;
-      let searchFrom = 0;
-      while (!amtMatch) {
-        const mpIdx = lowerHtml.indexOf("market price", searchFrom);
-        if (mpIdx === -1) break;
-        const segment = html.slice(mpIdx, mpIdx + 500).replace(/<!--.*?-->/g, "");
-        amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
-        searchFrom = mpIdx + 1;
-      }
-      if (!amtMatch) {
-        console.warn(`[PokeScope] No price found for ${setId}-${cardNumber}`);
-        await sleep(1000);
-        continue;
-      }
-
-      const marketPrice = parseFloat(amtMatch[1].replace(/,/g, ""));
-      console.log(`[PokeScope] ${setId}-${cardNumber}: market=$${marketPrice}`);
-
-      for (const printing of printingsByNumber.get(cardNumber) ?? []) {
-        const prefix = `${setId}-${cardNumber}-`;
-        const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
-        let price;
-        switch (type) {
-          case "holofoil":         price = marketPrice;           break;
-          case "reverse_holofoil": price = marketPrice * 0.85;    break;
-          case "normal":           price = marketPrice * 0.5;     break;
-          default:                 price = marketPrice;           break;
+        if (!res.ok) {
+          console.warn(`[PokeScope] ${res.status} for ${setId}-${cardNumber}`);
+          return;
         }
-        if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+
+        const html = await res.text();
+        const lowerHtml = html.toLowerCase();
+        let amtMatch = null;
+        let searchFrom = 0;
+        while (!amtMatch) {
+          const mpIdx = lowerHtml.indexOf("market price", searchFrom);
+          if (mpIdx === -1) break;
+          const segment = html.slice(mpIdx, mpIdx + 500).replace(/<!--.*?-->/g, "");
+          amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+          searchFrom = mpIdx + 1;
+        }
+        if (!amtMatch) {
+          console.warn(`[PokeScope] No price found for ${setId}-${cardNumber}`);
+          return;
+        }
+
+        const marketPrice = parseFloat(amtMatch[1].replace(/,/g, ""));
+        console.log(`[PokeScope] ${setId}-${cardNumber}: market=$${marketPrice}`);
+
+        for (const printing of printingsByNumber.get(cardNumber) ?? []) {
+          const prefix = `${setId}-${cardNumber}-`;
+          const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
+          let price;
+          switch (type) {
+            case "holofoil":         price = marketPrice;           break;
+            case "reverse_holofoil": price = marketPrice * 0.85;    break;
+            case "normal":           price = marketPrice * 0.5;     break;
+            default:                 price = marketPrice;           break;
+          }
+          if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+        }
+      } catch (err) {
+        console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
       }
-    } catch (err) {
-      console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
-    }
-
-    cardCount++;
-    // Flush accumulated prices to DB every 25 cards so progress survives a timeout
-    if (flushCallback && cardCount % 25 === 0 && priceMap.size > 0) {
-      await flushCallback(new Map(priceMap));
-    }
-
-    await sleep(800); // ~1.25 req/second â€” respectful to a small site
-  }
+    })
+  );
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// â”€â”€ POST handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- POST handler -------------------------------------------------------------
 export async function POST(request) {
   const missingVars = [
     "NEXT_PUBLIC_SUPABASE_URL",
@@ -427,30 +395,24 @@ export async function POST(request) {
   );
 
   const slugMap = await getSlugCache();
-  const results = [];
   let totalRequests = 0;
-  const BATCH = 3;
 
-  for (let i = 0; i < setIds.length; i += BATCH) {
-    const batch = setIds.slice(i, i + BATCH);
-    const settled = await Promise.allSettled(
-      batch.map((setId) => processSet(admin, user.id, setId, slugMap))
-    );
-    settled.forEach((outcome, j) => {
-      if (outcome.status === "fulfilled") {
-        totalRequests += outcome.value.requestsUsed ?? 0;
-        results.push(outcome.value);
-      } else {
-        results.push({ setId: batch[j], error: outcome.reason?.message ?? "unknown" });
-      }
-    });
-  }
+  const settled = await Promise.allSettled(
+    setIds.map((setId) => processSet(admin, user.id, setId, slugMap))
+  );
+  const results = settled.map((outcome, i) => {
+    if (outcome.status === "fulfilled") {
+      totalRequests += outcome.value.requestsUsed ?? 0;
+      return outcome.value;
+    }
+    return { setId: setIds[i], error: outcome.reason?.message ?? "unknown" };
+  });
 
   console.log(`[Pricing] Session total API requests: ${totalRequests}`);
   return Response.json({ results, totalRequests });
 }
 
-// â”€â”€ processSet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- processSet ---------------------------------------------------------------
 async function processSet(admin, userId, setId, slugMap) {
   // 1. Load printings + owned entries + set name
   const [
@@ -478,7 +440,7 @@ async function processSet(admin, userId, setId, slugMap) {
   const previousValue = printings
     .filter((p) => ownedIds.has(p.id))
     .reduce((s, p) => s + (Number(p.price_usd) || 0), 0);
-  // 1a. Staleness gate — skip external fetch if prices are recent enough
+  // 1a. Staleness gate - skip external fetch if prices are recent enough
   const lastUpdated = userSetRow?.prices_updated_at;
   if (lastUpdated && Date.now() - new Date(lastUpdated).getTime() < PRICE_STALENESS_MS) {
     const ageMin = Math.round((Date.now() - new Date(lastUpdated).getTime()) / 60000);
@@ -486,9 +448,9 @@ async function processSet(admin, userId, setId, slugMap) {
     return { setId, cardsUpdated: 0, previousValue, newValue: previousValue, requestsUsed: 0, priceSource: "cached" };
   }
 
-  // 2. Waterfall â€” PokeTrace â†’ pokemontcg.io â†’ PPT â†’ PokeScope (ME only)
+  // 2. Waterfall - PokeTrace -> pokemontcg.io -> PPT -> PokeScope (ME only)
   const setName = setRow?.name ?? "";
-  // ME sets: no PokeTrace singles data â€” start at source 2
+  // ME sets: no PokeTrace singles data - start at source 2
   const slug = ME_SETS.has(setId) ? null : (slugMap[setName.toLowerCase()] ?? null);
 
   let result = null;
@@ -520,22 +482,7 @@ async function processSet(admin, userId, setId, slugMap) {
   }
 
   if (!result && ME_SETS.has(setId)) {
-    // Flush every 25 cards so prices are persisted even if function times out
-    // (me2pt5 has 295 cards Ã— 1s/card â‰ˆ 295s, close to Vercel's 300s limit)
-    const pokeFlush = async (partialMap) => {
-      const rows = [...partialMap.entries()].map(([id, prices]) => ({
-        id, ...prices, updated_at: new Date().toISOString(),
-      }));
-      console.log(`[PokeScope] Mid-scrape flush: writing ${rows.length} prices to DB`);
-      try {
-        await batchUpdate(admin, rows);
-        console.log(`[PokeScope] Flush OK`);
-      } catch (err) {
-        console.error(`[PokeScope] Flush error:`, err.message);
-      }
-    };
-
-    result = await tryPokeScope(setId, printings, pokeFlush);
+    result = await tryPokeScope(setId, printings);
     if (result) {
       priceSource = "pokescope";
       requestsUsed += result.requestsUsed;
@@ -564,12 +511,12 @@ async function processSet(admin, userId, setId, slugMap) {
   // Log first 5 for monitoring
   console.log(`[Pricing] ${setId} (${priceSource}) first 5 updates:`);
   updates.slice(0, 5).forEach((u) =>
-    console.log(`  ${u.id}: USD ${u.price_usd ?? "â€”"} / EUR ${u.price_eur ?? "â€”"}`)
+    console.log(`  ${u.id}: USD ${u.price_usd ?? "-"} / EUR ${u.price_eur ?? "-"}`)
   );
 
-  // 4. Update prices on existing printing rows (never insert â€” rows are seeded separately)
+  // 4. Update prices on existing printing rows (never insert - rows are seeded separately)
   console.log(`[DB Write] ${setId} (${priceSource}): updating ${updates.length} rows`);
-  updates.slice(0, 3).forEach((u) => console.log(`  â†’ ${u.id}: $${u.price_usd ?? "â€”"}`));
+  updates.slice(0, 3).forEach((u) => console.log(`  -> ${u.id}: $${u.price_usd ?? "-"}`));
   await batchUpdate(admin, updates);
   console.log(`[DB Write] ${setId}: update complete`);
 
