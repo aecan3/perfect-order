@@ -17,6 +17,23 @@ const PRICE_STALENESS_MS = 6 * 60 * 60 * 1000; // 6 hours
 // pokemontcg.io price key camelCase -> snake_case (builds printing ID suffix)
 const toSnake = (s) => s.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
 
+// Per-request network timeout - any single fetch that takes longer than this
+// is aborted and treated as a failure so it can't block the whole pipeline.
+const FETCH_MS = 12_000;
+
+// Per-set outer timeout - if an entire set's waterfall hasn't resolved in this
+// window (e.g. a source stalls before we can even get to a fetch call), we
+// treat that set as failed rather than hanging the Promise.allSettled forever.
+const SET_TIMEOUT_MS = 45_000;
+
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
+
 // -- PokeTrace slug cache -----------------------------------------------------
 // setName.toLowerCase() -> slug; built once, survives instance lifetime (~27 API calls)
 let _slugCache = null;
@@ -66,10 +83,17 @@ async function tryPokeTrace(slug, allPrintings) {
       "&limit=100" +
       (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
 
-    const res = await fetch(url, {
-      headers: { "X-API-Key": process.env.POKETRACE_API_KEY },
-    });
-    requestsUsed++;
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: { "X-API-Key": process.env.POKETRACE_API_KEY },
+        signal: AbortSignal.timeout(FETCH_MS),
+      });
+      requestsUsed++;
+    } catch (err) {
+      console.warn(`[PokeTrace] fetch error for ${slug} (page cursor=${cursor ?? "start"}): ${err.message}`);
+      break;
+    }
     if (!res.ok) {
       console.warn(`[PokeTrace] ${res.status} for ${slug}`);
       break;
@@ -114,16 +138,23 @@ async function tryPtcgio(setId, allPrintings) {
   let page = 1, fetched = 0, totalCount = Infinity, requestsUsed = 0;
 
   while (fetched < totalCount) {
-    const res = await fetch(
-      `${PTCG_BASE}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,tcgplayer`,
-      {
-        headers: {
-          "X-Api-Key": process.env.POKEMON_TCG_API_KEY,
-          Accept: "application/json",
-        },
-      }
-    );
-    requestsUsed++;
+    let res;
+    try {
+      res = await fetch(
+        `${PTCG_BASE}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,tcgplayer`,
+        {
+          headers: {
+            "X-Api-Key": process.env.POKEMON_TCG_API_KEY,
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(FETCH_MS),
+        }
+      );
+      requestsUsed++;
+    } catch (err) {
+      console.warn(`[ptcgio] fetch error for ${setId} page ${page}: ${err.message}`);
+      break;
+    }
     if (!res.ok) break;
 
     const json = await res.json();
@@ -160,13 +191,20 @@ async function tryPpt(setId, allPrintings) {
   let page = 1, fetched = 0, totalCount = Infinity, requestsUsed = 0;
 
   while (fetched < totalCount) {
-    const res = await fetch(
-      `${PTCG_BASE}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,number,tcgplayer`,
-      {
-        headers: { "X-Api-Key": process.env.POKEMON_TCG_API_KEY, Accept: "application/json" },
-      }
-    );
-    requestsUsed++;
+    let res;
+    try {
+      res = await fetch(
+        `${PTCG_BASE}?q=set.id:${encodeURIComponent(setId)}&pageSize=250&page=${page}&select=id,number,tcgplayer`,
+        {
+          headers: { "X-Api-Key": process.env.POKEMON_TCG_API_KEY, Accept: "application/json" },
+          signal: AbortSignal.timeout(FETCH_MS),
+        }
+      );
+      requestsUsed++;
+    } catch (err) {
+      console.warn(`[ppt/ptcgio] fetch error for ${setId} page ${page}: ${err.message}`);
+      break;
+    }
     if (!res.ok) break;
     const json = await res.json();
     totalCount = json.totalCount ?? json.count ?? 0;
@@ -188,7 +226,7 @@ async function tryPpt(setId, allPrintings) {
       try {
         const res = await fetch(
           `https://prices.pokemontcg.io/tcgplayer/${card.id}`,
-          { redirect: "manual" }
+          { redirect: "manual", signal: AbortSignal.timeout(FETCH_MS) }
         );
         requestsUsed++;
         const location = res.headers.get("location") ?? "";
@@ -222,6 +260,7 @@ async function tryPpt(setId, allPrintings) {
               Authorization: `Bearer ${process.env.POKEMON_PRICE_TRACKER_KEY}`,
               Accept: "application/json",
             },
+            signal: AbortSignal.timeout(FETCH_MS),
           }
         );
         requestsUsed++;
@@ -298,6 +337,7 @@ async function tryPokeScope(setId, allPrintings) {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
           },
+          signal: AbortSignal.timeout(FETCH_MS),
         });
         requestsUsed++;
 
@@ -398,7 +438,13 @@ export async function POST(request) {
   let totalRequests = 0;
 
   const settled = await Promise.allSettled(
-    setIds.map((setId) => processSet(admin, user.id, setId, slugMap))
+    setIds.map((setId) =>
+      withTimeout(
+        processSet(admin, user.id, setId, slugMap),
+        SET_TIMEOUT_MS,
+        setId
+      )
+    )
   );
   const results = settled.map((outcome, i) => {
     if (outcome.status === "fulfilled") {
@@ -450,43 +496,61 @@ async function processSet(admin, userId, setId, slugMap) {
 
   // 2. Waterfall - PokeTrace -> pokemontcg.io -> PPT -> PokeScope (ME only)
   const setName = setRow?.name ?? "";
-  // ME sets: no PokeTrace singles data - start at source 2
   const slug = ME_SETS.has(setId) ? null : (slugMap[setName.toLowerCase()] ?? null);
+  const L = `[${setId}/${setName || "?"}]`;
+
+  console.log(`${L} processSet: ${printings.length} printings, slug=${slug ?? "none"}, isME=${ME_SETS.has(setId)}`);
 
   let result = null;
   let priceSource = "none";
   let requestsUsed = 0;
 
   if (slug) {
-    result = await tryPokeTrace(slug, printings);
-    if (result) {
-      priceSource = "poketrace";
-      requestsUsed += result.requestsUsed;
+    const t = Date.now();
+    console.log(`${L} trying PokeTrace slug="${slug}"`);
+    try {
+      result = await tryPokeTrace(slug, printings);
+    } catch (err) {
+      console.warn(`${L} PokeTrace threw: ${err.message}`);
     }
+    console.log(`${L} PokeTrace done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
+    if (result) { priceSource = "poketrace"; requestsUsed += result.requestsUsed; }
   }
 
   if (!result) {
-    result = await tryPtcgio(setId, printings);
-    if (result) {
-      priceSource = "ptcgio";
-      requestsUsed += result.requestsUsed;
+    const t = Date.now();
+    console.log(`${L} trying ptcgio setId="${setId}"`);
+    try {
+      result = await tryPtcgio(setId, printings);
+    } catch (err) {
+      console.warn(`${L} ptcgio threw: ${err.message}`);
     }
+    console.log(`${L} ptcgio done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
+    if (result) { priceSource = "ptcgio"; requestsUsed += result.requestsUsed; }
   }
 
   if (!result) {
-    result = await tryPpt(setId, printings);
-    if (result) {
-      priceSource = "ppt";
-      requestsUsed += result.requestsUsed;
+    const t = Date.now();
+    console.log(`${L} trying PPT setId="${setId}"`);
+    try {
+      result = await tryPpt(setId, printings);
+    } catch (err) {
+      console.warn(`${L} PPT threw: ${err.message}`);
     }
+    console.log(`${L} PPT done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
+    if (result) { priceSource = "ppt"; requestsUsed += result.requestsUsed; }
   }
 
   if (!result && ME_SETS.has(setId)) {
-    result = await tryPokeScope(setId, printings);
-    if (result) {
-      priceSource = "pokescope";
-      requestsUsed += result.requestsUsed;
+    const t = Date.now();
+    console.log(`${L} trying PokeScope`);
+    try {
+      result = await tryPokeScope(setId, printings);
+    } catch (err) {
+      console.warn(`${L} PokeScope threw: ${err.message}`);
     }
+    console.log(`${L} PokeScope done in ${Date.now() - t}ms -> ${result ? `${result.map.size} prices` : "null"}`);
+    if (result) { priceSource = "pokescope"; requestsUsed += result.requestsUsed; }
   }
 
   console.log(
