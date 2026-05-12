@@ -12,6 +12,7 @@ const LIABILITY_CHECKBOX =
 
 export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCard, supabase }) {
   const [trade, setTrade] = useState(null);
+  const [tradeItems, setTradeItems] = useState([]);
   const [verifications, setVerifications] = useState([]);
   const [events, setEvents] = useState([]);
   const [showCamera, setShowCamera] = useState(false);
@@ -46,12 +47,14 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   }, [tradeId]);
 
   const loadTradeState = async () => {
-    const [{ data: tradeRow }, { data: verRows }, { data: evRows }] = await Promise.all([
+    const [{ data: tradeRow }, { data: itemRows }, { data: verRows }, { data: evRows }] = await Promise.all([
       supabase.from("trades").select("*").eq("id", tradeId).maybeSingle(),
+      supabase.from("trade_items").select("side, card_name, set_name, image_url, price_usd").eq("trade_id", tradeId),
       supabase.from("trade_verifications").select("*").eq("trade_id", tradeId),
       supabase.from("trade_events").select("*").eq("trade_id", tradeId),
     ]);
     if (tradeRow) setTrade(tradeRow);
+    setTradeItems(itemRows || []);
     setVerifications(verRows || []);
     setEvents(evRows || []);
   };
@@ -60,6 +63,10 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
 
   const isProposer = trade.proposer_id === user.id;
   const isExpired = (trade.status === "pending" || trade.status === "verification_required") && new Date(trade.expires_at) < new Date();
+
+  // Proposer verifies their offer cards; recipient verifies the request cards (what they own that the proposer wants).
+  const myVerifyItems = tradeItems.filter((i) => i.side === (isProposer ? "offer" : "request"));
+  const myVerifyCardName = myVerifyItems.map((i) => i.card_name).filter(Boolean).join(", ") || "your card";
 
   const myVerification = verifications.find((v) => v.user_id === user.id);
   const otherVerification = verifications.find((v) => v.user_id === otherUserId);
@@ -77,11 +84,7 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
       const res = await fetch(`/api/trade/${tradeId}/verify-photo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          cardName: requestCard?.card_name || requestCard?.cardName || "",
-          setName: requestCard?.set_name || requestCard?.setName || "",
-        }),
+        body: JSON.stringify({ imageBase64 }),
       });
       const data = await res.json();
       if (!res.ok) { setVerifyError(data.error || "Verification failed"); return; }
@@ -240,6 +243,9 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
 
               {!myVerification?.confirmed && (
                 <div className="space-y-2">
+                  <p className="text-xs text-[var(--po-text-dim)] leading-relaxed">
+                    Take a photo of <span className="font-bold text-[var(--po-text)]">{myVerifyCardName}</span> to confirm you have it ready to send.
+                  </p>
                   <button
                     onClick={() => setShowCamera(true)}
                     disabled={processing}

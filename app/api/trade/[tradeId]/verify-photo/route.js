@@ -19,9 +19,9 @@ export async function POST(req, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { imageBase64, cardName, setName } = await req.json();
-  if (!imageBase64 || !cardName) {
-    return NextResponse.json({ error: "Missing imageBase64 or cardName" }, { status: 400 });
+  const { imageBase64 } = await req.json();
+  if (!imageBase64) {
+    return NextResponse.json({ error: "Missing imageBase64" }, { status: 400 });
   }
 
   // Load trade to determine side and verify user is a party
@@ -42,6 +42,18 @@ export async function POST(req, { params }) {
   if (!isProposer && !isRecipient) return NextResponse.json({ error: "Not a party to this trade" }, { status: 403 });
 
   const side = isProposer ? "proposer" : "recipient";
+
+  // Proposer verifies what they're sending (offer items).
+  // Recipient verifies what they're sending (request items — the cards the proposer wants).
+  const itemSide = isProposer ? "offer" : "request";
+  const { data: verifyItems } = await supabase
+    .from("trade_items")
+    .select("card_name, set_name")
+    .eq("trade_id", tradeId)
+    .eq("side", itemSide);
+
+  const cardName = verifyItems?.map((i) => i.card_name).filter(Boolean).join(", ") || "Unknown";
+  const setName = verifyItems?.[0]?.set_name || "";
 
   // Strip data URL prefix for Anthropic
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
