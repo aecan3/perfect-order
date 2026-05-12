@@ -95,12 +95,20 @@ function TradeNewInner() {
           .select("printing_id, set_id, card_number, duplicate_count")
           .eq("user_id", user.id)
           .eq("checked", true)
+          .eq("is_graded", false)
           .range(from, from + PAGE - 1);
-        if (fetchErr) { setLoadError(fetchErr.message); setStatus("error"); return; }
+        if (fetchErr) {
+          console.error("[trade/new] collection_entries query failed:", fetchErr.message, fetchErr.details, fetchErr.hint, fetchErr.code);
+          setLoadError(fetchErr.message);
+          setStatus("error");
+          return;
+        }
         entryRows.push(...(data || []));
         if ((data || []).length < PAGE) break;
         from += PAGE;
       }
+
+      console.log("[trade/new] entryRows loaded:", entryRows.length);
 
       if (entryRows.length === 0) {
         setAllRows([]);
@@ -110,22 +118,41 @@ function TradeNewInner() {
 
       const printingIds = [...new Set(entryRows.map((e) => e.printing_id).filter(Boolean))];
       const setIds = [...new Set(entryRows.map((e) => e.set_id).filter(Boolean))];
+      console.log("[trade/new] printingIds:", printingIds.length, "setIds:", setIds.length);
 
       // Step 2: printings + sets in parallel
       const [{ data: printingsData, error: pErr }, { data: setsData, error: sErr }] = await Promise.all([
         supabase.from("printings").select("id, card_id, printing_label, image_url, price_usd").in("id", printingIds),
         supabase.from("sets").select("id, name, logo_url, theme_primary").in("id", setIds),
       ]);
-      if (pErr) { setLoadError(pErr.message); setStatus("error"); return; }
-      if (sErr) { setLoadError(sErr.message); setStatus("error"); return; }
+      if (pErr) {
+        console.error("[trade/new] printings query failed:", pErr.message, pErr.details, pErr.hint, pErr.code);
+        setLoadError(pErr.message);
+        setStatus("error");
+        return;
+      }
+      if (sErr) {
+        console.error("[trade/new] sets query failed:", sErr.message, sErr.details, sErr.hint, sErr.code);
+        setLoadError(sErr.message);
+        setStatus("error");
+        return;
+      }
+
+      console.log("[trade/new] printingsData:", printingsData?.length, "setsData:", setsData?.length);
 
       // Step 3: card names from cards table
       const cardIds = [...new Set((printingsData || []).map((p) => p.card_id).filter(Boolean))];
+      console.log("[trade/new] cardIds:", cardIds.length);
       const { data: cardsData, error: cErr } = await supabase
         .from("cards")
         .select("id, name")
         .in("id", cardIds);
-      if (cErr) { setLoadError(cErr.message); setStatus("error"); return; }
+      if (cErr) {
+        console.error("[trade/new] cards query failed:", cErr.message, cErr.details, cErr.hint, cErr.code);
+        setLoadError(cErr.message);
+        setStatus("error");
+        return;
+      }
 
       // Build lookup maps
       const printingMap = Object.fromEntries((printingsData || []).map((p) => [p.id, p]));
