@@ -65,14 +65,13 @@ function BracketSVG({ side, h, color, bg }) {
   const inset = w * 0.55;
   const open = side === "left";
   const sx = open ? s / 2 : w - s / 2;
-  const vb = "0 0 " + w + " " + h;
   return (
-    <svg width={w} height={h} viewBox={vb} style={{ overflow: "visible" }}
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible" }}
          xmlns="http://www.w3.org/2000/svg">
-      <line x1={open ? inset : w - inset} y1={s / 2}      x2={sx}                    y2={s / 2}      stroke={color} strokeWidth={s}/>
-      <line x1={sx}                        y1={s / 2}      x2={sx}                    y2={h - s / 2}  stroke={color} strokeWidth={s}/>
-      <line x1={sx}                        y1={h - s / 2}  x2={open ? inset : w - inset} y2={h - s / 2} stroke={color} strokeWidth={s}/>
-      <line x1={sx}                        y1={h * 0.45}   x2={sx}                    y2={h * 0.55}   stroke={bg}    strokeWidth={s + 2}/>
+      <line x1={open ? inset : w - inset} y1={s / 2} x2={sx} y2={s / 2}                    stroke={color} strokeWidth={s}/>
+      <line x1={sx} y1={s / 2} x2={sx} y2={h - s / 2}                                      stroke={color} strokeWidth={s}/>
+      <line x1={sx} y1={h - s / 2} x2={open ? inset : w - inset} y2={h - s / 2}            stroke={color} strokeWidth={s}/>
+      <line x1={sx} y1={h * 0.45} x2={sx} y2={h * 0.55}                                    stroke={bg}    strokeWidth={s + 2}/>
       <circle cx={sx} cy={h / 2} r={s * 0.9} fill={color}/>
     </svg>
   );
@@ -80,10 +79,8 @@ function BracketSVG({ side, h, color, bg }) {
 
 function Bracket({ side, x, y, h, color, bg }) {
   const w = h * 0.36;
-  const tx = x - w / 2;
-  const tf = "translate(" + tx + ", " + y + ")";
   return (
-    <g transform={tf}>
+    <g transform={`translate(${x - w / 2}, ${y})`}>
       <BracketSVG side={side} h={h} color={color} bg={bg}/>
     </g>
   );

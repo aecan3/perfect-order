@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-
-const BRAND = "Master Setter";
+import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -55,7 +54,7 @@ export default function WelcomePage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] flex flex-col px-6 py-12 max-w-sm mx-auto">
       <div className="flex-1 flex flex-col justify-center">
-        <h1 className="po-wordmark text-5xl mb-3">{BRAND}</h1>
+        <MasterSetterLogo variant="stacked" height={96} className="mb-3" />
         <p className="text-[var(--po-text-dim)] text-base leading-relaxed mb-10">
           Track your collection.<br />Trade with friends.
         </p>
