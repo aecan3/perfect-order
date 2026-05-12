@@ -119,6 +119,26 @@ Respond in JSON only:
     return NextResponse.json({ confirmed: false, aiResult });
   }
 
+  // Upload verification photo to storage
+  let photoUrl = null;
+  try {
+    const fileName = `verification/${tradeId}/${user.id}-${Date.now()}.jpg`;
+    const { error: uploadErr } = await supabase.storage
+      .from("Card Photos")
+      .upload(fileName, Buffer.from(base64Data, "base64"), {
+        contentType: "image/jpeg",
+        upsert: true,
+      });
+    if (!uploadErr) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("Card Photos")
+        .getPublicUrl(fileName);
+      photoUrl = publicUrl;
+    }
+  } catch {
+    // Storage upload failure is non-fatal — verification still proceeds
+  }
+
   // Store verification
   const { error: upsertErr } = await supabase
     .from("trade_verifications")
@@ -137,6 +157,27 @@ Respond in JSON only:
     user_id: user.id,
     event_type: "photo_verified",
     detail: { side, confidence: aiResult.confidence },
+  });
+
+  // Post verification photo to the message thread so both parties can see it
+  const otherUserId = isProposer ? trade.recipient_id : trade.proposer_id;
+  const { data: verifierProfile } = await supabase
+    .from("profiles")
+    .select("handle")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  await supabase.from("messages").insert({
+    sender_id: user.id,
+    recipient_id: otherUserId,
+    body: `@${verifierProfile?.handle || "Someone"} verified their card`,
+    message_type: "trade_verification_photo",
+    metadata: {
+      photoUrl,
+      cardName,
+      verifiedAt: new Date().toISOString(),
+      tradeId,
+    },
   });
 
   return NextResponse.json({ confirmed: true, aiResult });

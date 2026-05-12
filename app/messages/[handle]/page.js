@@ -221,6 +221,38 @@ export default function ThreadPage() {
 
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                    {/* Verification photo message */}
+                    {msg.message_type === "trade_verification_photo" && (
+                      <div className="w-full max-w-[80%] rounded-2xl overflow-hidden border border-[var(--po-border)]" style={{ background: "var(--po-bg-soft)" }}>
+                        {meta?.photoUrl ? (
+                          <img src={meta.photoUrl} alt={meta?.cardName || "Verified card"} className="w-full object-cover" style={{ maxHeight: 320 }} />
+                        ) : (
+                          <div className="w-full flex items-center justify-center py-8 text-[var(--po-text-faint)] text-xs">Photo unavailable</div>
+                        )}
+                        <div className="px-3 py-2.5 space-y-1">
+                          {meta?.cardName && (
+                            <p className="text-sm font-bold text-[var(--po-text)]">{meta.cardName}</p>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full"
+                              style={{ background: "var(--po-green)", color: "#050507" }}
+                            >
+                              AI Verified
+                            </span>
+                            {meta?.verifiedAt && (
+                              <span className="text-[9px] text-[var(--po-text-faint)]">
+                                {fmtTime(meta.verifiedAt)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[8px] text-[var(--po-text-faint)] leading-relaxed">
+                            Photo confirmation only. Master Setter does not authenticate or guarantee card condition.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Card previews for trade proposals — horizontal scroll row */}
                     {(() => {
                       const cardList = meta?.cards || (meta?.cardName ? [meta] : null);
@@ -277,16 +309,18 @@ export default function ThreadPage() {
                       );
                     })()}
 
-                    <div
-                      className="px-3 py-2 rounded-2xl max-w-[75%] text-sm leading-relaxed"
-                      style={
-                        isMine
-                          ? { background: "var(--po-green)", color: "#050507", borderBottomRightRadius: 4 }
-                          : { background: "var(--po-bg-soft)", color: "var(--po-text)", border: "1px solid var(--po-border)", borderBottomLeftRadius: 4 }
-                      }
-                    >
-                      {msg.body}
-                    </div>
+                    {msg.message_type !== "trade_verification_photo" && (
+                      <div
+                        className="px-3 py-2 rounded-2xl max-w-[75%] text-sm leading-relaxed"
+                        style={
+                          isMine
+                            ? { background: "var(--po-green)", color: "#050507", borderBottomRightRadius: 4 }
+                            : { background: "var(--po-bg-soft)", color: "var(--po-text)", border: "1px solid var(--po-border)", borderBottomLeftRadius: 4 }
+                        }
+                      >
+                        {msg.body}
+                      </div>
+                    )}
 
                     {showTime && (
                       <span className="text-[9px] text-[var(--po-text-faint)] mt-0.5 px-1">{fmtTime(msg.created_at)}</span>
