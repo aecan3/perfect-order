@@ -86,13 +86,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <MasterSetterLogo variant="stacked" height={72} className="mb-1" />
-        <p className="text-sm text-[var(--po-text-dim)] mb-6">
-          {mode === "signup" ? "Create your collection" : "Sign in to your collection"}
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <MasterSetterLogo variant="stacked" height={72} className="mb-2" />
+        <p className="mb-6" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, letterSpacing: '0.1em', color: 'rgba(244,244,246,0.6)', textAlign: 'center' }}>
+          Collect. Trade. Complete.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3 w-full">
           {mode === "signup" && (
             <>
               <div>
@@ -165,6 +165,17 @@ export default function LoginPage() {
             {loading ? "..." : mode === "signup" ? "Create account" : "Sign in"}
           </button>
         </form>
+
+        {mode === "signin" && (
+          <div className="mt-3 text-center">
+            <a
+              href="/forgot-password"
+              style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: '0.875rem', color: 'rgba(244,244,246,0.6)', textDecoration: 'none', letterSpacing: '0.05em' }}
+            >
+              Forgot password?
+            </a>
+          </div>
+        )}
 
         <button
           onClick={() => {
