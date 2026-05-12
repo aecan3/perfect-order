@@ -50,12 +50,12 @@ export default function DiscoverPage() {
 
       const friendIds = fships.map((f) => f.user_a === user.id ? f.user_b : f.user_a);
 
-      const [{ data: friendDups }, { data: myMissing }] = await Promise.all([
+      const [{ data: friendEntries }, { data: myMissing }] = await Promise.all([
         supabase
           .from("collection_entries")
           .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
           .in("user_id", friendIds)
-          .gt("duplicate_count", 0),
+          .eq("checked", true),
         supabase
           .from("collection_entries")
           .select("printing_id, set_id, card_number")
@@ -63,16 +63,31 @@ export default function DiscoverPage() {
           .eq("checked", false),
       ]);
 
+      // Group friend entries by (user_id, set_id, card_number) to count total copies
+      // across all printings — catches the case where a user owns e.g. one normal
+      // and one holo of the same card (neither shows duplicate_count > 0 alone).
+      const cardTotals = {};
+      for (const entry of (friendEntries || [])) {
+        const key = `${entry.user_id}:${entry.set_id}:${entry.card_number}`;
+        cardTotals[key] = (cardTotals[key] || 0) + 1 + (entry.duplicate_count || 0);
+      }
+
+      // A printing is tradeable if its card's total across all printings > 1
+      const tradeableEntries = (friendEntries || []).filter((entry) => {
+        const key = `${entry.user_id}:${entry.set_id}:${entry.card_number}`;
+        return cardTotals[key] > 1;
+      });
+
       const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
       const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
 
-      const friendProfileIds = [...new Set((friendDups || []).map((d) => d.user_id))];
+      const friendProfileIds = [...new Set(tradeableEntries.map((d) => d.user_id))];
       const { data: friendProfiles } = friendProfileIds.length > 0
         ? await supabase.from("profiles").select("id, handle").in("id", friendProfileIds)
         : { data: [] };
       const profileMap = Object.fromEntries((friendProfiles || []).map((p) => [p.id, p]));
 
-      const results = (friendDups || [])
+      const results = tradeableEntries
         .filter((entry) =>
           (entry.printing_id && missingPrintingIds.has(entry.printing_id)) ||
           missingKeys.has(`${entry.set_id}:${entry.card_number}`)

@@ -115,5 +115,20 @@ export async function POST(req) {
     },
   });
 
+  const { data: proposerProfile } = await supabase
+    .from("profiles")
+    .select("handle, display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const senderName = proposerProfile?.display_name || `@${proposerProfile?.handle}` || "Someone";
+  await supabase.from("notifications").insert({
+    user_id: recipient.id,
+    type: "trade_proposal",
+    title: "New trade proposal",
+    body: `${senderName} wants to trade with you.`,
+    link: `/messages/${proposerProfile?.handle || ""}`,
+  });
+
   return NextResponse.json({ tradeId });
 }

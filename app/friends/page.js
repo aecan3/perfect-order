@@ -164,6 +164,15 @@ export default function FriendsPage() {
       return;
     }
 
+    const senderName = profile?.display_name || `@${profile?.handle}` || "Someone";
+    await supabase.from("notifications").insert({
+      user_id: target.id,
+      type: "friend_request",
+      title: "New friend request",
+      body: `${senderName} sent you a friend request.`,
+      link: "/friends",
+    });
+
     setSearchHandle("");
     setSelectedResult(null);
     setSearchLoading(false);

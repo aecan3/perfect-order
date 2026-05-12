@@ -46,6 +46,22 @@ export async function POST(req, { params }) {
       event_type: "recipient_accepted",
       detail: {},
     });
+
+    const { data: recipientProfile } = await supabase
+      .from("profiles")
+      .select("handle, display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const recipientName = recipientProfile?.display_name || `@${recipientProfile?.handle}` || "Someone";
+    await supabase.from("notifications").insert({
+      user_id: trade.proposer_id,
+      type: "trade_accepted",
+      title: "Trade accepted",
+      body: `${recipientName} accepted your trade proposal.`,
+      link: `/messages/${recipientProfile?.handle || ""}`,
+    });
+
     return NextResponse.json({ stage: "verification_required" });
   }
 
