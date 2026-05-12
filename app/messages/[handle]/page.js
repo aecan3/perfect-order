@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Send } from "lucide-react";
+import { TradePanel } from "@/components/TradePanel";
 import { createClient } from "@/lib/supabase";
 
 const fmtTime = (ts) =>
@@ -215,34 +216,54 @@ export default function ThreadPage() {
                     {(() => {
                       const cardList = meta?.cards || (meta?.cardName ? [meta] : null);
                       if (!cardList?.length) return null;
+                      // normalise camelCase (legacy) and snake_case (new propose API)
+                      const norm = (c) => ({
+                        imageUrl: c.imageUrl || c.image_url,
+                        cardName: c.cardName || c.card_name,
+                        priceUsd: c.priceUsd ?? c.price_usd,
+                        side: c.side,
+                      });
                       return (
                         <div
                           className="flex gap-2 mb-1 overflow-x-auto pb-1"
                           style={{ maxWidth: 280, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
                         >
-                          {cardList.map((c, ci) => (
-                            <div
-                              key={ci}
-                              className="flex-none flex flex-col rounded-xl overflow-hidden border border-[var(--po-border)]"
-                              style={{ width: 88, background: "var(--po-bg-soft)", scrollSnapAlign: "start" }}
-                            >
-                              {c.imageUrl ? (
-                                <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} />
-                              ) : (
-                                <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
-                                  {c.cardName}
-                                </div>
-                              )}
-                              <div className="px-1.5 py-1.5">
-                                <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
-                                {c.priceUsd > 0 && (
-                                  <p className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                                    {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                                  </p>
+                          {cardList.map((raw, ci) => {
+                            const c = norm(raw);
+                            return (
+                              <div
+                                key={ci}
+                                className="flex-none flex flex-col rounded-xl overflow-hidden border"
+                                style={{
+                                  width: 88,
+                                  background: "var(--po-bg-soft)",
+                                  scrollSnapAlign: "start",
+                                  borderColor: c.side === "request" ? "var(--po-green)" : "var(--po-border)",
+                                }}
+                              >
+                                {c.imageUrl ? (
+                                  <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} />
+                                ) : (
+                                  <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
+                                    {c.cardName}
+                                  </div>
                                 )}
+                                <div className="px-1.5 py-1.5">
+                                  {c.side && (
+                                    <p className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: c.side === "request" ? "var(--po-green)" : "var(--po-text-dim)" }}>
+                                      {c.side === "offer" ? "Offer" : "Want"}
+                                    </p>
+                                  )}
+                                  <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
+                                  {c.priceUsd > 0 && (
+                                    <p className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
+                                      {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })()}
@@ -260,6 +281,20 @@ export default function ThreadPage() {
 
                     {showTime && (
                       <span className="text-[9px] text-[var(--po-text-faint)] mt-0.5 px-1">{fmtTime(msg.created_at)}</span>
+                    )}
+
+                    {/* Trade panel — shown for trade_proposal messages that have a trade_id */}
+                    {msg.message_type === "trade_proposal" && meta?.trade_id && otherProfile && (
+                      <div className="w-full max-w-[85%]">
+                        <TradePanel
+                          tradeId={meta.trade_id}
+                          user={user}
+                          otherHandle={handle}
+                          otherUserId={otherProfile.id}
+                          requestCard={meta.cards?.find((c) => (c.side === "request")) || null}
+                          supabase={supabase}
+                        />
+                      </div>
                     )}
                   </div>
                 );

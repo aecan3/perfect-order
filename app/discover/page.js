@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Check, MessageCircle } from "lucide-react";
+import { ArrowLeft, ChevronRight, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 const RATES = {
@@ -148,6 +148,20 @@ export default function DiscoverPage() {
       friendCards.map((c) => ({ cardName: c.cardName, setName: c.setName, imageUrl: c.imageUrl, priceUsd: c.priceUsd }))
     ));
     router.push(`/messages/${handle}?cards=${cardsParam}`);
+  };
+
+  const openTradePropose = (handle, friendCards) => {
+    const requests = encodeURIComponent(JSON.stringify(
+      friendCards.map((c) => ({
+        printingId: c.printingId,
+        cardName: c.cardName,
+        setName: c.setName,
+        setId: c.setId,
+        imageUrl: c.imageUrl,
+        priceUsd: c.priceUsd,
+      }))
+    ));
+    router.push(`/trade/new?with=${handle}&requests=${requests}`);
   };
 
   const isSelecting = selected.size > 0;
@@ -306,20 +320,34 @@ export default function DiscoverPage() {
                 Clear selection
               </button>
             </div>
-            {Object.entries(selectedByFriend).map(([handle, friendCards]) => (
-              <button
-                key={handle}
-                onClick={() => openMessageThread(handle, friendCards)}
-                className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-bold text-sm transition-colors"
-                style={{ background: "var(--po-green)", color: "#050507" }}
-              >
-                <span>Message @{handle}</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="text-xs opacity-70">{friendCards.length} card{friendCards.length !== 1 ? "s" : ""}</span>
-                  <MessageCircle size={15} />
-                </span>
-              </button>
-            ))}
+            {Object.entries(selectedByFriend).map(([handle, friendCards]) => {
+              const countLabel = `${friendCards.length} card${friendCards.length !== 1 ? "s" : ""}`;
+              return (
+                <div key={handle} className="space-y-2">
+                  <button
+                    onClick={() => openTradePropose(handle, friendCards)}
+                    className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-black text-sm po-glow-green"
+                    style={{ background: "var(--po-green)", color: "#050507" }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ArrowLeftRight size={14} />
+                      Propose Trade · @{handle}
+                    </span>
+                    <span className="text-xs opacity-70">{countLabel}</span>
+                  </button>
+                  <button
+                    onClick={() => openMessageThread(handle, friendCards)}
+                    className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MessageCircle size={14} />
+                      Message Directly · @{handle}
+                    </span>
+                    <span className="text-xs text-[var(--po-text-dim)]">{countLabel}</span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

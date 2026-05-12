@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronDown, X, Check, LayoutGrid, BookOpen } from "lucide-react";
+import { ArrowLeft, ChevronDown, X, Check, LayoutGrid, BookOpen, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
@@ -600,9 +600,48 @@ export default function FriendSetTrackerPage() {
                 );
               })}
             </div>
-            <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-3">
-              Close
-            </button>
+            {(() => {
+              const ownedPrints = (printingsByCard[pickingCard.number] || []).filter((p) => ownedPrintings[p.id]?.checked);
+              const firstOwned = ownedPrints[0];
+              const tradeParams = firstOwned
+                ? new URLSearchParams({
+                    with: handle,
+                    request: firstOwned.id,
+                    requestName: pickingCard.name,
+                    requestSet: setRow?.name || "",
+                    requestSetId: setId,
+                    requestImage: firstOwned.image_url || "",
+                    requestPrice: firstOwned.price_usd || "",
+                    requestLabel: firstOwned.printing_label || "",
+                  }).toString()
+                : null;
+              return (
+                <div className="mt-4 space-y-2">
+                  {tradeParams && (
+                    <Link
+                      href={`/trade/new?${tradeParams}`}
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black po-glow-green"
+                      style={{ background: "var(--po-green)" }}
+                      onClick={() => setPickingCard(null)}
+                    >
+                      <ArrowLeftRight size={14} />
+                      Propose Trade
+                    </Link>
+                  )}
+                  <Link
+                    href={`/messages/${handle}`}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm uppercase tracking-widest border border-[var(--po-border)] text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
+                    onClick={() => setPickingCard(null)}
+                  >
+                    <MessageCircle size={14} />
+                    Message Directly
+                  </Link>
+                  <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)]">
+                    Close
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

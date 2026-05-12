@@ -20,6 +20,7 @@
     "audit:counts": "node scripts/audit-raff-counts.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.3",
     "lucide-react": "^1.14.0",
