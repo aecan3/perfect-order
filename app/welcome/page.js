@@ -55,8 +55,8 @@ export default function WelcomePage() {
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] flex flex-col px-6 py-12 max-w-sm mx-auto">
       <div className="flex-1 flex flex-col justify-center">
         <MasterSetterLogo variant="stacked" height={96} className="mb-3 mx-auto" />
-        <p className="text-[var(--po-text-dim)] text-base leading-relaxed mb-10">
-          Track your collection.<br />Trade with friends.
+        <p className="mb-10" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, letterSpacing: '0.1em', color: 'rgba(244,244,246,0.6)' }}>
+          Collect. Trade. Complete.
         </p>
 
         <div className="space-y-3 mb-12">
