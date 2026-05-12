@@ -343,7 +343,7 @@ function MasterSetCelebration({ themePrimary, themeSecondary, logoUrl, setName, 
         <div
           className="po-master-title-1 font-black uppercase text-white"
           style={{
-            fontFamily: "var(--font-baloo), system-ui, sans-serif",
+            fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
             fontSize: "clamp(1.1rem, 5vw, 1.6rem)",
             letterSpacing: "0.28em",
             textShadow: "0 2px 16px rgba(0,0,0,0.6)",
@@ -356,7 +356,7 @@ function MasterSetCelebration({ themePrimary, themeSecondary, logoUrl, setName, 
         <div
           className="po-master-title-2 font-black uppercase"
           style={{
-            fontFamily: "var(--font-baloo), system-ui, sans-serif",
+            fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
             fontSize: "clamp(3rem, 14vw, 5.5rem)",
             letterSpacing: "0.08em",
             lineHeight: 1,

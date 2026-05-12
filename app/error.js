@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 export default function Error({ error, reset }) {
   return (
@@ -16,3 +16,4 @@ export default function Error({ error, reset }) {
     </div>
   );
 }
+

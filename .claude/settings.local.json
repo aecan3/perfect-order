@@ -20,7 +20,32 @@
       "mcp__claude_ai_Supabase__execute_sql",
       "Bash(npm run *)",
       "mcp__claude_ai_Supabase__get_logs",
-      "WebFetch(domain:perfect-order-54sa24mnk-aecan3s-projects.vercel.app)"
+      "WebFetch(domain:perfect-order-54sa24mnk-aecan3s-projects.vercel.app)",
+      "mcp__claude_ai_Supabase__list_tables",
+      "Bash(curl -s -H \"X-Api-Key: pc_c550d1b57187904d9a5821e4283567f0707659d36e1b8a03\" \"https://api.poketrace.io/v1/sets\")",
+      "Bash(python -c \"import sys,json; sets=json.load\\(sys.stdin\\); [print\\(s.get\\('id'\\) or s.get\\('code'\\) or s.get\\('set_code'\\), s.get\\('name',''\\)\\) for s in \\(sets if isinstance\\(sets,list\\) else sets.get\\('sets',sets.get\\('data',[]\\)\\)\\)]\")",
+      "Bash(curl -sv -H \"X-Api-Key: pc_c550d1b57187904d9a5821e4283567f0707659d36e1b8a03\" \"https://api.poketrace.io/v1/sets\")",
+      "WebFetch(domain:api.poketrace.io)",
+      "WebFetch(domain:poketrace.io)",
+      "Bash(nslookup api.poketrace.io)",
+      "Bash(nslookup poketrace.io)",
+      "WebFetch(domain:www.google.com)",
+      "Bash(curl -s -H \"X-API-Key: pc_c550d1b57187904d9a5821e4283567f0707659d36e1b8a03\" \"https://api.poketrace.com/v1/sets\")",
+      "Bash(curl -s -H \"X-API-Key: pc_c550d1b57187904d9a5821e4283567f0707659d36e1b8a03\" \"https://api.poketrace.com/v1/sets\" -o C:\\\\Temp\\\\pt_sets.json)",
+      "Bash(curl -s -H \"X-API-Key: pc_c550d1b57187904d9a5821e4283567f0707659d36e1b8a03\" \"https://api.poketrace.com/v1/sets\" -o \"%TEMP%\\\\pt_sets.json\")",
+      "WebFetch(domain:pokescope.app)",
+      "WebFetch(domain:api.anthropic.com)",
+      "PowerShell($src = \"C:\\\\Users\\\\alexc\\\\.claude\\\\projects\\\\C--Users-alexc-Documents-perfect-order\\\\81b10fc7-b49f-48cd-8831-a5bef2e5ea74\\\\tool-results\\\\webfetch-1778323690768-xxxhjt.bin\"; $dst = \"C:\\\\Users\\\\alexc\\\\AppData\\\\Local\\\\Temp\\\\design.html\"; $stream = [System.IO.File]::OpenRead\\($src\\); $gz = New-Object System.IO.Compression.GZipStream\\($stream, [System.IO.Compression.CompressionMode]::Decompress\\); $out = [System.IO.File]::Create\\($dst\\); $gz.CopyTo\\($out\\); $gz.Close\\(\\); $stream.Close\\(\\); $out.Close\\(\\); Write-Host \"Done\")",
+      "PowerShell(Get-ChildItem -Recurse \"C:\\\\Users\\\\alexc\\\\AppData\\\\Local\\\\Temp\\\\design-extract\" | ForEach-Object { $_.FullName })",
+      "Bash(npx next *)",
+      "WebSearch",
+      "WebFetch(domain:bulbapedia.bulbagarden.net)",
+      "WebFetch(domain:archives.bulbagarden.net)",
+      "WebFetch(domain:tcg.pokemon.com)",
+      "WebFetch(domain:d1i787aglh9bmb.cloudfront.net)",
+      "WebFetch(domain:www.pokemon.com)",
+      "Bash(xargs sed -i \"s|router\\\\.replace\\(\\\\\"/login\\\\\"\\)|router.replace\\(\\\\\"/welcome\\\\\"\\)|g; s|router\\\\.replace\\('/login'\\)|router.replace\\('/welcome'\\)|g\")",
+      "Bash(del fix-arrows.mjs fix-arrows2.mjs inspect-line.mjs)"
     ]
   }
 }

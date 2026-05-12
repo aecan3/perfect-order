@@ -1,6 +1,6 @@
 {
-  "name": "PokéBinder",
-  "short_name": "PokéBinder",
+  "name": "Master Setter",
+  "short_name": "MasterSetter",
   "description": "Pokémon TCG collection tracker — track your collection and trade with friends",
   "start_url": "/",
   "display": "standalone",

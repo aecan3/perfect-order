@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 
-const BRAND = "PokéBinder";
+const BRAND = "Master Setter";
 
 export default function WelcomePage() {
   const router = useRouter();

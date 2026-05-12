@@ -1,32 +1,24 @@
-﻿import { Baloo_2 } from "next/font/google";
-import "./globals.css";
-import SwRegister from "./sw-register";
-
-const baloo = Baloo_2({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-baloo",
-  display: "swap",
-});
+import './globals.css';
+import SwRegister from './sw-register';
 
 export const metadata = {
-  title: "PokéBinder",
-  description: "Track your Pokemon TCG collection and trade with friends",
-  manifest: "/manifest.json",
+  title: 'Master Setter',
+  description: 'Track your Pokemon TCG collection and trade with friends',
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: "PokéBinder",
+    statusBarStyle: 'black-translucent',
+    title: 'Master Setter',
   },
   icons: {
-    icon: "/icon-192.png",
-    apple: "/apple-touch-icon.png",
+    icon: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
   },
 };
 
 export const viewport = {
-  themeColor: "#050507",
-  width: "device-width",
+  themeColor: '#050507',
+  width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
@@ -34,12 +26,19 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={baloo.variable}>
-      <body className={baloo.className}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
         <SwRegister />
         {children}
       </body>
     </html>
   );
 }
-
