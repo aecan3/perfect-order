@@ -57,6 +57,8 @@ export default function ThreadPage() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const channelRef = useRef(null);
+  const initialScrollDone = useRef(false);
+  const prevCountRef = useRef(0);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -126,9 +128,16 @@ export default function ThreadPage() {
     };
   }, [handle, router, supabase]);
 
-  // Scroll to bottom whenever messages change
+  // Instant scroll on initial load; smooth scroll when a new message arrives
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    if (!initialScrollDone.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      initialScrollDone.current = true;
+    } else if (messages.length > prevCountRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevCountRef.current = messages.length;
   }, [messages]);
 
   const loadMessages = async (myId, otherId) => {
