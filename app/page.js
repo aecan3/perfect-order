@@ -70,8 +70,7 @@ export default function HomePage() {
   // Price refresh state
   const [refreshing, setRefreshing] = useState(false);
   const [refreshDone, setRefreshDone] = useState(false);
-  const [refreshProgress, setRefreshProgress] = useState("");
-  const [refreshProgressPct, setRefreshProgressPct] = useState(0);
+  const [refreshErrors, setRefreshErrors] = useState([]); // set names that failed
   const refreshTimerRef = useRef(null);
 
   // Trend state: { [setId]: { dir: "up"|"down", diff: number (USD) } }
@@ -296,41 +295,42 @@ export default function HomePage() {
   };
 
   // â”€â”€ Price refresh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     if (refreshing || !user) return;
+
+    const visible = userSets;
+    if (visible.length === 0) return;
 
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setRefreshing(true);
     setRefreshDone(false);
+    setRefreshErrors([]);
     setPortfolioTrend(null);
-    setRefreshProgressPct(0);
 
-    const visible = userSets;
-    const total = visible.length;
-    if (total === 0) { setRefreshing(false); return; }
+    // Fire a single batched request with all set IDs — do not await, return immediately
+    fetch(“/api/refresh-prices”, {
+      method: “POST”,
+      headers: { “Content-Type”: “application/json” },
+      body: JSON.stringify({ setIds: visible.map((s) => s.id) }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        const results = data.results || [];
+        const errors = [];
+        let allPreviousTotal = 0;
+        let allNewTotal = 0;
+        const newTrendsMap = {};
+        const newValues = {};
 
-    let allPreviousTotal = 0;
-    let allNewTotal = 0;
-    const newTrendsMap = {};
-
-    for (let i = 0; i < total; i++) {
-      const set = visible[i];
-      setRefreshProgress(`Updating ${set.name}â€¦ (${i + 1} of ${total})`);
-      setRefreshProgressPct((i / total) * 100);
-
-      try {
-        const res = await fetch("/api/refresh-prices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setIds: [set.id] }),
-        });
-        const data = await res.json();
-
-        for (const r of (data.results || [])) {
-          if (r.error) continue;
+        for (const r of results) {
+          if (r.error) {
+            const name = visible.find((s) => s.id === r.setId)?.name ?? r.setId;
+            errors.push(name);
+            continue;
+          }
           const { setId, previousValue, newValue } = r;
+          newValues[setId] = newValue;
 
-          // Start this set's animation immediately (real-time count-up)
           const oldDisplay =
             animTargetsRef.current[setId]?.to ??
             displayValues[setId] ??
@@ -339,50 +339,45 @@ export default function HomePage() {
           if (Math.abs(newValue - oldDisplay) > 0.005) {
             startAnimations({ [setId]: { from: oldDisplay, to: newValue } });
           }
-          setSetValues((prev) => ({ ...prev, [setId]: newValue }));
 
           const prev = previousValue ?? 0;
           const diff = newValue - prev;
           if (Math.abs(diff) > 0.005) {
-            newTrendsMap[setId] = { dir: diff > 0 ? "up" : "down", diff: Math.abs(diff) };
+            newTrendsMap[setId] = { dir: diff > 0 ? “up” : “down”, diff: Math.abs(diff) };
           }
           allPreviousTotal += prev;
           allNewTotal += newValue;
         }
-      } catch {
-        // silent per-set failure â€” continue
-      }
 
-      setRefreshProgressPct(((i + 1) / total) * 100);
-    }
+        setSetValues((prev) => ({ ...prev, ...newValues }));
+        setTrends(newTrendsMap);
 
-    const now = new Date().toISOString();
-    const refreshedIds = new Set(visible.map((s) => s.id));
-    const stampUpdatedAt = (s) =>
-      refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
-    setUserSets((prev) => prev.map(stampUpdatedAt));
-    setHiddenSets((prev) => prev.map(stampUpdatedAt));
+        const now = new Date().toISOString();
+        const refreshedIds = new Set(visible.map((s) => s.id));
+        const stampUpdatedAt = (s) => refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
+        setUserSets((prev) => prev.map(stampUpdatedAt));
+        setHiddenSets((prev) => prev.map(stampUpdatedAt));
+        setLastRefreshedAt(now);
 
-    setTrends(newTrendsMap);
-    setLastRefreshedAt(now);
+        if (allPreviousTotal > 0.01) {
+          const diff = allNewTotal - allPreviousTotal;
+          setPortfolioTrend({ diff, pct: (diff / allPreviousTotal) * 100 });
+        }
 
-    if (allPreviousTotal > 0.01) {
-      const diff = allNewTotal - allPreviousTotal;
-      setPortfolioTrend({ diff, pct: (diff / allPreviousTotal) * 100 });
-    }
+        setTotalFlash(true);
+        setTimeout(() => setTotalFlash(false), 600);
 
-    // Brief flash on total value
-    setTotalFlash(true);
-    setTimeout(() => setTotalFlash(false), 600);
+        if (errors.length) setRefreshErrors(errors);
+        setRefreshing(false);
+        setRefreshDone(true);
+        refreshTimerRef.current = setTimeout(() => setRefreshDone(false), 3000);
+      })
+      .catch(() => {
+        setRefreshErrors([“Network error — prices not updated”]);
+        setRefreshing(false);
+      });
 
-    setRefreshing(false);
-    setRefreshProgress("");
-    setRefreshProgressPct(100);
-    setRefreshDone(true);
-    refreshTimerRef.current = setTimeout(() => {
-      setRefreshDone(false);
-      setRefreshProgressPct(0);
-    }, 3000);
+    // Returns here — UI is immediately unblocked
   };
 
   // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -766,8 +761,14 @@ export default function HomePage() {
 
         <div className="relative px-5 pt-5 pb-4">
           {/* Label */}
-          <div className="text-[10px] uppercase tracking-[0.18em] font-bold" style={{ color: "var(--po-text-faint)" }}>
+          <div className="text-[10px] uppercase tracking-[0.18em] font-bold flex items-center gap-2" style={{ color: "var(--po-text-faint)" }}>
             Total Collection Value
+            {refreshing && (
+              <span className="flex items-center gap-1" style={{ color: "var(--po-green)" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                <span className="text-[9px] normal-case tracking-normal">Updating</span>
+              </span>
+            )}
           </div>
 
           {/* Big value */}
@@ -816,45 +817,30 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Refresh button â€” becomes a progress bar during refresh */}
-        <div className="relative mx-5 mb-5 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">
-          {/* Progress fill */}
-          <div
-            className="absolute inset-y-0 left-0 transition-all duration-500"
-            style={{
-              width: `${refreshProgressPct}%`,
-              background: refreshDone
-                ? "rgba(200,255,74,0.18)"
-                : "rgba(200,255,74,0.12)",
-            }}
-          />
+        {/* Refresh button */}
+        {refreshErrors.length > 0 && (
+          <div className=”mx-5 mb-2 flex items-center justify-between gap-2 text-[11px] text-amber-400”>
+            <span>⚠ {refreshErrors.length === 1 ? refreshErrors[0] : `${refreshErrors.length} sets`} failed to update</span>
+            <button onClick={(e) => { e.stopPropagation(); setRefreshErrors([]); }} style={{ color: “var(--po-text-dim)” }}>✕</button>
+          </div>
+        )}
+        <div className=”relative mx-5 mb-5 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]”>
+          {refreshDone && (
+            <div className=”absolute inset-0 pointer-events-none” style={{ background: “rgba(200,255,74,0.12)” }} />
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
-            disabled={refreshing}
-            className="relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed"
+            className=”relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors”
             style={{
-              color: refreshDone
-                ? "var(--po-green)"
-                : refreshing
-                ? "var(--po-text)"
-                : "var(--po-text-dim)",
+              color: refreshDone ? “var(--po-green)” : refreshing ? “var(--po-text)” : “var(--po-text-dim)”,
             }}
           >
             {refreshDone ? (
-              <>
-                <RefreshCw size={12} />
-                âœ“ Updated
-              </>
+              <><RefreshCw size={12} /> ✓ Updated</>
             ) : refreshing ? (
-              <>
-                <RefreshCw size={12} className="animate-spin flex-shrink-0" />
-                <span className="truncate min-w-0">{refreshProgress || "Refreshingâ€¦"}</span>
-              </>
+              <><RefreshCw size={12} className=”animate-spin flex-shrink-0” /> Updating…</>
             ) : (
-              <>
-                <RefreshCw size={12} />
-                Refresh Prices
-              </>
+              <><RefreshCw size={12} /> Refresh Prices</>
             )}
           </button>
         </div>

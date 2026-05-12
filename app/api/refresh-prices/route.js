@@ -1,23 +1,26 @@
-import { createServerClient } from "@supabase/ssr";
+﻿import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-// ── API bases ────────────────────────────────────────────────────────────────
+// â”€â”€ API bases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const POKETRACE_BASE  = "https://api.poketrace.com/v1";
 const PTCG_BASE       = "https://api.pokemontcg.io/v2/cards";
 const PPT_BASE        = "https://www.pokemonpricetracker.com/api/v2";
 const POKESCOPE_BASE  = "https://pokescope.app/card";
 
-// ME sets have no PokeTrace individual card data — skip source 1 for these
+// ME sets have no PokeTrace individual card data â€” skip source 1 for these
 const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
 
-// pokemontcg.io price key camelCase → snake_case (builds printing ID suffix)
+// Skip external API fetch if prices were refreshed within this window
+const PRICE_STALENESS_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// pokemontcg.io price key camelCase â†’ snake_case (builds printing ID suffix)
 const toSnake = (s) => s.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── PokeTrace slug cache ─────────────────────────────────────────────────────
-// setName.toLowerCase() → slug; built once, survives instance lifetime (~27 API calls)
+// â”€â”€ PokeTrace slug cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// setName.toLowerCase() â†’ slug; built once, survives instance lifetime (~27 API calls)
 let _slugCache = null;
 let _slugCachePromise = null;
 
@@ -46,11 +49,11 @@ async function getSlugCache() {
   return _slugCachePromise;
 }
 
-// ── Source 1: PokeTrace ──────────────────────────────────────────────────────
+// â”€â”€ Source 1: PokeTrace â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Returns { map: Map<printingId, {price_usd?, price_eur?}>, requestsUsed } | null
 // Null when 0 singles found (only sealed products or no data for this tier).
 async function tryPokeTrace(slug, allPrintings) {
-  // cardNumber(int) → [printingId]  (same price applied to all variants of a card)
+  // cardNumber(int) â†’ [printingId]  (same price applied to all variants of a card)
   const byNumber = new Map();
   for (const p of allPrintings) {
     if (!byNumber.has(p.card_number)) byNumber.set(p.card_number, []);
@@ -106,7 +109,7 @@ async function tryPokeTrace(slug, allPrintings) {
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// ── Source 2: pokemontcg.io ──────────────────────────────────────────────────
+// â”€â”€ Source 2: pokemontcg.io â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
 // Matches by printing ID directly (printing type encoded in the ID suffix).
 async function tryPtcgio(setId, allPrintings) {
@@ -148,10 +151,10 @@ async function tryPtcgio(setId, allPrintings) {
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// ── Source 3: PokemonPriceTracker ────────────────────────────────────────────
+// â”€â”€ Source 3: PokemonPriceTracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Returns { map: Map<printingId, {price_usd}>, requestsUsed } | null
 // PPT requires numeric TCGPlayer product IDs. Resolution flow per card:
-//   pokemontcg.io tcgplayer.url → prices.pokemontcg.io proxy 302 → product/{numericId}
+//   pokemontcg.io tcgplayer.url â†’ prices.pokemontcg.io proxy 302 â†’ product/{numericId}
 // One PPT call per card covers all printing variants via prices.variants map.
 async function tryPpt(setId, allPrintings) {
   if (!process.env.POKEMON_PRICE_TRACKER_KEY) return null;
@@ -181,7 +184,7 @@ async function tryPpt(setId, allPrintings) {
   if (!tcgCards.length) return null;
 
   // Step 2: follow pokemontcg.io proxy redirects to resolve numeric product IDs
-  const productIdByNumber = new Map(); // cardNumber(str) → numericId(str)
+  const productIdByNumber = new Map(); // cardNumber(str) â†’ numericId(str)
   const PARALLEL = 20;
   const cardsWithUrl = tcgCards.filter((c) => c.tcgplayer?.url);
 
@@ -265,8 +268,8 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
   }
 }
 
-// ── DB write helper ──────────────────────────────────────────────────────────
-// UPDATE only — never INSERT. Printing rows are seeded separately; this route
+// â”€â”€ DB write helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// UPDATE only â€” never INSERT. Printing rows are seeded separately; this route
 // only writes price columns on existing rows. Upsert would fail with NOT NULL
 // violations on card_id and other required columns.
 async function batchUpdate(admin, updates) {
@@ -282,10 +285,10 @@ async function batchUpdate(admin, updates) {
   }
 }
 
-// ── Source 4: PokeScope (ME sets only) ───────────────────────────────────────
+// â”€â”€ Source 4: PokeScope (ME sets only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Scrapes https://pokescope.app/card/{setId}-{cardNumber} for market price.
 // Page contains text like "Market Price (TCG holofoil) $1.11".
-// Rate limit: 800ms between requests. me2pt5 has 295 cards → ~240s.
+// Rate limit: 800ms between requests. me2pt5 has 295 cards â†’ ~240s.
 // Skips cards that already have a price so partial scrapes resume efficiently.
 // flushCallback is called every 25 cards to survive Vercel's 300s function limit.
 async function tryPokeScope(setId, allPrintings, flushCallback = null) {
@@ -325,7 +328,7 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
       }
 
       const html = await res.text();
-      // Scan all "market price" occurrences — the first few are in meta tags (no $).
+      // Scan all "market price" occurrences â€” the first few are in meta tags (no $).
       // React also injects <!-- --> comment nodes around text, so strip those first.
       // Stop at the first occurrence whose 500-char window contains a dollar amount.
       const lowerHtml = html.toLowerCase();
@@ -369,13 +372,13 @@ async function tryPokeScope(setId, allPrintings, flushCallback = null) {
       await flushCallback(new Map(priceMap));
     }
 
-    await sleep(800); // ~1.25 req/second — respectful to a small site
+    await sleep(800); // ~1.25 req/second â€” respectful to a small site
   }
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
 
-// ── POST handler ─────────────────────────────────────────────────────────────
+// â”€â”€ POST handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function POST(request) {
   const missingVars = [
     "NEXT_PUBLIC_SUPABASE_URL",
@@ -441,13 +444,14 @@ export async function POST(request) {
   return Response.json({ results, totalRequests });
 }
 
-// ── processSet ───────────────────────────────────────────────────────────────
+// â”€â”€ processSet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function processSet(admin, userId, setId, slugMap) {
   // 1. Load printings + owned entries + set name
   const [
     { data: allPrintings, error: pErr },
     { data: owned,        error: oErr },
     { data: setRow },
+    { data: userSetRow },
   ] = await Promise.all([
     admin.from("printings")
       .select("id, card_number, printing_label, price_usd")
@@ -458,6 +462,7 @@ async function processSet(admin, userId, setId, slugMap) {
       .eq("set_id", setId)
       .eq("checked", true),
     admin.from("sets").select("name").eq("id", setId).maybeSingle(),
+    admin.from("user_sets").select("prices_updated_at").eq("user_id", userId).eq("set_id", setId).maybeSingle(),
   ]);
   if (pErr) throw new Error(pErr.message);
   if (oErr) throw new Error(oErr.message);
@@ -467,10 +472,17 @@ async function processSet(admin, userId, setId, slugMap) {
   const previousValue = printings
     .filter((p) => ownedIds.has(p.id))
     .reduce((s, p) => s + (Number(p.price_usd) || 0), 0);
+  // 1a. Staleness gate — skip external fetch if prices are recent enough
+  const lastUpdated = userSetRow?.prices_updated_at;
+  if (lastUpdated && Date.now() - new Date(lastUpdated).getTime() < PRICE_STALENESS_MS) {
+    const ageMin = Math.round((Date.now() - new Date(lastUpdated).getTime()) / 60000);
+    console.log(`[Pricing] ${setId}: cached (updated ${ageMin}m ago)`);
+    return { setId, cardsUpdated: 0, previousValue, newValue: previousValue, requestsUsed: 0, priceSource: "cached" };
+  }
 
-  // 2. Waterfall — PokeTrace → pokemontcg.io → PPT → PokeScope (ME only)
+  // 2. Waterfall â€” PokeTrace â†’ pokemontcg.io â†’ PPT â†’ PokeScope (ME only)
   const setName = setRow?.name ?? "";
-  // ME sets: no PokeTrace singles data — start at source 2
+  // ME sets: no PokeTrace singles data â€” start at source 2
   const slug = ME_SETS.has(setId) ? null : (slugMap[setName.toLowerCase()] ?? null);
 
   let result = null;
@@ -503,7 +515,7 @@ async function processSet(admin, userId, setId, slugMap) {
 
   if (!result && ME_SETS.has(setId)) {
     // Flush every 25 cards so prices are persisted even if function times out
-    // (me2pt5 has 295 cards × 1s/card ≈ 295s, close to Vercel's 300s limit)
+    // (me2pt5 has 295 cards Ã— 1s/card â‰ˆ 295s, close to Vercel's 300s limit)
     const pokeFlush = async (partialMap) => {
       const rows = [...partialMap.entries()].map(([id, prices]) => ({
         id, ...prices, updated_at: new Date().toISOString(),
@@ -546,12 +558,12 @@ async function processSet(admin, userId, setId, slugMap) {
   // Log first 5 for monitoring
   console.log(`[Pricing] ${setId} (${priceSource}) first 5 updates:`);
   updates.slice(0, 5).forEach((u) =>
-    console.log(`  ${u.id}: USD ${u.price_usd ?? "—"} / EUR ${u.price_eur ?? "—"}`)
+    console.log(`  ${u.id}: USD ${u.price_usd ?? "â€”"} / EUR ${u.price_eur ?? "â€”"}`)
   );
 
-  // 4. Update prices on existing printing rows (never insert — rows are seeded separately)
+  // 4. Update prices on existing printing rows (never insert â€” rows are seeded separately)
   console.log(`[DB Write] ${setId} (${priceSource}): updating ${updates.length} rows`);
-  updates.slice(0, 3).forEach((u) => console.log(`  → ${u.id}: $${u.price_usd ?? "—"}`));
+  updates.slice(0, 3).forEach((u) => console.log(`  â†’ ${u.id}: $${u.price_usd ?? "â€”"}`));
   await batchUpdate(admin, updates);
   console.log(`[DB Write] ${setId}: update complete`);
 
@@ -576,3 +588,4 @@ async function processSet(admin, userId, setId, slugMap) {
 
   return { setId, cardsUpdated: updates.length, previousValue, newValue, requestsUsed, priceSource };
 }
+
