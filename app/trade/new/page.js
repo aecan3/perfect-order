@@ -146,7 +146,7 @@ function TradeNewInner() {
       const cardIds = [...new Set((printingsData || []).map((p) => p.card_id).filter(Boolean))];
       let cardsData;
       try {
-        cardsData = await fetchInBatches(supabase, "cards", "id, name", cardIds);
+        cardsData = await fetchInBatches(supabase, "cards", "id, name, image_large", cardIds);
       } catch (err) {
         console.error("[trade/new] cards fetch failed:", err.message, err.supabaseError);
         setLoadError(err.message);
@@ -173,7 +173,7 @@ function TradeNewInner() {
             duplicate_count: e.duplicate_count || 0,
             cardName: c.name || "",
             printingLabel: p.printing_label || "",
-            imageUrl: p.image_url || "",
+            imageUrl: p.image_url || c.image_large || "",
             priceUsd: Number(p.price_usd) || 0,
             setName: s.name || e.set_id,
             setLogoUrl: s.logo_url || "",
@@ -251,10 +251,9 @@ function TradeNewInner() {
       card_name: r.cardName,
       set_name: r.setName,
       set_id: r.set_id,
-      card_number: r.card_number,
+      card_number: String(r.card_number),
       price_usd: r.priceUsd || null,
       image_url: r.imageUrl || null,
-      printing_label: r.printingLabel || null,
     }));
 
     const requestItems = requestedCards.map((c) => ({
@@ -264,7 +263,6 @@ function TradeNewInner() {
       set_id: c.setId || null,
       price_usd: c.priceUsd || null,
       image_url: c.imageUrl || null,
-      printing_label: c.printingLabel || null,
     }));
 
     const res = await fetch("/api/trade/propose", {
