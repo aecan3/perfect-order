@@ -390,17 +390,27 @@ function TradeNewInner() {
               </div>
             )}
 
-            {/* Toggle + search row */}
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">
-                {showAll ? "Your collection" : "Your duplicates"}
-              </span>
+            {/* Mode pill toggle */}
+            <div className="flex rounded-xl overflow-hidden border border-[var(--po-border)]" style={{ background: "var(--po-bg)" }}>
               <button
-                onClick={() => { setShowAll((v) => !v); setSelected({}); }}
-                className="text-[10px] font-bold uppercase tracking-widest"
-                style={{ color: "var(--po-green)" }}
+                onClick={() => { setShowAll(false); setSelected({}); }}
+                className="flex-1 py-2 text-[11px] font-bold transition-colors"
+                style={{
+                  background: !showAll ? "var(--po-green)" : "transparent",
+                  color: !showAll ? "#050507" : "var(--po-text-dim)",
+                }}
               >
-                {showAll ? "Dupes only" : "All cards"}
+                Duplicates only
+              </button>
+              <button
+                onClick={() => { setShowAll(true); setSelected({}); }}
+                className="flex-1 py-2 text-[11px] font-bold transition-colors"
+                style={{
+                  background: showAll ? "var(--po-green)" : "transparent",
+                  color: showAll ? "#050507" : "var(--po-text-dim)",
+                }}
+              >
+                All cards
               </button>
             </div>
 

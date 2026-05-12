@@ -18,6 +18,7 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   const [processing, setProcessing] = useState(false);
   const [verifyError, setVerifyError] = useState(null);
   const [acceptError, setAcceptError] = useState(null);
+  const [declineError, setDeclineError] = useState(null);
   const [logisticsChoice, setLogisticsChoice] = useState(null);
   const [liabilityChecked, setLiabilityChecked] = useState(false);
   const [revealedAddress, setRevealedAddress] = useState(null);
@@ -57,7 +58,8 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
 
   if (!trade) return null;
 
-  const isExpired = trade.status === "pending" && new Date(trade.expires_at) < new Date();
+  const isProposer = trade.proposer_id === user.id;
+  const isExpired = (trade.status === "pending" || trade.status === "verification_required") && new Date(trade.expires_at) < new Date();
 
   const myVerification = verifications.find((v) => v.user_id === user.id);
   const otherVerification = verifications.find((v) => v.user_id === otherUserId);
@@ -105,6 +107,21 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
       await loadTradeState();
     } catch {
       setAcceptError("Network error — please try again.");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDecline = async () => {
+    setProcessing(true);
+    setDeclineError(null);
+    try {
+      const res = await fetch(`/api/trade/${tradeId}/decline`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { setDeclineError(data.error || "Failed to decline trade"); return; }
+      await loadTradeState();
+    } catch {
+      setDeclineError("Network error — please try again.");
     } finally {
       setProcessing(false);
     }
@@ -171,87 +188,120 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
         </div>
 
         <div className="px-4 py-3 space-y-3">
-          {/* Verification status */}
-          <div className="space-y-2">
-            <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Photo Verification</p>
 
-            <VerificationRow
-              label="You"
-              verified={myVerification?.confirmed}
-              timestamp={myVerification?.created_at}
-            />
-            <VerificationRow
-              label={`@${otherHandle}`}
-              verified={otherVerification?.confirmed}
-              timestamp={otherVerification?.created_at}
-            />
-          </div>
+          {/* ── DECLINED ── */}
+          {trade.status === "declined" && (
+            <div className="flex items-center gap-2 rounded-xl border border-rose-700/40 bg-rose-950/30 px-3 py-3">
+              <AlertTriangle size={14} className="text-rose-400 flex-shrink-0" />
+              <p className="text-xs text-rose-300">Trade declined.</p>
+            </div>
+          )}
 
-          {/* Expired state */}
+          {/* ── PENDING: proposer waits, recipient decides ── */}
+          {trade.status === "pending" && !isExpired && (
+            isProposer ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--po-text-dim)]">
+                <Clock size={13} className="flex-shrink-0" />
+                Waiting for @{otherHandle} to accept or decline…
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Respond to this trade</p>
+                <button
+                  onClick={handleAccept}
+                  disabled={processing}
+                  className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
+                  style={{ background: "var(--po-green)" }}
+                >
+                  {processing ? "Accepting…" : "Accept Trade"}
+                </button>
+                <button
+                  onClick={handleDecline}
+                  disabled={processing}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm border border-rose-700/60 text-rose-400 disabled:opacity-50 flex items-center justify-center"
+                >
+                  Decline Trade
+                </button>
+                {(acceptError || declineError) && (
+                  <p className="text-xs text-rose-300">{acceptError || declineError}</p>
+                )}
+              </div>
+            )
+          )}
+
+          {/* ── VERIFICATION PHASE ── */}
+          {trade.status === "verification_required" && !isExpired && (
+            <>
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Photo Verification</p>
+                <VerificationRow label="You" verified={myVerification?.confirmed} timestamp={myVerification?.created_at} />
+                <VerificationRow label={`@${otherHandle}`} verified={otherVerification?.confirmed} timestamp={otherVerification?.created_at} />
+              </div>
+
+              {!myVerification?.confirmed && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowCamera(true)}
+                    disabled={processing}
+                    className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
+                    style={{ background: "var(--po-green)" }}
+                  >
+                    <Camera size={14} />
+                    {processing ? "Verifying…" : "Begin Verification"}
+                  </button>
+                  {verifyError && (
+                    <div className="rounded-xl border border-rose-700/60 bg-rose-950/40 px-3 py-2">
+                      <p className="text-xs text-rose-300 leading-relaxed">{verifyError}</p>
+                      <button onClick={() => { setVerifyError(null); setShowCamera(true); }} className="text-xs text-rose-400 font-bold underline mt-1">
+                        Retake photo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {myVerification?.confirmed && !otherVerification?.confirmed && (
+                <div className="flex items-center gap-2 text-xs text-[var(--po-text-dim)]">
+                  <Clock size={13} />
+                  Waiting for @{otherHandle} to verify
+                </div>
+              )}
+
+              {myVerification?.confirmed && (
+                <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)] border-t border-[var(--po-border)] pt-3">
+                  {DISCLAIMER}
+                </p>
+              )}
+
+              {bothVerified && (
+                <div className="space-y-2 border-t border-[var(--po-border)] pt-3">
+                  {myAccepted ? (
+                    <div className="flex items-center gap-2 text-xs text-[var(--po-text-dim)]">
+                      <Clock size={13} />
+                      Waiting for @{otherHandle} to confirm
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleAccept}
+                        disabled={processing}
+                        className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest border border-[var(--po-green)] text-[var(--po-green)] disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {processing ? "Confirming…" : "Confirm Trade"}
+                      </button>
+                      {acceptError && <p className="text-xs text-rose-300">{acceptError}</p>}
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── EXPIRED ── */}
           {isExpired && (
             <div className="flex items-center gap-2 rounded-xl border border-[var(--po-border)] px-3 py-3" style={{ background: "var(--po-bg)" }}>
               <AlertTriangle size={14} className="text-[var(--po-text-dim)] flex-shrink-0" />
               <p className="text-xs text-[var(--po-text-dim)]">This trade proposal has expired.</p>
-            </div>
-          )}
-
-          {/* Actions */}
-          {!isExpired && !myVerification?.confirmed && !bothAccepted && (
-            <div className="space-y-2">
-              <button
-                onClick={() => setShowCamera(true)}
-                disabled={processing}
-                className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
-                style={{ background: "var(--po-green)" }}
-              >
-                <Camera size={14} />
-                {processing ? "Verifying…" : "Begin Verification"}
-              </button>
-              {verifyError && (
-                <div className="rounded-xl border border-rose-700/60 bg-rose-950/40 px-3 py-2">
-                  <p className="text-xs text-rose-300 leading-relaxed">{verifyError}</p>
-                  <button onClick={() => { setVerifyError(null); setShowCamera(true); }} className="text-xs text-rose-400 font-bold underline mt-1">
-                    Retake photo
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!isExpired && myVerification?.confirmed && !otherVerification?.confirmed && !bothAccepted && (
-            <div className="flex items-center gap-2 text-xs text-[var(--po-text-dim)]">
-              <Clock size={13} />
-              Waiting for @{otherHandle} to verify
-            </div>
-          )}
-
-          {/* Disclaimer always shown after my verification */}
-          {myVerification?.confirmed && (
-            <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)] border-t border-[var(--po-border)] pt-3">
-              {DISCLAIMER}
-            </p>
-          )}
-
-          {/* Accept button — both verified, not yet both accepted */}
-          {!isExpired && bothVerified && !bothAccepted && (
-            <div className="space-y-2 border-t border-[var(--po-border)] pt-3">
-              {myAccepted ? (
-                <div className="flex items-center gap-2 text-xs text-[var(--po-text-dim)]">
-                  <Clock size={13} />
-                  Waiting for @{otherHandle} to accept
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={handleAccept}
-                    disabled={processing}
-                    className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest border border-[var(--po-green)] text-[var(--po-green)] disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {processing ? "Accepting…" : "Accept Trade"}
-                  </button>
-                  {acceptError && <p className="text-xs text-rose-300">{acceptError}</p>}
-                </>
-              )}
             </div>
           )}
 

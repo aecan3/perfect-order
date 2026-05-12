@@ -34,7 +34,26 @@ export async function POST(req, { params }) {
   const isRecipient = trade.recipient_id === user.id;
   if (!isProposer && !isRecipient) return NextResponse.json({ error: "Not a party to this trade" }, { status: 403 });
 
-  // Require both verifications confirmed
+  // --- Stage 1: recipient accepting the proposal (pending → verification_required) ---
+  if (trade.status === "pending") {
+    if (!isRecipient) {
+      return NextResponse.json({ error: "Only the recipient can accept a pending proposal" }, { status: 403 });
+    }
+    await supabase.from("trades").update({ status: "verification_required" }).eq("id", tradeId);
+    await supabase.from("trade_events").insert({
+      trade_id: tradeId,
+      user_id: user.id,
+      event_type: "recipient_accepted",
+      detail: {},
+    });
+    return NextResponse.json({ stage: "verification_required" });
+  }
+
+  // --- Stage 2: post-verification confirmation (verification_required → accepted) ---
+  if (trade.status !== "verification_required") {
+    return NextResponse.json({ error: "Trade is not in a state that can be accepted" }, { status: 400 });
+  }
+
   const { data: verifications } = await supabase
     .from("trade_verifications")
     .select("user_id, confirmed")
@@ -47,7 +66,6 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "Both parties must complete photo verification first" }, { status: 400 });
   }
 
-  // Check if already accepted by this user
   const { data: existingEvents } = await supabase
     .from("trade_events")
     .select("user_id, event_type")
@@ -68,7 +86,6 @@ export async function POST(req, { params }) {
   const otherAccepted = existingEvents?.some((e) => e.user_id === otherUserId);
 
   if (otherAccepted) {
-    // Both have accepted — mark trade as accepted
     await supabase.from("trades").update({ status: "accepted" }).eq("id", tradeId);
     return NextResponse.json({ bothAccepted: true });
   }
