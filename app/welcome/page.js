@@ -148,7 +148,7 @@ export default function WelcomePage() {
 
             {platform === "other" && (
               <p className="text-sm text-[var(--po-text-dim)]">
-                For the best experience, open {BRAND} in{" "}
+                For the best experience, open Master Setter in{" "}
                 <span className="font-bold text-[var(--po-text)]">Safari on iPhone</span> or{" "}
                 <span className="font-bold text-[var(--po-text)]">Chrome on Android</span> and add
                 it to your home screen.
