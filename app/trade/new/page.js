@@ -42,9 +42,11 @@ function TradeNewInner() {
     const raw = searchParams.get("requests");
     if (raw) {
       try {
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(decodeURIComponent(raw));
         if (Array.isArray(parsed) && parsed.length) return parsed;
-      } catch {}
+      } catch (e) {
+        console.error("Failed to parse requests param:", raw, e);
+      }
     }
     const id = searchParams.get("request");
     if (!id) return [];
@@ -93,7 +95,6 @@ function TradeNewInner() {
           .select("printing_id, set_id, card_number, duplicate_count")
           .eq("user_id", user.id)
           .eq("checked", true)
-          .eq("is_graded", false)
           .range(from, from + PAGE - 1);
         if (fetchErr) { setLoadError(fetchErr.message); setStatus("error"); return; }
         entryRows.push(...(data || []));

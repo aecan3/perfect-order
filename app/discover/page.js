@@ -161,7 +161,9 @@ export default function DiscoverPage() {
         priceUsd: c.priceUsd,
       }))
     ));
-    router.push(`/trade/new?with=${handle}&requests=${requests}`);
+    const url = `/trade/new?with=${handle}&requests=${requests}`;
+    console.log("[Discover] openTradePropose URL:", url);
+    router.push(url);
   };
 
   const isSelecting = selected.size > 0;
