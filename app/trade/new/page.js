@@ -5,6 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
+const BATCH = 200;
+async function fetchInBatches(supabase, table, select, ids) {
+  if (ids.length === 0) return [];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += BATCH) chunks.push(ids.slice(i, i + BATCH));
+  const results = await Promise.all(chunks.map((chunk) => supabase.from(table).select(select).in("id", chunk)));
+  const failed = results.find((r) => r.error);
+  if (failed) throw Object.assign(new Error(failed.error.message), { supabaseError: failed.error });
+  return results.flatMap((r) => r.data);
+}
+
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
@@ -108,8 +119,6 @@ function TradeNewInner() {
         from += PAGE;
       }
 
-      console.log("[trade/new] entryRows loaded:", entryRows.length);
-
       if (entryRows.length === 0) {
         setAllRows([]);
         setStatus("ok");
@@ -118,38 +127,29 @@ function TradeNewInner() {
 
       const printingIds = [...new Set(entryRows.map((e) => e.printing_id).filter(Boolean))];
       const setIds = [...new Set(entryRows.map((e) => e.set_id).filter(Boolean))];
-      console.log("[trade/new] printingIds:", printingIds.length, "setIds:", setIds.length);
 
-      // Step 2: printings + sets in parallel
-      const [{ data: printingsData, error: pErr }, { data: setsData, error: sErr }] = await Promise.all([
-        supabase.from("printings").select("id, card_id, printing_label, image_url, price_usd").in("id", printingIds),
-        supabase.from("sets").select("id, name, logo_url, theme_primary").in("id", setIds),
-      ]);
-      if (pErr) {
-        console.error("[trade/new] printings query failed:", pErr.message, pErr.details, pErr.hint, pErr.code);
-        setLoadError(pErr.message);
-        setStatus("error");
-        return;
-      }
-      if (sErr) {
-        console.error("[trade/new] sets query failed:", sErr.message, sErr.details, sErr.hint, sErr.code);
-        setLoadError(sErr.message);
+      // Step 2: printings (batched — can exceed 2000 IDs) + sets in parallel
+      let printingsData, setsData;
+      try {
+        [printingsData, setsData] = await Promise.all([
+          fetchInBatches(supabase, "printings", "id, card_id, printing_label, image_url, price_usd", printingIds),
+          fetchInBatches(supabase, "sets", "id, name, logo_url, theme_primary", setIds),
+        ]);
+      } catch (err) {
+        console.error("[trade/new] step 2 fetch failed:", err.message, err.supabaseError);
+        setLoadError(err.message);
         setStatus("error");
         return;
       }
 
-      console.log("[trade/new] printingsData:", printingsData?.length, "setsData:", setsData?.length);
-
-      // Step 3: card names from cards table
+      // Step 3: card names (batched — same scale as printings)
       const cardIds = [...new Set((printingsData || []).map((p) => p.card_id).filter(Boolean))];
-      console.log("[trade/new] cardIds:", cardIds.length);
-      const { data: cardsData, error: cErr } = await supabase
-        .from("cards")
-        .select("id, name")
-        .in("id", cardIds);
-      if (cErr) {
-        console.error("[trade/new] cards query failed:", cErr.message, cErr.details, cErr.hint, cErr.code);
-        setLoadError(cErr.message);
+      let cardsData;
+      try {
+        cardsData = await fetchInBatches(supabase, "cards", "id, name", cardIds);
+      } catch (err) {
+        console.error("[trade/new] cards fetch failed:", err.message, err.supabaseError);
+        setLoadError(err.message);
         setStatus("error");
         return;
       }
