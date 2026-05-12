@@ -76,16 +76,18 @@ export async function POST(req, { params }) {
             {
               type: "text",
               text: `You are verifying a trading card photo for a peer-to-peer trade.
-Examine this image and confirm ALL of the following:
-1. This appears to be a live photo of a physical card, not a screenshot, scan, or photo of a screen
-2. A Pokemon trading card is clearly visible
-3. The card visible matches the name "${cardName}" from the set "${setName}"
+Examine this image and confirm the following:
+1. This appears to be a live photo of a physical card, not a screenshot, scan, or photo of a screen — HARD REQUIREMENT
+2. A Pokemon trading card is clearly visible — HARD REQUIREMENT
+3. The card name matches "${cardName}" — HARD REQUIREMENT (check the card name printed on the card)
+4. The set name matches "${setName}" — SOFT CHECK ONLY (set text may be blurry or unreadable; null is acceptable)
 
 Respond in JSON only:
 {
   "livePhoto": true/false,
   "cardVisible": true/false,
   "cardMatches": true/false,
+  "setMatches": true/false/null,
   "confidence": "high/medium/low",
   "failureReason": "string or null"
 }`,
@@ -106,6 +108,7 @@ Respond in JSON only:
     return NextResponse.json({ error: "Could not parse AI response" }, { status: 500 });
   }
 
+  // setMatches is a soft check — blurry set text should not block a valid card photo
   const confirmed =
     aiResult.livePhoto === true &&
     aiResult.cardVisible === true &&

@@ -27,8 +27,16 @@ export function CameraCapture({ onCapture, onClose }) {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => setReady(true);
+        await new Promise((resolve) => { videoRef.current.onloadedmetadata = resolve; });
       }
+
+      const track = stream.getVideoTracks()[0];
+      if (track?.getCapabilities?.()?.focusMode?.includes("continuous")) {
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setReady(true);
     } catch {
       setError("Camera access denied. Please allow camera access in your browser settings and try again.");
     }
@@ -102,8 +110,8 @@ export function CameraCapture({ onCapture, onClose }) {
               className="w-full h-full object-cover"
             />
             {!ready && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black">
-                <p className="text-white/50 text-sm">Starting camera…</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                <p className="text-white/60 text-sm">Focusing…</p>
               </div>
             )}
           </div>
