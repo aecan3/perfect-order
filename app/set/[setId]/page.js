@@ -517,6 +517,7 @@ export default function SetTrackerPage() {
   const [shimmerMain, setShimmerMain] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [justCollected, setJustCollected] = useState(new Set());
+  const [dupSheetCard, setDupSheetCard] = useState(null);
   const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -847,8 +848,6 @@ export default function SetTrackerPage() {
       completionState === "complete" ? "" :
       completionState === "partial"  ? "opacity-60" :
       "grayscale opacity-30";
-    const firstOwned = prints.find((p) => ownedPrintings[p.id]?.checked);
-    const dupCount = firstOwned ? (ownedPrintings[firstOwned.id]?.duplicate_count || 0) : 0;
     const isJustCollected = view === "missing" && justCollected.has(card.number);
 
     return (
@@ -925,33 +924,44 @@ export default function SetTrackerPage() {
             })}
           </div>
         )}
-        {checkedCount > 0 && firstOwned && (
+        {checkedCount > 0 && (
           <div
             className="flex items-center justify-center gap-1 mt-1"
             onClick={(e) => e.stopPropagation()}
           >
-            {dupCount > 0 && (
+            {prints.length === 1 ? (
               <>
+                {(ownedPrintings[prints[0].id]?.duplicate_count || 0) > 0 && (
+                  <>
+                    <button
+                      onClick={() => handleDupChange(prints[0].id, -1)}
+                      className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+                    >
+                      −
+                    </button>
+                    <span
+                      className="text-[10px] font-bold tabular-nums w-4 text-center"
+                      style={{ color: themePrimary }}
+                    >
+                      {ownedPrintings[prints[0].id]?.duplicate_count || 0}
+                    </span>
+                  </>
+                )}
                 <button
-                  onClick={() => handleDupChange(firstOwned.id, -1)}
+                  onClick={() => handleDupChange(prints[0].id, 1)}
                   className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
                 >
-                  −
+                  +
                 </button>
-                <span
-                  className="text-[10px] font-bold tabular-nums w-4 text-center"
-                  style={{ color: themePrimary }}
-                >
-                  {dupCount}
-                </span>
               </>
+            ) : (
+              <button
+                onClick={() => setDupSheetCard(card)}
+                className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+              >
+                +
+              </button>
             )}
-            <button
-              onClick={() => handleDupChange(firstOwned.id, 1)}
-              className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
-            >
-              +
-            </button>
           </div>
         )}
       </div>
@@ -1215,6 +1225,62 @@ export default function SetTrackerPage() {
                 Reset everything
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {dupSheetCard && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 flex items-end justify-center"
+          onClick={() => setDupSheetCard(null)}
+        >
+          <div
+            className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl w-full max-w-sm px-5 pt-4 pb-10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-[var(--po-border)] rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-bold leading-tight mb-0.5">
+              {dupSheetCard.name}
+              <span className="text-[var(--po-text-dim)] font-normal ml-1">#{String(dupSheetCard.number).padStart(3, "0")}</span>
+            </h2>
+            <p className="text-xs text-[var(--po-text-dim)] mb-4">Which version are you updating?</p>
+            <div className="space-y-1">
+              {(printingsByCard[dupSheetCard.number] || [])
+                .filter((p) => ownedPrintings[p.id]?.checked)
+                .map((p) => {
+                  const dc = ownedPrintings[p.id]?.duplicate_count || 0;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0">
+                      <span className="text-sm font-bold">{p.printing_label}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDupChange(p.id, -1)}
+                          disabled={dc === 0}
+                          className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center disabled:opacity-30"
+                        >
+                          −
+                        </button>
+                        <span className="text-sm font-black tabular-nums w-6 text-center" style={{ color: themePrimary }}>
+                          {dc}
+                        </span>
+                        <button
+                          onClick={() => handleDupChange(p.id, 1)}
+                          className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            <button
+              onClick={() => setDupSheetCard(null)}
+              className="w-full mt-5 py-3 rounded-xl font-black text-sm text-black"
+              style={{ background: "var(--po-green)" }}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

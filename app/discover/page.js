@@ -63,20 +63,10 @@ export default function DiscoverPage() {
           .eq("checked", false),
       ]);
 
-      // Group friend entries by (user_id, set_id, card_number) to count total copies
-      // across all printings — catches the case where a user owns e.g. one normal
-      // and one holo of the same card (neither shows duplicate_count > 0 alone).
-      const cardTotals = {};
-      for (const entry of (friendEntries || [])) {
-        const key = `${entry.user_id}:${entry.set_id}:${entry.card_number}`;
-        cardTotals[key] = (cardTotals[key] || 0) + 1 + (entry.duplicate_count || 0);
-      }
-
-      // A printing is tradeable if its card's total across all printings > 1
-      const tradeableEntries = (friendEntries || []).filter((entry) => {
-        const key = `${entry.user_id}:${entry.set_id}:${entry.card_number}`;
-        return cardTotals[key] > 1;
-      });
+      // A printing is tradeable only if that specific printing has at least one extra copy
+      const tradeableEntries = (friendEntries || []).filter((entry) =>
+        (entry.duplicate_count || 0) >= 1
+      );
 
       const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
       const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
