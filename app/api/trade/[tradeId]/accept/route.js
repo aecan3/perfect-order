@@ -103,6 +103,14 @@ export async function POST(req, { params }) {
 
   if (otherAccepted) {
     await supabase.from("trades").update({ status: "accepted" }).eq("id", tradeId);
+    try {
+      const { data: files } = await supabase.storage.from("Card Photos").list(`verification/${tradeId}`);
+      if (files?.length) {
+        await supabase.storage.from("Card Photos").remove(files.map((f) => `verification/${tradeId}/${f.name}`));
+      }
+    } catch (err) {
+      console.error("Photo cleanup failed (non-fatal):", err);
+    }
     return NextResponse.json({ bothAccepted: true });
   }
 
