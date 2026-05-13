@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
-import { FindOnEbay } from "@/components/FindOnEbay";
+import { FindCard } from "@/components/FindCard";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -915,6 +915,13 @@ export default function SetTrackerPage() {
               {fmtMoney(cardPrice, currency)}
             </div>
           )}
+          <FindCard
+            cardName={card.name}
+            cardNumber={card.number}
+            setTotal={setRow.total}
+            rarity={card.rarity}
+            userCountry={userCountry}
+          />
         </div>
         {prints.length === 1 ? (
           checkedCount > 0 && (
@@ -986,11 +993,6 @@ export default function SetTrackerPage() {
                 </button>
               </div>
             )}
-          </div>
-        )}
-        {view === "missing" && (
-          <div className="mt-1.5 flex justify-center" onClick={(e) => e.stopPropagation()}>
-            <FindOnEbay cardName={card.name} setName={setRow.name} userCountry={userCountry} />
           </div>
         )}
       </div>
@@ -1367,7 +1369,14 @@ export default function SetTrackerPage() {
               })}
             </div>
             <div className="flex justify-center mt-3">
-              <FindOnEbay cardName={pickingCard.name} setName={setRow.name} userCountry={userCountry} />
+              <FindCard
+                cardName={pickingCard.name}
+                cardNumber={pickingCard.number}
+                setTotal={setRow.total}
+                rarity={pickingCard.rarity}
+                userCountry={userCountry}
+                inline
+              />
             </div>
             <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
               Close
