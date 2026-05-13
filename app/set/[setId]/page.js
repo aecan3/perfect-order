@@ -465,6 +465,17 @@ function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onTog
   );
 }
 
+function abbreviate(label) {
+  if (!label) return "?";
+  const l = label.toLowerCase();
+  if (l.includes("reverse")) return "RH";
+  if (l.includes("holofoil") || l.includes("holo")) return "H";
+  if (l.includes("full art")) return "FA";
+  if (l.includes("secret")) return "SR";
+  if (l.includes("normal")) return "N";
+  return label.slice(0, 2).toUpperCase();
+}
+
 function CardArt({ src, name, ownershipState, themePrimary }) {
   const [failed, setFailed] = useState(false);
   const imgClass =
@@ -903,64 +914,75 @@ export default function SetTrackerPage() {
             </div>
           )}
         </div>
-        {prints.length > 1 && (
-          <div className="flex justify-center gap-1 mt-1">
-            {prints.map((p) => {
-              const isOwned = !!ownedPrintings[p.id]?.checked;
-              return (
-                <button
-                  key={p.id}
-                  onClick={(e) => { e.stopPropagation(); togglePrinting(p); }}
-                  className="w-3 h-3 rounded-full border transition"
-                  style={{
-                    background: isOwned ? themePrimary : "transparent",
-                    borderColor: isOwned ? themePrimary : "var(--po-text-dim)",
-                    boxShadow: isOwned ? `0 0 6px ${themePrimary}80` : "none",
-                  }}
-                  aria-label={`${p.printing_label} ${isOwned ? "owned" : "missing"}`}
-                  title={p.printing_label}
-                />
-              );
-            })}
-          </div>
-        )}
-        {checkedCount > 0 && (
-          <div
-            className="flex items-center justify-center gap-1 mt-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {prints.length === 1 ? (
-              <>
-                {(ownedPrintings[prints[0].id]?.duplicate_count || 0) > 0 && (
-                  <>
-                    <button
-                      onClick={() => handleDupChange(prints[0].id, -1)}
-                      className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
-                    >
-                      −
-                    </button>
-                    <span
-                      className="text-[10px] font-bold tabular-nums w-4 text-center"
-                      style={{ color: themePrimary }}
-                    >
-                      {ownedPrintings[prints[0].id]?.duplicate_count || 0}
-                    </span>
-                  </>
-                )}
-                <button
-                  onClick={() => handleDupChange(prints[0].id, 1)}
-                  className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
-                >
-                  +
-                </button>
-              </>
-            ) : (
+        {prints.length === 1 ? (
+          checkedCount > 0 && (
+            <div
+              className="flex items-center justify-center gap-1 mt-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {(ownedPrintings[prints[0].id]?.duplicate_count || 0) > 0 && (
+                <>
+                  <button
+                    onClick={() => handleDupChange(prints[0].id, -1)}
+                    className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+                  >
+                    −
+                  </button>
+                  <span
+                    className="text-[10px] font-bold tabular-nums w-4 text-center"
+                    style={{ color: themePrimary }}
+                  >
+                    {ownedPrintings[prints[0].id]?.duplicate_count || 0}
+                  </span>
+                </>
+              )}
               <button
-                onClick={() => setDupSheetCard(card)}
+                onClick={() => handleDupChange(prints[0].id, 1)}
                 className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
               >
                 +
               </button>
+            </div>
+          )
+        ) : (
+          <div onClick={(e) => e.stopPropagation()}>
+            {checkedCount > 0 ? (
+              <div
+                style={{ display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap", marginTop: 4, cursor: "pointer" }}
+                onClick={() => setDupSheetCard(card)}
+              >
+                {prints
+                  .filter((p) => ownedPrintings[p.id]?.checked)
+                  .map((p) => {
+                    const count = 1 + (ownedPrintings[p.id]?.duplicate_count || 0);
+                    return (
+                      <span
+                        key={p.id}
+                        style={{
+                          fontSize: 10,
+                          fontFamily: '"IBM Plex Mono", monospace',
+                          fontWeight: 500,
+                          color: "#07070a",
+                          background: "#c8ff4a",
+                          borderRadius: 4,
+                          padding: "1px 5px",
+                          letterSpacing: "0.03em",
+                        }}
+                      >
+                        {abbreviate(p.printing_label)} ×{count}
+                      </span>
+                    );
+                  })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center mt-1">
+                <button
+                  onClick={() => setDupSheetCard(card)}
+                  className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+                >
+                  +
+                </button>
+              </div>
             )}
           </div>
         )}
