@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { buildEbayUrl } from "@/lib/ebay";
 
 const MARKET_LABEL = { AU: "AU", US: "US", UK: "UK", DE: "DE", CA: "CA" };
 
-// inline=true renders as a regular centred button (for modals without a card image)
-// inline=false (default) renders as an absolute overlay chip for card image containers
 export function FindCard({ cardName, cardNumber, setTotal, rarity, userCountry = "AU", inline = false }) {
   const [showSheet, setShowSheet] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [pendingUrl, setPendingUrl] = useState(null);
+  // Ref-based debounce: prevents rapid double-taps opening eBay twice
+  const ebayOpeningRef = useRef(false);
 
   const numberFormatted = cardNumber && setTotal
     ? `${String(cardNumber).padStart(3, "0")}/${String(setTotal).padStart(3, "0")}`
@@ -18,14 +18,28 @@ export function FindCard({ cardName, cardNumber, setTotal, rarity, userCountry =
 
   const ebayUrl = buildEbayUrl({ cardName, cardNumber, setTotal, rarity, userCountry });
 
+  // Stop propagation on every handler — the component lives inside card divs
+  // that have their own onClick, and React synthetic events bubble through
+  // the component tree regardless of position:fixed on children.
+
   const openSheet = (e) => {
     e.stopPropagation();
+    e.preventDefault();
+    if (showSheet) return; // guard against double-open
     setShowSheet(true);
   };
 
-  const closeSheet = () => setShowSheet(false);
+  const closeSheet = (e) => {
+    if (e) e.stopPropagation();
+    setShowSheet(false);
+  };
 
-  const handleEbayClick = () => {
+  const handleEbayClick = (e) => {
+    e.stopPropagation();
+    if (ebayOpeningRef.current) return;
+    ebayOpeningRef.current = true;
+    setTimeout(() => { ebayOpeningRef.current = false; }, 1000);
+
     if (!localStorage.getItem("ebay_location_prompted")) {
       setPendingUrl(ebayUrl);
       setShowLocationModal(true);
@@ -193,7 +207,7 @@ export function FindCard({ cardName, cardNumber, setTotal, rarity, userCountry =
       {showLocationModal && (
         <div
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
-          onClick={() => finishLocation(pendingUrl)}
+          onClick={(e) => { e.stopPropagation(); finishLocation(pendingUrl); }}
         >
           <div
             className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-xs p-5 shadow-2xl"
@@ -205,13 +219,14 @@ export function FindCard({ cardName, cardNumber, setTotal, rarity, userCountry =
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => finishLocation(pendingUrl)}
+                onClick={(e) => { e.stopPropagation(); finishLocation(pendingUrl); }}
                 className="flex-1 py-2.5 rounded-xl border border-[var(--po-border)] text-sm font-bold text-[var(--po-text)]"
               >
                 Skip
               </button>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   navigator.geolocation.getCurrentPosition(() => {}, () => {});
                   finishLocation(pendingUrl);
                 }}
