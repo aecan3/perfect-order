@@ -469,6 +469,8 @@ function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onTog
 function abbreviate(label) {
   if (!label) return "?";
   const l = label.toLowerCase();
+  if (l.includes("master ball")) return "MB";
+  if (l.includes("poké ball") || l.includes("poke ball")) return "PB";
   if (l.includes("reverse")) return "RH";
   if (l.includes("holofoil") || l.includes("holo")) return "H";
   if (l.includes("full art")) return "FA";
