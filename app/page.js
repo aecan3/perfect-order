@@ -890,6 +890,14 @@ export default function HomePage() {
               <option value="GBP">GBP</option>
             </select>
             <Link
+              href="/favourites"
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-[var(--po-border)] bg-[var(--po-bg-soft)]"
+              style={{ color: "#FFB830", fontSize: 16, lineHeight: 1 }}
+              aria-label="Favourites"
+            >
+              ★
+            </Link>
+            <Link
               href="/friends"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-colors"
               style={{ background: "var(--po-bg-soft)", border: "1px solid var(--po-border)", color: "var(--po-green)" }}

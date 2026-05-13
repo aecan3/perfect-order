@@ -6,6 +6,7 @@ import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen,
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
+import { AchievementCelebration } from "@/components/AchievementCelebration";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -582,8 +583,12 @@ export default function SetTrackerPage() {
   const [gmPrintings, setGmPrintings] = useState([]);
   const [grandMasterExpanded, setGrandMasterExpanded] = useState(false);
   const [achievementToast, setAchievementToast] = useState(null);
+  const [celebration, setCelebration] = useState(null);
+  const celebrationQueueRef = useRef([]);
   const [favourites, setFavourites] = useState(new Set());
   const [favSheet, setFavSheet] = useState(null);
+  const [favToast, setFavToast] = useState(false);
+  const favToastTimerRef = useRef(null);
   const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -688,8 +693,9 @@ export default function SetTrackerPage() {
     prevSetPctRef.current = pct;
     if (prev < 100 && pct >= 100) {
       setShimmerMain(true);
-      setShowCelebration(true);
       setTimeout(() => setShimmerMain(false), 1100);
+      const item = { type: "master", setName: setRow?.name || "", setLogoUrl: setRow?.logo_url || "" };
+      setCelebration((cur) => { if (!cur) return item; celebrationQueueRef.current.push(item); return cur; });
       if (user) {
         supabase.from("master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
       }
@@ -755,7 +761,8 @@ export default function SetTrackerPage() {
           const isMasterComplete = allMasterPrints.length > 0 && allMasterPrints.every((p) => updatedOwned[p.id]?.checked);
           if (isMasterComplete && gmPrintings.every((p) => updatedOwned[p.id]?.checked)) {
             supabase.from("grand_master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
-            setAchievementToast({ type: "grand_master", setName: setRow?.name || "" });
+            const gmItem = { type: "grand_master", setName: setRow?.name || "", setLogoUrl: setRow?.logo_url || "" };
+            setCelebration((cur) => { if (!cur) return gmItem; celebrationQueueRef.current.push(gmItem); return cur; });
           }
         }
       }
@@ -996,16 +1003,17 @@ export default function SetTrackerPage() {
               {fmtMoney(cardPrice, currency)}
             </div>
           )}
-          {view === "missing" && completionState !== "complete" && (
+          {completionState !== "complete" && (
             <FindOnline
               cardName={card.name}
-              cardNumber={card.number}
-              setTotal={setRow.total}
+              collectorNumber={card.number && setRow.total
+                ? `${String(card.number).padStart(3, "0")}/${String(setRow.total).padStart(3, "0")}`
+                : card.number ? String(card.number).padStart(3, "0") : ""}
               rarity={card.rarity}
               userCountry={userCountry}
             />
           )}
-          {view === "missing" && prints.length > 0 && (() => {
+          {completionState !== "complete" && prints.length > 0 && (() => {
             const favPrintId = prints[0].id;
             const isFav = favourites.has(favPrintId);
             return (
@@ -1021,6 +1029,9 @@ export default function SetTrackerPage() {
                   } else {
                     setFavourites((prev) => new Set([...prev, favPrintId]));
                     supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(() => {});
+                    clearTimeout(favToastTimerRef.current);
+                    setFavToast(true);
+                    favToastTimerRef.current = setTimeout(() => setFavToast(false), 2000);
                   }
                 }}
                 style={{
@@ -1131,22 +1142,48 @@ export default function SetTrackerPage() {
     localStorage.setItem("po:setView", v);
   };
 
+  const dismissCelebration = () => {
+    const next = celebrationQueueRef.current.shift();
+    setCelebration(next || null);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      {showCelebration && (
-        <MasterSetCelebration
-          themePrimary={themePrimary}
-          themeSecondary={themeSecondary}
-          logoUrl={setRow.logo_url}
-          setName={setRow.name}
-          onDismiss={() => setShowCelebration(false)}
+      {celebration && (
+        <AchievementCelebration
+          type={celebration.type}
+          setName={celebration.setName}
+          setLogoUrl={celebration.setLogoUrl}
+          onDismiss={dismissCelebration}
         />
       )}
-      {achievementToast && (
-        <AchievementToast
-          toast={achievementToast}
-          onDismiss={() => setAchievementToast(null)}
-        />
+      {favToast && (
+        <Link
+          href="/favourites"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 300,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 16px",
+            background: "rgba(5,5,7,0.96)",
+            border: "1px solid rgba(255,184,48,0.4)",
+            borderRadius: 10,
+            color: "#FFB830",
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: 12,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+            textDecoration: "none",
+          }}
+        >
+          ★ Added to favourites · View →
+        </Link>
       )}
       <header
         className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
@@ -1391,8 +1428,7 @@ export default function SetTrackerPage() {
                               ) : (
                                 <FindOnline
                                   cardName={gmCard.name}
-                                  cardNumber={null}
-                                  setTotal={null}
+                                  collectorNumber=""
                                   rarity={gmCard.rarity}
                                   userCountry={userCountry}
                                 />
@@ -1642,18 +1678,17 @@ export default function SetTrackerPage() {
                 );
               })}
             </div>
-            {view === "missing" && (
-              <div className="flex justify-center mt-3">
-                <FindOnline
-                  cardName={pickingCard.name}
-                  cardNumber={pickingCard.number}
-                  setTotal={setRow.total}
-                  rarity={pickingCard.rarity}
-                  userCountry={userCountry}
-                  inline
-                />
-              </div>
-            )}
+            <div className="flex justify-center mt-3">
+              <FindOnline
+                cardName={pickingCard.name}
+                collectorNumber={pickingCard.number && setRow.total
+                  ? `${String(pickingCard.number).padStart(3, "0")}/${String(setRow.total).padStart(3, "0")}`
+                  : pickingCard.number ? String(pickingCard.number).padStart(3, "0") : ""}
+                rarity={pickingCard.rarity}
+                userCountry={userCountry}
+                inline
+              />
+            </div>
             <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
               Close
             </button>

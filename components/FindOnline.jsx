@@ -6,18 +6,14 @@ import { buildEbayUrl } from "@/lib/ebay";
 
 const MARKET_LABEL = { AU: "AU", US: "US", UK: "UK", DE: "DE", CA: "CA" };
 
-export function FindOnline({ cardName, cardNumber, setTotal, rarity, userCountry = "AU", inline = false }) {
+export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry = "AU", inline = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const ebayOpeningRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  const numberFormatted = cardNumber && setTotal
-    ? `${String(cardNumber).padStart(3, "0")}/${String(setTotal).padStart(3, "0")}`
-    : cardNumber ? String(cardNumber).padStart(3, "0") : "";
-
-  const ebayUrl = buildEbayUrl({ cardName, cardNumber, setTotal, rarity, userCountry });
+  const ebayUrl = buildEbayUrl({ cardName, collectorNumber, rarity, userCountry });
 
   const handleOpen = (e) => {
     e.stopPropagation();
@@ -168,7 +164,7 @@ export function FindOnline({ cardName, cardNumber, setTotal, rarity, userCountry
                 Search on eBay {MARKET_LABEL[userCountry] || "AU"}
               </div>
               <div style={{ fontSize: 11, color: "rgba(244,244,246,0.38)" }}>
-                {cardName}{numberFormatted ? ` · ${numberFormatted}` : ""}
+                {cardName}{collectorNumber ? ` · ${collectorNumber}` : ""}
               </div>
             </div>
           </div>

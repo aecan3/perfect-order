@@ -213,11 +213,12 @@ export default function FriendSetTrackerPage() {
 
       const { data: friendship } = await supabase
         .from("friendships")
-        .select("*")
+        .select("id")
         .or(
           `and(user_a.eq.${user.id},user_b.eq.${friendProfile.id}),and(user_a.eq.${friendProfile.id},user_b.eq.${user.id})`
         )
         .eq("status", "accepted")
+        .limit(1)
         .maybeSingle();
 
       if (!friendship) {
