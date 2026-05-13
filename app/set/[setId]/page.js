@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import { FindOnEbay } from "@/components/FindOnEbay";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -826,6 +827,7 @@ export default function SetTrackerPage() {
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
+  const userCountry = { AUD: "AU", USD: "US", GBP: "UK" }[currency] || "AU";
 
   const missingFilter = (card) => {
     if (justCollected.has(card.number)) return true;
@@ -984,6 +986,11 @@ export default function SetTrackerPage() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+        {view === "missing" && (
+          <div className="mt-1.5 flex justify-center" onClick={(e) => e.stopPropagation()}>
+            <FindOnEbay cardName={card.name} setName={setRow.name} userCountry={userCountry} />
           </div>
         )}
       </div>
@@ -1359,7 +1366,10 @@ export default function SetTrackerPage() {
                 );
               })}
             </div>
-            <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-3">
+            <div className="flex justify-center mt-3">
+              <FindOnEbay cardName={pickingCard.name} setName={setRow.name} userCountry={userCountry} />
+            </div>
+            <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
               Close
             </button>
           </div>
