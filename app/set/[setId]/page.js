@@ -690,6 +690,9 @@ export default function SetTrackerPage() {
       setShimmerMain(true);
       setShowCelebration(true);
       setTimeout(() => setShimmerMain(false), 1100);
+      if (user) {
+        supabase.from("master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
+      }
     }
   }); // runs every render — intentional, reads computed pct
 
@@ -745,10 +748,12 @@ export default function SetTrackerPage() {
           }
         }
 
-        // Check Grand Master completion
+        // Check Grand Master completion (master must also be complete)
         if (gmPrintings.length > 0) {
-          const gmUpdated = { ...ownedPrintings, [printing.id]: { checked: true } };
-          if (gmPrintings.every((p) => gmUpdated[p.id]?.checked)) {
+          const updatedOwned = { ...ownedPrintings, [printing.id]: { checked: true } };
+          const allMasterPrints = Object.values(printingsByCard).flat();
+          const isMasterComplete = allMasterPrints.length > 0 && allMasterPrints.every((p) => updatedOwned[p.id]?.checked);
+          if (isMasterComplete && gmPrintings.every((p) => updatedOwned[p.id]?.checked)) {
             supabase.from("grand_master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
             setAchievementToast({ type: "grand_master", setName: setRow?.name || "" });
           }
@@ -1034,7 +1039,7 @@ export default function SetTrackerPage() {
                   justifyContent: "center",
                   cursor: "pointer",
                   fontSize: 15,
-                  color: isFav ? "#c8ff4a" : "rgba(244,244,246,0.35)",
+                  color: isFav ? "#FFB830" : "rgba(244,244,246,0.35)",
                   lineHeight: 1,
                 }}
               >
