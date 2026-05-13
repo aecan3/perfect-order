@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
-import { FindCard } from "@/components/FindCard";
+import { FindOnline } from "@/components/FindOnline";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -508,6 +508,53 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
   );
 }
 
+function AchievementToast({ toast, onDismiss }) {
+  const [visible, setVisible] = useState(false);
+  const isGm = toast.type === "grand_master";
+  const color = isGm ? "#FFB830" : "#c8ff4a";
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setVisible(true));
+    const hide = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onDismiss, 400);
+    }, 4000);
+    return () => { cancelAnimationFrame(id); clearTimeout(hide); };
+  }, [onDismiss]);
+
+  return (
+    <div
+      onClick={onDismiss}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 300,
+        transform: visible ? "translateY(0)" : "translateY(-100%)",
+        transition: "transform 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+        background: "rgba(5,5,7,0.97)",
+        borderBottom: `2px solid ${color}`,
+        padding: "16px 20px 20px",
+        boxShadow: `0 4px 32px ${color}40`,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ maxWidth: 480, margin: "0 auto", display: "flex", alignItems: "center", gap: 14 }}>
+        <span style={{ fontSize: 26, lineHeight: 1 }}>{isGm ? "✦" : "🏆"}</span>
+        <div>
+          <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, letterSpacing: "0.1em", color, marginBottom: 3, fontWeight: 700 }}>
+            {isGm ? "GRAND MASTER" : "MASTER SET"}
+          </div>
+          <div style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontWeight: 700, fontSize: 15, color: "rgba(244,244,246,0.95)" }}>
+            {isGm ? `✦ You are a ${toast.setName} Grand Master!` : `🏆 You completed the ${toast.setName} Master Set!`}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SetTrackerPage() {
   const router = useRouter();
   const params = useParams();
@@ -532,6 +579,11 @@ export default function SetTrackerPage() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [justCollected, setJustCollected] = useState(new Set());
   const [dupSheetCard, setDupSheetCard] = useState(null);
+  const [gmPrintings, setGmPrintings] = useState([]);
+  const [grandMasterExpanded, setGrandMasterExpanded] = useState(false);
+  const [achievementToast, setAchievementToast] = useState(null);
+  const [favourites, setFavourites] = useState(new Set());
+  const [favSheet, setFavSheet] = useState(null);
   const prevSetPctRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoTargetRef = useRef(null);
@@ -561,28 +613,24 @@ export default function SetTrackerPage() {
       }
       setUser(user);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: userSetData }] = await Promise.all([
+      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: gmPrintingData }, { data: entriesData }, { data: userSetData }, { data: favsData }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
-        supabase.from("printings").select("*").eq("set_id", setId).order("display_order", { ascending: true }),
-        supabase
-          .from("collection_entries")
-          .select("printing_id, card_number, checked, photo_url, duplicate_count")
-          .eq("user_id", user.id)
-          .eq("set_id", setId),
-        supabase
-          .from("user_sets")
-          .select("prices_updated_at")
-          .eq("user_id", user.id)
-          .eq("set_id", setId)
-          .maybeSingle(),
+        supabase.from("printings").select("*").eq("set_id", setId).eq("collection_tier", "master").order("display_order", { ascending: true }),
+        supabase.from("printings").select("*, card:cards(id,name,rarity,supertype,image_large,image_small,number)").eq("set_id", setId).eq("collection_tier", "grand_master").order("display_order", { ascending: true }),
+        supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count").eq("user_id", user.id).eq("set_id", setId),
+        supabase.from("user_sets").select("prices_updated_at").eq("user_id", user.id).eq("set_id", setId).maybeSingle(),
+        supabase.from("favourites").select("printing_id").eq("user_id", user.id),
       ]);
 
       setProfile(prof);
       setSetRow(setData);
       setPricesUpdatedAt(userSetData?.prices_updated_at || null);
-      setCards(cardData || []);
+      const gmCardIds = new Set((gmPrintingData || []).map((p) => p.card_id));
+      setCards((cardData || []).filter((c) => !gmCardIds.has(c.id)));
+      setGmPrintings(gmPrintingData || []);
+      setFavourites(new Set((favsData || []).map((f) => f.printing_id)));
 
       const groupedPrintings = {};
       (printingData || []).forEach((p) => {
@@ -684,6 +732,27 @@ export default function SetTrackerPage() {
       }));
       if (willOwn) {
         setJustCollected((prev) => new Set([...prev, printing.card_number]));
+
+        // Auto-remove from favourites when all printings of this card are now owned
+        const cardPrints = printingsByCard[printing.card_number] || [];
+        const updatedOwned = { ...ownedPrintings, [printing.id]: { checked: true } };
+        const isCardComplete = cardPrints.length > 0 && cardPrints.every((p) => updatedOwned[p.id]?.checked);
+        if (isCardComplete) {
+          const toRemove = cardPrints.map((p) => p.id).filter((id) => favourites.has(id));
+          if (toRemove.length > 0) {
+            setFavourites((prev) => { const next = new Set(prev); toRemove.forEach((id) => next.delete(id)); return next; });
+            supabase.from("favourites").delete().eq("user_id", user.id).in("printing_id", toRemove).then(() => {});
+          }
+        }
+
+        // Check Grand Master completion
+        if (gmPrintings.length > 0) {
+          const gmUpdated = { ...ownedPrintings, [printing.id]: { checked: true } };
+          if (gmPrintings.every((p) => gmUpdated[p.id]?.checked)) {
+            supabase.from("grand_master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
+            setAchievementToast({ type: "grand_master", setName: setRow?.name || "" });
+          }
+        }
       }
       await supabase.from("collection_entries").upsert(
         {
@@ -698,7 +767,7 @@ export default function SetTrackerPage() {
         { onConflict: "user_id,set_id,card_number,printing_id" }
       );
     },
-    [user, ownedPrintings, supabase, setId]
+    [user, ownedPrintings, supabase, setId, favourites, gmPrintings, setRow, printingsByCard]
   );
 
   const triggerPhoto = (printing, e) => {
@@ -820,11 +889,16 @@ export default function SetTrackerPage() {
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
+  const gmOwnedCount = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
+  const gmTotalCount = gmPrintings.length;
+  const gmOwnedValue = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+  const gmTotalValue = gmPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+
   const checkedDisplay = ownedPrintingCount;
   const totalDisplay = totalPrintings;
   const remainingDisplay = totalDisplay - checkedDisplay;
-  const ownedValueDisplay = ownedPrintingValue;
-  const totalValueDisplay = totalPrintingValue;
+  const ownedValueDisplay = ownedPrintingValue + gmOwnedValue;
+  const totalValueDisplay = totalPrintingValue + gmTotalValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
@@ -917,13 +991,57 @@ export default function SetTrackerPage() {
               {fmtMoney(cardPrice, currency)}
             </div>
           )}
-          <FindCard
-            cardName={card.name}
-            cardNumber={card.number}
-            setTotal={setRow.total}
-            rarity={card.rarity}
-            userCountry={userCountry}
-          />
+          {view === "missing" && completionState !== "complete" && (
+            <FindOnline
+              cardName={card.name}
+              cardNumber={card.number}
+              setTotal={setRow.total}
+              rarity={card.rarity}
+              userCountry={userCountry}
+            />
+          )}
+          {view === "missing" && prints.length > 0 && (() => {
+            const favPrintId = prints[0].id;
+            const isFav = favourites.has(favPrintId);
+            return (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (isFav) {
+                    setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
+                    supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
+                  } else if (favourites.size >= 5) {
+                    setFavSheet({ targetPrintingId: favPrintId, cardName: card.name });
+                  } else {
+                    setFavourites((prev) => new Set([...prev, favPrintId]));
+                    supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(() => {});
+                  }
+                }}
+                style={{
+                  position: "absolute",
+                  top: 6,
+                  right: 6,
+                  zIndex: 10,
+                  background: "rgba(7,7,10,0.75)",
+                  backdropFilter: "blur(4px)",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: 26,
+                  height: 26,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  fontSize: 15,
+                  color: isFav ? "#c8ff4a" : "rgba(244,244,246,0.35)",
+                  lineHeight: 1,
+                }}
+              >
+                {isFav ? "★" : "☆"}
+              </button>
+            );
+          })()}
         </div>
         {prints.length === 1 ? (
           checkedCount > 0 && (
@@ -1017,6 +1135,12 @@ export default function SetTrackerPage() {
           logoUrl={setRow.logo_url}
           setName={setRow.name}
           onDismiss={() => setShowCelebration(false)}
+        />
+      )}
+      {achievementToast && (
+        <AchievementToast
+          toast={achievementToast}
+          onDismiss={() => setAchievementToast(null)}
         />
       )}
       <header
@@ -1188,6 +1312,101 @@ export default function SetTrackerPage() {
                 </RaritySection>
               );
             })}
+
+            {/* Grand Master section */}
+            {gmTotalCount > 0 && (
+              <div style={{ marginTop: 24, borderTop: "1px solid rgba(244,244,246,0.08)", paddingTop: 16 }}>
+                <button
+                  onClick={() => setGrandMasterExpanded((v) => !v)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#FFB830",
+                    fontFamily: '"IBM Plex Mono", monospace',
+                    fontSize: 12,
+                    letterSpacing: "0.1em",
+                    fontWeight: 700,
+                    padding: "8px 0",
+                  }}
+                >
+                  <span>✦ GRAND MASTER</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: "rgba(244,244,246,0.4)", fontSize: 11, fontWeight: 400 }}>
+                      {gmOwnedCount}/{gmTotalCount} · not counted in set completion
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        color: "#FFB830",
+                        transform: grandMasterExpanded ? "rotate(180deg)" : "none",
+                        transition: "transform 0.2s",
+                      }}
+                    />
+                  </span>
+                </button>
+
+                {grandMasterExpanded && (
+                  <div>
+                    <p style={{ fontSize: 11, color: "rgba(244,244,246,0.38)", fontFamily: '"IBM Plex Mono", monospace', marginBottom: 12, lineHeight: 1.5 }}>
+                      Promos and product exclusives beyond the standard master set. These do not count toward set completion.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {gmPrintings.map((printing) => {
+                        const gmCard = printing.card;
+                        if (!gmCard) return null;
+                        const isOwned = !!ownedPrintings[printing.id]?.checked;
+                        return (
+                          <div key={printing.id} className="flex flex-col">
+                            <div
+                              onClick={() => togglePrinting(printing)}
+                              className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
+                              style={{
+                                boxShadow: isOwned
+                                  ? "0 4px 20px rgba(0,0,0,0.5), 0 0 16px rgba(255,184,48,0.35)"
+                                  : "0 2px 10px rgba(0,0,0,0.4)",
+                                outline: isOwned ? "2px solid #FFB830" : "none",
+                              }}
+                            >
+                              <CardArt src={gmCard.image_large} name={gmCard.name} ownershipState={isOwned ? "complete" : "uncollected"} themePrimary="#FFB830" />
+                              <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                                PROMO
+                              </div>
+                              {isOwned ? (
+                                <div
+                                  className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
+                                  style={{ background: "#FFB830", color: "#000", boxShadow: "0 0 8px rgba(255,184,48,0.8)" }}
+                                >
+                                  <Check size={16} strokeWidth={3} />
+                                </div>
+                              ) : (
+                                <FindOnline
+                                  cardName={gmCard.name}
+                                  cardNumber={null}
+                                  setTotal={null}
+                                  rarity={gmCard.rarity}
+                                  userCountry={userCountry}
+                                />
+                              )}
+                            </div>
+                            <div className="text-center text-[11px] font-bold mt-1 truncate" style={{ color: "#FFB830" }}>
+                              {gmCard.name}
+                            </div>
+                            <div className="text-center text-[10px]" style={{ color: "rgba(244,244,246,0.38)" }}>
+                              {printing.printing_label}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : view === "binder" ? (
           <div className="grid grid-cols-2 gap-3">
@@ -1318,6 +1537,54 @@ export default function SetTrackerPage() {
         </div>
       )}
 
+      {favSheet && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center"
+          onClick={() => setFavSheet(null)}
+        >
+          <div
+            className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl w-full max-w-sm px-5 pt-4 pb-10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-[var(--po-border)] rounded-full mx-auto mb-4" />
+            <h2 className="text-base font-bold mb-1">Favourites full</h2>
+            <p className="text-xs text-[var(--po-text-dim)] mb-4">
+              Remove a favourite to add <span className="font-bold text-[var(--po-text)]">{favSheet.cardName}</span>.
+            </p>
+            <div className="space-y-1">
+              {[...favourites].map((printId) => {
+                const favCard = cards.find((c) => (printingsByCard[c.number] || []).some((p) => p.id === printId));
+                const favPrint = Object.values(printingsByCard).flat().find((p) => p.id === printId);
+                return (
+                  <div key={printId} className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0">
+                    <div>
+                      <div className="text-sm font-bold">{favCard?.name || "—"}</div>
+                      {favPrint && <div className="text-[10px]" style={{ color: "var(--po-text-dim)" }}>{favPrint.printing_label}</div>}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setFavourites((prev) => { const next = new Set(prev); next.delete(printId); return next; });
+                        await supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", printId);
+                        if (favSheet.targetPrintingId) {
+                          setFavourites((prev) => new Set([...prev, favSheet.targetPrintingId]));
+                          supabase.from("favourites").insert({ user_id: user.id, printing_id: favSheet.targetPrintingId }).then(() => {});
+                        }
+                        setFavSheet(null);
+                      }}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg border"
+                      style={{ color: "#f87171", borderColor: "rgba(248,113,113,0.3)" }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setFavSheet(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-4">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {pickingCard && (
         <div className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPickingCard(null)}>
           <div className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1370,16 +1637,18 @@ export default function SetTrackerPage() {
                 );
               })}
             </div>
-            <div className="flex justify-center mt-3">
-              <FindCard
-                cardName={pickingCard.name}
-                cardNumber={pickingCard.number}
-                setTotal={setRow.total}
-                rarity={pickingCard.rarity}
-                userCountry={userCountry}
-                inline
-              />
-            </div>
+            {view === "missing" && (
+              <div className="flex justify-center mt-3">
+                <FindOnline
+                  cardName={pickingCard.name}
+                  cardNumber={pickingCard.number}
+                  setTotal={setRow.total}
+                  rarity={pickingCard.rarity}
+                  userCountry={userCountry}
+                  inline
+                />
+              </div>
+            )}
             <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
               Close
             </button>
