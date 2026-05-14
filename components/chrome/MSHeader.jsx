@@ -43,10 +43,10 @@ export function MSHeader({ unreadCount = 0, scrolled = false }) {
           <Star size={20} fill="var(--ms-gold)" stroke="var(--ms-gold)" />
         </Link>
 
-        <button
+        <Link
+          href="/notifications"
           aria-label="Notifications"
           className="ms-icon-btn"
-          onClick={() => console.log("notifications: stub")}
           style={{
             width: 40,
             height: 40,
@@ -57,7 +57,7 @@ export function MSHeader({ unreadCount = 0, scrolled = false }) {
             border: "none",
             borderRadius: 4,
             cursor: "pointer",
-            padding: 0,
+            textDecoration: "none",
             flexShrink: 0,
           }}
         >
@@ -82,7 +82,7 @@ export function MSHeader({ unreadCount = 0, scrolled = false }) {
           {unreadCount > 0 && (
             <span className="sr-only">{unreadCount} unread notifications</span>
           )}
-        </button>
+        </Link>
       </div>
     </header>
   );
