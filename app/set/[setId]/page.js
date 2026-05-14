@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useParams } from "next/navigation";
 import { Check, X, Camera, Trash2, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
@@ -191,6 +192,8 @@ function MasterSetCelebration({ themePrimary, themeSecondary, logoUrl, setName, 
     const r = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(r);
   }, []);
+
+  useEffect(() => { setMounted(true); }, []);
 
   // Lock body scroll while overlay is open
   useEffect(() => {
@@ -577,6 +580,8 @@ export default function SetTrackerPage() {
   const [view, setView] = useState("rarity"); // "rarity" | "binder" | "missing"
   const [openSections, setOpenSections] = useState({});
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [dupConfirmPrinting, setDupConfirmPrinting] = useState(null);
+  const [mounted, setMounted] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const [shimmerMain, setShimmerMain] = useState(false);
@@ -768,19 +773,36 @@ export default function SetTrackerPage() {
             setCelebration((cur) => { if (!cur) return gmItem; celebrationQueueRef.current.push(gmItem); return cur; });
           }
         }
+
+        await supabase.from("collection_entries").upsert(
+          {
+            user_id: user.id,
+            set_id: setId,
+            card_number: printing.card_number,
+            printing_id: printing.id,
+            checked: true,
+            photo_url: cur.photo_url ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,set_id,card_number,printing_id" }
+        );
+      } else {
+        // Unticking — if duplicates exist, show confirm dialog first
+        if ((cur.duplicate_count || 0) > 0) {
+          setDupConfirmPrinting(printing);
+          // Revert optimistic state update while dialog is pending
+          setOwnedPrintings((prev) => ({ ...prev, [printing.id]: cur }));
+          return;
+        }
+        setOwnedPrintings((prev) => { const next = { ...prev }; delete next[printing.id]; return next; });
+        await supabase
+          .from("collection_entries")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("set_id", setId)
+          .eq("card_number", printing.card_number)
+          .eq("printing_id", printing.id);
       }
-      await supabase.from("collection_entries").upsert(
-        {
-          user_id: user.id,
-          set_id: setId,
-          card_number: printing.card_number,
-          printing_id: printing.id,
-          checked: willOwn,
-          photo_url: cur.photo_url ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,set_id,card_number,printing_id" }
-      );
     },
     [user, ownedPrintings, supabase, setId, favourites, gmPrintings, setRow, printingsByCard]
   );
@@ -1697,6 +1719,53 @@ export default function SetTrackerPage() {
             </button>
           </div>
         </div>
+      )}
+      {mounted && dupConfirmPrinting && createPortal(
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setDupConfirmPrinting(null)}
+        >
+          <div
+            className="bg-[var(--po-bg-soft)] border border-rose-800/60 rounded-2xl w-full max-w-sm p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-rose-300 mb-2">Remove from collection?</h2>
+            <p className="text-sm text-[var(--po-text-dim)] mb-4">
+              This printing has{" "}
+              <span className="text-[var(--po-text)] font-bold">
+                {ownedPrintings[dupConfirmPrinting.id]?.duplicate_count || 0}{" "}
+                {(ownedPrintings[dupConfirmPrinting.id]?.duplicate_count || 0) === 1 ? "duplicate" : "duplicates"}
+              </span>{" "}
+              recorded. Removing it will delete the entry and all duplicate counts.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDupConfirmPrinting(null)}
+                className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const printing = dupConfirmPrinting;
+                  setDupConfirmPrinting(null);
+                  setOwnedPrintings((prev) => { const next = { ...prev }; delete next[printing.id]; return next; });
+                  await supabase
+                    .from("collection_entries")
+                    .delete()
+                    .eq("user_id", user.id)
+                    .eq("set_id", setId)
+                    .eq("card_number", printing.card_number)
+                    .eq("printing_id", printing.id);
+                }}
+                className="flex-1 py-2 bg-rose-700 text-white rounded-lg text-sm font-bold"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </MSShell>
   );
