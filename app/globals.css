@@ -21,16 +21,27 @@
   /* Master Setter brand tokens */
   --ms-bg:         #07070a;
   --ms-bg-pure:    #000000;
+  --ms-bg-elev:    #0c0c10;
   --ms-ink:        #f4f4f6;
   --ms-dim:        rgba(244, 244, 246, 0.60);
   --ms-faint:      rgba(244, 244, 246, 0.36);
+  --ms-rule:       rgba(244, 244, 246, 0.08);
+  --ms-rule-soft:  rgba(244, 244, 246, 0.06);
   --ms-accent:     #c8ff4a;
   --ms-accent-ink: #07070a;
+  --ms-gold:       #FFB830;
+  --ms-danger:     #ff5a6a;
 }
 
 html, body {
   background: var(--po-bg);
   color: var(--po-text);
+}
+
+.ms-icon-btn:focus-visible,
+.ms-tab-link:focus-visible {
+  outline: 2px solid var(--ms-accent);
+  outline-offset: 2px;
 }
 
 body {
