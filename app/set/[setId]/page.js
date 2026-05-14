@@ -1025,7 +1025,7 @@ export default function SetTrackerPage() {
                   if (isFav) {
                     setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
                     supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
-                  } else if (favourites.size >= 5) {
+                  } else if (favourites.size >= 6) {
                     setFavSheet({ targetPrintingId: favPrintId, cardName: card.name });
                   } else {
                     setFavourites((prev) => new Set([...prev, favPrintId]));

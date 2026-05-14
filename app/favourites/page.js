@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
 import { selectAllPrintings } from "@/lib/queries/printings";
@@ -20,6 +21,13 @@ const fmtMoney = (v, currency) => {
   return `${sym}${v.toFixed(2)}`;
 };
 
+const collectorNum = (card, set) => {
+  if (!card?.number) return "";
+  return set?.total
+    ? `${String(card.number).padStart(3, "0")}/${String(set.total).padStart(3, "0")}`
+    : String(card.number).padStart(3, "0");
+};
+
 export default function FavouritesPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -28,7 +36,11 @@ export default function FavouritesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState("AUD");
+  const [activeCard, setActiveCard] = useState(null);
+  const [mounted, setMounted] = useState(false);
   const userCountry = { AUD: "AU", USD: "US", GBP: "UK" }[currency] || "AU";
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -45,13 +57,14 @@ export default function FavouritesPage() {
         .from("favourites")
         .select("printing_id, created_at")
         .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (!favData || favData.length === 0) { setLoading(false); return; }
 
       const printingIds = favData.map((f) => f.printing_id);
       const { data: printingData, error: printingError } = await selectAllPrintings(supabase, "*, card:cards!printings_card_id_fkey(id, name, number, rarity, image_large, image_small, set_id), set:sets!printings_set_id_fkey(id, name, code, logo_url, total, theme_primary)")
         .in("id", printingIds);
+      if (printingError) console.error("favourites fetch error:", printingError);
 
       const orderedItems = printingIds.map((pid) => printingData?.find((p) => p.id === pid)).filter(Boolean);
       setItems(orderedItems);
@@ -61,6 +74,7 @@ export default function FavouritesPage() {
 
   const removeFav = async (printingId) => {
     setItems((prev) => prev.filter((p) => p.id !== printingId));
+    setActiveCard(null);
     await supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", printingId);
   };
 
@@ -71,6 +85,101 @@ export default function FavouritesPage() {
       </div>
     );
   }
+
+  const SLOTS = 6;
+  const slots = [
+    ...items,
+    ...Array(Math.max(0, SLOTS - items.length)).fill(null),
+  ].slice(0, SLOTS);
+
+  const sheet = activeCard && mounted && createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={() => setActiveCard(null)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#111113", borderRadius: "20px 20px 0 0", maxHeight: "90vh", overflowY: "auto", paddingBottom: 40 }}
+      >
+        <div style={{ width: 40, height: 4, background: "rgba(244,244,246,0.18)", borderRadius: 2, margin: "16px auto 0" }} />
+
+        {activeCard.card?.image_large && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "20px 20px 0" }}>
+            <img
+              src={activeCard.card.image_large}
+              alt={activeCard.card.name}
+              style={{ width: 200, height: "auto", borderRadius: 10, display: "block" }}
+            />
+          </div>
+        )}
+
+        <div style={{ padding: "16px 24px 0" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "var(--po-text)", marginBottom: 4 }}>
+            {activeCard.card?.name}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 2 }}>
+            {activeCard.set?.name}
+            {collectorNum(activeCard.card, activeCard.set) ? ` · ${collectorNum(activeCard.card, activeCard.set)}` : ""}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--po-text-faint)", fontFamily: '"IBM Plex Mono", monospace' }}>
+            {activeCard.printing_label}
+            {activeCard.price_usd ? ` · ${fmtMoney(activeCard.price_usd * (RATES[currency]?.rate || 1), currency)}` : ""}
+          </div>
+        </div>
+
+        <div style={{ padding: "20px 24px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex" }}>
+            <FindOnline
+              cardName={activeCard.card?.name || ""}
+              collectorNumber={collectorNum(activeCard.card, activeCard.set)}
+              rarity={activeCard.card?.rarity}
+              userCountry={userCountry}
+              inline
+            />
+          </div>
+
+          <Link
+            href={`/set/${activeCard.set?.id}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "13px 16px",
+              background: "rgba(244,244,246,0.06)",
+              border: "1px solid rgba(244,244,246,0.14)",
+              borderRadius: 12,
+              color: "var(--po-text)",
+              fontSize: 15,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            View in Set
+          </Link>
+
+          <button
+            onClick={() => removeFav(activeCard.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "13px 16px",
+              background: "transparent",
+              border: "1px solid rgba(248,113,113,0.28)",
+              borderRadius: 12,
+              color: "rgba(248,113,113,0.85)",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Remove from favourites
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
@@ -109,112 +218,142 @@ export default function FavouritesPage() {
           </select>
         </div>
         <p style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: "var(--po-text-faint)" }}>
-          Star up to 5 cards you're chasing. They'll show up first in your discovery feed when friends have them spare.
+          Star up to 6 cards you're chasing. They'll show up first in your discovery feed when friends have them spare.
         </p>
       </header>
 
-      <main className="px-4 py-4 max-w-md mx-auto">
-        {items.length === 0 ? (
-          <div className="text-center py-16">
-            <div style={{ fontSize: 32, marginBottom: 12 }}>☆</div>
-            <p className="text-[var(--po-text-dim)] text-sm mb-1">No favourites yet.</p>
-            <p className="text-[var(--po-text-faint)] text-xs">
-              Tap the ☆ on any card you&apos;re hunting.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {items.map((printing) => {
-              const card = printing.card;
-              const set = printing.set;
-              if (!card || !set) return null;
-              const themePrimary = set.theme_primary || "#c8ff4a";
-              const collectorNumber = card.number && set.total
-                ? `${String(card.number).padStart(3, "0")}/${String(set.total).padStart(3, "0")}`
-                : card.number ? String(card.number).padStart(3, "0") : "";
-              const price = printing.price_usd
-                ? fmtMoney(printing.price_usd * (RATES[currency]?.rate || 1), currency)
-                : null;
-
+      <main style={{ padding: "16px", maxWidth: 480, margin: "0 auto" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 12,
+          }}
+        >
+          {slots.map((printing, i) => {
+            if (!printing) {
               return (
-                <div
-                  key={printing.id}
-                  className="flex gap-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg-soft)] overflow-hidden"
-                  style={{ borderLeft: `3px solid #FFB830` }}
-                >
-                  {/* Card thumbnail */}
-                  <Link
-                    href={`/set/${set.id}`}
-                    className="flex-shrink-0 w-16 h-[90px] relative"
+                <div key={`empty-${i}`}>
+                  <div
+                    style={{
+                      aspectRatio: "2/3",
+                      borderRadius: 12,
+                      border: "2px dashed var(--ms-faint)",
+                      background: "rgba(0,0,0,0.2)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
                   >
-                    {card.image_large ? (
-                      <img
-                        src={card.image_large}
-                        alt={card.name}
-                        className="w-full h-full object-cover grayscale opacity-55"
-                      />
-                    ) : (
-                      <div
-                        className="w-full h-full flex items-center justify-center"
-                        style={{ background: `${themePrimary}22` }}
-                      >
-                        <span style={{ fontSize: 10, color: themePrimary, fontWeight: 700 }}>
-                          {String(card.number).padStart(3, "0")}
-                        </span>
-                      </div>
-                    )}
-                  </Link>
-
-                  {/* Details */}
-                  <div className="flex-1 py-2 pr-2 min-w-0 flex flex-col justify-between">
-                    <div>
-                      <div className="font-bold text-sm truncate">{card.name}</div>
-                      <div
-                        className="text-[11px] truncate"
-                        style={{ color: "var(--po-text-dim)" }}
-                      >
-                        {set.name}
-                        {collectorNumber ? ` · ${collectorNumber}` : ""}
-                      </div>
-                      <div
-                        className="text-[10px] mt-0.5"
-                        style={{ color: "var(--po-text-faint)", fontFamily: '"IBM Plex Mono", monospace' }}
-                      >
-                        {printing.printing_label}
-                        {price ? ` · ${price}` : ""}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <FindOnline
-                        cardName={card.name}
-                        collectorNumber={collectorNumber}
-                        rarity={card.rarity}
-                        userCountry={userCountry}
-                        inline
-                      />
-                      <button
-                        onClick={() => removeFav(printing.id)}
-                        style={{
-                          fontSize: 10,
-                          fontFamily: '"IBM Plex Mono", monospace',
-                          color: "rgba(248,113,113,0.8)",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: "4px 0",
-                          flexShrink: 0,
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
+                    <span style={{ fontSize: 22, color: "var(--ms-faint)", lineHeight: 1 }}>+</span>
                   </div>
                 </div>
               );
-            })}
-          </div>
-        )}
+            }
+
+            const card = printing.card;
+            const set = printing.set;
+            if (!card || !set) return null;
+
+            const cn = collectorNum(card, set);
+            const price = printing.price_usd
+              ? fmtMoney(printing.price_usd * (RATES[currency]?.rate || 1), currency)
+              : null;
+
+            return (
+              <div
+                key={printing.id}
+                onClick={() => setActiveCard(printing)}
+                style={{ cursor: "pointer" }}
+              >
+                <div style={{ position: "relative", aspectRatio: "2/3", borderRadius: 12, overflow: "hidden" }}>
+                  {card.image_large ? (
+                    <img
+                      src={card.image_large}
+                      alt={card.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: `${set.theme_primary || "#c8ff4a"}22`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <span style={{ fontSize: 10, color: set.theme_primary || "#c8ff4a", fontWeight: 700 }}>
+                        {String(card.number).padStart(3, "0")}
+                      </span>
+                    </div>
+                  )}
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 5,
+                      right: 6,
+                      fontSize: 15,
+                      color: "#FFB830",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.85))",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    ★
+                  </span>
+                </div>
+
+                <div style={{ padding: "5px 2px 0", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "var(--po-text)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {card.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: "var(--ms-dim)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      lineHeight: 1.4,
+                      marginTop: 1,
+                    }}
+                  >
+                    {set.name}{cn ? ` · ${cn}` : ""}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: "var(--ms-dim)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontFamily: '"IBM Plex Mono", monospace',
+                      lineHeight: 1.4,
+                      marginTop: 1,
+                    }}
+                  >
+                    {printing.printing_label}{price ? ` · ${price}` : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </main>
+
+      {sheet}
     </div>
   );
 }
