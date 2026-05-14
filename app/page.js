@@ -205,6 +205,9 @@ export default function HomePage() {
               .eq("checked", false),
           ]);
 
+          if ((friendDups || []).length === 1000)
+            console.warn("Discover scroller: friend-dups query may be truncated — hit 1000-row cap. Friend network has grown; needs tighter filter or explicit pagination.");
+
           const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
           const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
 

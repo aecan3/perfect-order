@@ -53,7 +53,8 @@ export default function DiscoverPage() {
           .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings!inner(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
           .eq("printing.collection_tier", "master")
           .in("user_id", friendIds)
-          .eq("checked", true),
+          .eq("checked", true)
+          .gt("duplicate_count", 0),
         supabase
           .from("collection_entries")
           .select("printing_id, set_id, card_number")
@@ -61,9 +62,10 @@ export default function DiscoverPage() {
           .eq("checked", false),
       ]);
 
-      const tradeableEntries = (friendEntries || []).filter((entry) =>
-        (entry.duplicate_count || 0) >= 1
-      );
+      if ((friendEntries || []).length === 1000)
+        console.warn("Discover detail: friend-entries query may be truncated — hit 1000-row cap. Friend network has grown; needs tighter filter or explicit pagination.");
+
+      const tradeableEntries = friendEntries || [];
 
       const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
       const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
