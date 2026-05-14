@@ -7,6 +7,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
 import { AchievementCelebration } from "@/components/AchievementCelebration";
+import { selectMasterPrintings } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -622,7 +623,7 @@ export default function SetTrackerPage() {
         supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
-        supabase.from("printings").select("*").eq("set_id", setId).eq("collection_tier", "master").order("display_order", { ascending: true }),
+        selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
         supabase.from("printings").select("*, card:cards(id,name,rarity,supertype,image_large,image_small,number)").eq("set_id", setId).eq("collection_tier", "grand_master").order("display_order", { ascending: true }),
         supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count").eq("user_id", user.id).eq("set_id", setId),
         supabase.from("user_sets").select("prices_updated_at").eq("user_id", user.id).eq("set_id", setId).maybeSingle(),

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { BracketHeading } from "@/components/BracketHeading";
+import { selectMasterPrintings } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -272,9 +273,7 @@ export default function SetBrowserPage() {
 
     // Fetch printings + cards in parallel
     const [{ data: printingData }, { data: cardData }] = await Promise.all([
-      supabase
-        .from("printings")
-        .select("id, card_number, printing_type, price_usd")
+      selectMasterPrintings(supabase, "id, card_number, printing_type, price_usd")
         .eq("set_id", set.id),
       supabase
         .from("cards")

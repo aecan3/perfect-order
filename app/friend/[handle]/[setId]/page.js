@@ -5,6 +5,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, X, Check, LayoutGrid, BookOpen, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import { selectMasterPrintings } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -229,7 +230,7 @@ export default function FriendSetTrackerPage() {
       const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
-        supabase.from("printings").select("*").eq("set_id", setId).order("display_order", { ascending: true }),
+        selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
         supabase
           .from("collection_entries")
           .select("printing_id, card_number, checked, photo_url")

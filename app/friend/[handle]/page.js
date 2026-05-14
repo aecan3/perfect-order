@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { selectMasterPrintings } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -76,7 +77,8 @@ export default function FriendOverviewPage() {
         while (true) {
           const { data, error } = await supabase
             .from("collection_entries")
-            .select("set_id, printing:printings(price_usd)")
+            .select("set_id, printing:printings!inner(price_usd)")
+            .eq("printing.collection_tier", "master")
             .eq("user_id", userId)
             .eq("checked", true)
             .range(from, from + PAGE - 1);
@@ -98,12 +100,20 @@ export default function FriendOverviewPage() {
       ]);
 
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
-      const { data: setsData } = setIds.length > 0
-        ? await supabase
-            .from("sets")
-            .select("id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
-            .in("id", setIds)
-        : { data: [] };
+      const [{ data: setsData }, { data: masterCountRows }] = setIds.length > 0
+        ? await Promise.all([
+            supabase
+              .from("sets")
+              .select("id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg")
+              .in("id", setIds),
+            selectMasterPrintings(supabase, "set_id").in("set_id", setIds),
+          ])
+        : [{ data: [] }, { data: [] }];
+
+      const masterCountBySet = {};
+      (masterCountRows || []).forEach((p) => {
+        masterCountBySet[p.set_id] = (masterCountBySet[p.set_id] || 0) + 1;
+      });
 
       const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
@@ -122,6 +132,7 @@ export default function FriendOverviewPage() {
               ...s,
               checkedCount: countMap[s.id] || 0,
               collectionValue: vals[s.id] || 0,
+              masterPrintingCount: masterCountBySet[s.id] || 0,
             };
           })
           .filter(Boolean)
@@ -173,7 +184,7 @@ export default function FriendOverviewPage() {
           </div>
         ) : (
           friendSets.map((set) => {
-            const total = Number(set.printings?.[0]?.count) || 0;
+            const total = set.masterPrintingCount || 0;
             const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
             const primary = set.theme_primary || "#b9ff3c";
             const secondary = set.theme_secondary || "#c084fc";

@@ -53,7 +53,8 @@ export default function DiscoverPage() {
       const [{ data: friendEntries }, { data: myMissing }] = await Promise.all([
         supabase
           .from("collection_entries")
-          .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
+          .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings!inner(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
+          .eq("printing.collection_tier", "master")
           .in("user_id", friendIds)
           .eq("checked", true),
         supabase

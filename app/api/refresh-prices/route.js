@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { selectAllPrintings } from "@/lib/queries/printings";
 
 // -- API bases ----------------------------------------------------------------
 const POKETRACE_BASE  = "https://api.poketrace.com/v1";
@@ -527,8 +528,7 @@ async function processSet(admin, userId, setId, slugMap) {
     { data: setRow },
     { data: userSetRow },
   ] = await Promise.all([
-    admin.from("printings")
-      .select("id, card_number, printing_label, price_usd")
+    selectAllPrintings(admin, "id, card_number, printing_label, price_usd")
       .eq("set_id", setId),
     admin.from("collection_entries")
       .select("printing_id")

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
+import { selectMasterPrintings } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -49,9 +50,7 @@ export default function FavouritesPage() {
       if (!favData || favData.length === 0) { setLoading(false); return; }
 
       const printingIds = favData.map((f) => f.printing_id);
-      const { data: printingData } = await supabase
-        .from("printings")
-        .select("*, card:cards(id, name, number, rarity, image_large, image_small, set_id), set:sets(id, name, code, logo_url, total, theme_primary)")
+      const { data: printingData } = await selectMasterPrintings(supabase, "*, card:cards(id, name, number, rarity, image_large, image_small, set_id), set:sets(id, name, code, logo_url, total, theme_primary)")
         .in("id", printingIds);
 
       const orderedItems = printingIds.map((pid) => printingData?.find((p) => p.id === pid)).filter(Boolean);
@@ -110,7 +109,7 @@ export default function FavouritesPage() {
           </select>
         </div>
         <p style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: "var(--po-text-faint)" }}>
-          Cards you want to find — up to 5 at a time.
+          Star up to 5 cards you're chasing. They'll show up first in your discovery feed when friends have them spare.
         </p>
       </header>
 
