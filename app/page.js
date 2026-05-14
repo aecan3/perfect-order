@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { BracketHeading } from "@/components/BracketHeading";
-import { selectMasterPrintings } from "@/lib/queries/printings";
+import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -148,20 +148,15 @@ export default function HomePage() {
       // to fall back to card count instead of printing count.
       // The flat sets query (same pattern as /sets browser) is reliable.
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
-      const [{ data: setsData }, { data: masterCountRows }] = setIds.length > 0
+      const [{ data: setsData }, masterCountBySet] = setIds.length > 0
         ? await Promise.all([
             supabase
               .from("sets")
               .select("id, code, name, series, total, total_with_secrets, logo_url, theme_primary, theme_secondary, theme_bg, cards(count)")
               .in("id", setIds),
-            selectMasterPrintings(supabase, "set_id").in("set_id", setIds),
+            fetchMasterPrintingCounts(supabase),
           ])
-        : [{ data: [] }, { data: [] }];
-
-      const masterCountBySet = {};
-      (masterCountRows || []).forEach((p) => {
-        masterCountBySet[p.set_id] = (masterCountBySet[p.set_id] || 0) + 1;
-      });
+        : [{ data: [] }, new Map()];
 
       const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
@@ -178,7 +173,7 @@ export default function HomePage() {
           return {
             ...s,
             checkedCount: counts[s.id] || 0,
-            masterPrintingCount: masterCountBySet[s.id] || 0,
+            masterPrintingCount: masterCountBySet.get(s.id) || 0,
             isHidden: row.hidden_at != null,
             pricesUpdatedAt: row.prices_updated_at,
           };

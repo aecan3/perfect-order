@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { selectMasterPrintings } from "@/lib/queries/printings";
+import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -100,20 +100,15 @@ export default function FriendOverviewPage() {
       ]);
 
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
-      const [{ data: setsData }, { data: masterCountRows }] = setIds.length > 0
+      const [{ data: setsData }, masterCountBySet] = setIds.length > 0
         ? await Promise.all([
             supabase
               .from("sets")
               .select("id, code, name, series, logo_url, theme_primary, theme_secondary, theme_bg")
               .in("id", setIds),
-            selectMasterPrintings(supabase, "set_id").in("set_id", setIds),
+            fetchMasterPrintingCounts(supabase),
           ])
-        : [{ data: [] }, { data: [] }];
-
-      const masterCountBySet = {};
-      (masterCountRows || []).forEach((p) => {
-        masterCountBySet[p.set_id] = (masterCountBySet[p.set_id] || 0) + 1;
-      });
+        : [{ data: [] }, new Map()];
 
       const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
@@ -132,7 +127,7 @@ export default function FriendOverviewPage() {
               ...s,
               checkedCount: countMap[s.id] || 0,
               collectionValue: vals[s.id] || 0,
-              masterPrintingCount: masterCountBySet[s.id] || 0,
+              masterPrintingCount: masterCountBySet.get(s.id) || 0,
             };
           })
           .filter(Boolean)
