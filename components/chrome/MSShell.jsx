@@ -23,7 +23,7 @@ function deriveTab(pathname) {
   return null;
 }
 
-export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount, children }) {
+export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount, hideTabBar = false, children }) {
   const supabase = createClient();
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
@@ -65,11 +65,16 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
       <MSHeader unreadCount={unreadCount} scrolled={scrolled} />
       <main
         onScroll={onScroll}
-        style={{ flex: 1, overflowY: "auto", minHeight: 0 }}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          minHeight: 0,
+          paddingBottom: hideTabBar ? "env(safe-area-inset-bottom, 0px)" : undefined,
+        }}
       >
         {children}
       </main>
-      <MSTabBar active={resolvedTab} />
+      {!hideTabBar && <MSTabBar active={resolvedTab} />}
     </div>
   );
 }

@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronDown, X, Check, LayoutGrid, BookOpen, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { ChevronDown, X, Check, LayoutGrid, BookOpen, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -288,33 +290,43 @@ export default function FriendSetTrackerPage() {
   };
 
   if (status === "loading") {
-    return <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">Loading…</div>;
+    return (
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>Loading…</div>
+      </MSShell>
+    );
   }
 
   if (status === "not-found") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text-dim)] mb-3">No user with handle @{handle}.</p>
-        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text-dim)] mb-3">No user with handle @{handle}.</p>
+          <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
+        </div>
+      </MSShell>
     );
   }
 
   if (status === "not-friends") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text-dim)] mb-3">You're not friends with @{handle} yet.</p>
-        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text-dim)] mb-3">You're not friends with @{handle} yet.</p>
+          <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
+        </div>
+      </MSShell>
     );
   }
 
   if (!setRow) {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text-dim)] mb-3">Set not found.</p>
-        <Link href={`/friend/${handle}`} className="text-[var(--po-green)] underline text-sm">Back</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text-dim)] mb-3">Set not found.</p>
+          <Link href={`/friend/${handle}`} className="text-[var(--po-green)] underline text-sm">Back</Link>
+        </div>
+      </MSShell>
     );
   }
 
@@ -447,61 +459,40 @@ export default function FriendSetTrackerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      <header
-        className="sticky top-0 z-20 bg-[var(--po-bg)]/90 backdrop-blur border-b px-4 py-3"
-        style={{ borderBottomColor: `${themePrimary}40` }}
-      >
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-center gap-2">
-            <Link href={backTo} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-              <ArrowLeft size={20} />
-            </Link>
+    <MSShell>
+      <MSPageTitle sub={`@${friend.handle}`}>{setRow.name}</MSPageTitle>
+
+      <div className="px-4 pb-3 max-w-md mx-auto">
+        <div className="flex items-center justify-between mb-3">
+          <div className="grid grid-cols-2 gap-3 flex-1">
             <div>
-              <h1
-                className="font-extrabold uppercase tracking-wider text-lg leading-none"
-                style={{
-                  background: `linear-gradient(180deg, #ffffff 0%, ${themePrimary} 100%)`,
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                  textShadow: `0 0 20px ${themePrimary}50`,
-                }}
-              >
-                {setRow.name}
-              </h1>
-              <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{friend.handle}</p>
+              <div className="text-3xl font-black tabular-nums leading-none">
+                {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
+                printings collected
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
+                {fmtMoney(ownedValueDisplay, currency)}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
+                owned · {fmtMoney(remainingValueDisplay, currency)} to go
+              </div>
             </div>
           </div>
           <select
             value={currency}
             onChange={(e) => switchCurrency(e.target.value)}
-            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
+            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer ml-3 flex-shrink-0"
           >
             <option value="AUD">AUD</option>
             <option value="USD">USD</option>
             <option value="GBP">GBP</option>
           </select>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-3xl font-black tabular-nums leading-none">
-              {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
-            </div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              printings collected
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
-              {fmtMoney(ownedValueDisplay, currency)}
-            </div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-              owned · {fmtMoney(remainingValueDisplay, currency)} to go
-            </div>
-          </div>
-        </div>
-        <div className="mt-2 h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden">
+        <div className="h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden mb-3">
           <div
             className="h-full transition-all duration-300"
             style={{
@@ -511,18 +502,16 @@ export default function FriendSetTrackerPage() {
             }}
           />
         </div>
-        <div className="mt-3">
-          <button
-            onClick={toggleMasterSet}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] hover:border-[var(--po-text-dim)] transition-colors"
-          >
-            {masterSet ? <BookOpen size={13} /> : <LayoutGrid size={13} />}
-            {masterSet ? "Binder View" : "Rarity View"}
-          </button>
-        </div>
-      </header>
+        <button
+          onClick={toggleMasterSet}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] hover:border-[var(--po-text-dim)] transition-colors"
+        >
+          {masterSet ? <BookOpen size={13} /> : <LayoutGrid size={13} />}
+          {masterSet ? "Binder View" : "Rarity View"}
+        </button>
+      </div>
 
-      <main className="px-3 py-4">
+      <div className="px-3 py-4">
         {masterSet ? (
           <div className="grid grid-cols-2 gap-3">{cards.map(renderCard)}</div>
         ) : (
@@ -553,7 +542,7 @@ export default function FriendSetTrackerPage() {
             })}
           </div>
         )}
-      </main>
+      </div>
 
       {pickingCard && (
         <div className="fixed inset-0 z-30 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={() => setPickingCard(null)}>
@@ -647,6 +636,6 @@ export default function FriendSetTrackerPage() {
           </div>
         </div>
       )}
-    </div>
+    </MSShell>
   );
 }

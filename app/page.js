@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Plus, Users, LogOut, EyeOff, Eye, Trash2,
+  Plus, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
   RefreshCw, Clock, MessageCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { BracketHeading } from "@/components/BracketHeading";
-import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
+import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -30,7 +31,6 @@ const fmtMoneyBig = (v, currency) => {
   return `${sym}${v.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// Compact diff for inline trend: "↑44" or "↓2.5"
 const formatDiff = (diffUsd, currency) => {
   const v = Math.abs(diffUsd) * (RATES[currency]?.rate || 1);
   return v >= 10 ? v.toFixed(0) : v.toFixed(1);
@@ -72,13 +72,13 @@ export default function HomePage() {
   // Price refresh state
   const [refreshing, setRefreshing] = useState(false);
   const [refreshDone, setRefreshDone] = useState(false);
-  const [refreshErrors, setRefreshErrors] = useState([]); // set names that failed
-  const [refreshProgress, setRefreshProgress] = useState(null); // { done, total, name }
+  const [refreshErrors, setRefreshErrors] = useState([]);
+  const [refreshProgress, setRefreshProgress] = useState(null);
   const refreshTimerRef = useRef(null);
 
   // Trend state: { [setId]: { dir: "up"|"down", diff: number (USD) } }
   const [trends, setTrends] = useState({});
-  const [portfolioTrend, setPortfolioTrend] = useState(null); // { diff (USD), pct }
+  const [portfolioTrend, setPortfolioTrend] = useState(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const [totalFlash, setTotalFlash] = useState(false);
 
@@ -88,11 +88,8 @@ export default function HomePage() {
   const animTargetsRef = useRef({});
 
   // Discover panel
-  const [discoverCards, setDiscoverCards] = useState(null); // null=loading, []=empty, [...]=results
-  const [discoverModal, setDiscoverModal] = useState(null); // card object when modal is open
-
-  // Unread messages badge
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [discoverCards, setDiscoverCards] = useState(null);
+  const [discoverModal, setDiscoverModal] = useState(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -109,7 +106,7 @@ export default function HomePage() {
         .from("profiles").select("*").eq("id", user.id).maybeSingle();
       setProfile(profileData);
 
-      // Paginated fetch for collection_entries â€" loops with .range() until
+      // Paginated fetch for collection_entries — loops with .range() until
       // a page returns fewer rows than PAGE, guaranteeing every row is
       // included regardless of collection size.
       const fetchAllEntries = async (userId) => {
@@ -143,10 +140,6 @@ export default function HomePage() {
       ]);
 
       // Step 2: fetch set details at the top level.
-      // Nesting printings!printings_set_id_fkey(count) inside the user_sets
-      // join silently returns [] for the aggregate, causing the denominator
-      // to fall back to card count instead of printing count.
-      // The flat sets query (same pattern as /sets browser) is reliable.
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
       const [{ data: setsData }, masterCountBySet] = setIds.length > 0
         ? await Promise.all([
@@ -180,7 +173,6 @@ export default function HomePage() {
         })
         .filter(Boolean);
 
-      // Pre-zero displayValues so banner starts at $0 (no flash of real values)
       const initDisplay = {};
       enriched.forEach((s) => { initDisplay[s.id] = 0; });
 
@@ -190,15 +182,7 @@ export default function HomePage() {
       setDisplayValues(initDisplay);
       setLoading(false);
 
-      // Non-blocking unread count fetch
-      supabase
-        .from("messages")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", user.id)
-        .eq("read", false)
-        .then(({ count }) => setUnreadCount(count || 0));
-
-      // Non-blocking discover fetch â€" runs after main load so it doesn't delay the page
+      // Non-blocking discover fetch — runs after main load so it doesn't delay the page
       (async () => {
         try {
           const { data: fships } = await supabase
@@ -259,7 +243,7 @@ export default function HomePage() {
         }
       })();
 
-      // Staggered count-up from zero â€" fires on every page load / navigate-back
+      // Staggered count-up from zero — fires on every page load / navigate-back
       const loadTargets = {};
       enriched.forEach((set, i) => {
         const target = vals[set.id] || 0;
@@ -274,8 +258,7 @@ export default function HomePage() {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
   }, []);
 
-  // â"€â"€ Animation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-  // targets: { [setId]: { from, to, delay? (ms), duration? (ms) } }
+  // ── Animation ────────────────────────────────────────────────────────────
   const startAnimations = (targets) => {
     const now = performance.now();
     for (const [sid, { from, to, delay = 0, duration = 1200 }] of Object.entries(targets)) {
@@ -303,7 +286,7 @@ export default function HomePage() {
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // â"€â"€ Price refresh â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Price refresh ─────────────────────────────────────────────────────────
   const handleRefresh = () => {
     if (refreshing || !user) return;
 
@@ -317,10 +300,8 @@ export default function HomePage() {
     setPortfolioTrend(null);
     setRefreshProgress({ done: 0, total: visible.length, name: "" });
 
-    // Accumulator shared across concurrent completions
     const acc = { done: 0, allPrev: 0, allNew: 0, newValues: {}, newTrends: {}, errors: [] };
 
-    // Fire one request per set — all in parallel. Progress updates as each resolves.
     const promises = visible.map((set) =>
       fetch("/api/refresh-prices", {
         method: "POST",
@@ -393,9 +374,8 @@ export default function HomePage() {
     });
   };
 
-  // â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const switchCurrency = (c) => { setCurrency(c); localStorage.setItem("po:currency", c); };
-  const signOut = async () => { await supabase.auth.signOut(); router.replace("/welcome"); };
   const closeAllSwipes = () => setSwipeState({});
 
   const executeHide = async (setId) => {
@@ -484,13 +464,15 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading...
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+          Loading...
+        </div>
+      </MSShell>
     );
   }
 
-  // â"€â"€ Computed portfolio values â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Computed portfolio values ─────────────────────────────────────────────
   const allSets = [...userSets, ...hiddenSets];
   const totalUsd = allSets.reduce(
     (s, set) => s + (displayValues[set.id] ?? setValues[set.id] ?? 0),
@@ -498,7 +480,6 @@ export default function HomePage() {
   );
   const bannerTotal = totalUsd * (RATES[currency]?.rate || 1);
 
-  // Freshest pricesUpdatedAt across all sets (shown before user refreshes in session)
   const portfolioUpdatedAt =
     lastRefreshedAt ||
     allSets.reduce((latest, s) => {
@@ -522,7 +503,6 @@ export default function HomePage() {
 
     const touch = makeTouchHandlers(set.id);
 
-    // Shared inner card content â€" used inside both master wrapper and plain wrapper
     const cardContent = (
       <div
         className="relative rounded-[16px] overflow-hidden"
@@ -654,7 +634,7 @@ export default function HomePage() {
             </div>
           </Link>
 
-          {/* Swipe action buttons â€" revealed by translateX(-160px) */}
+          {/* Swipe action buttons — revealed by translateX(-160px) */}
           <div className="absolute inset-y-0 left-full flex">
             <button
               onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
@@ -705,7 +685,7 @@ export default function HomePage() {
     );
   };
 
-  // â"€â"€ Discover panel â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Discover panel ────────────────────────────────────────────────────────
   const renderDiscoverPanel = () => {
     if (!discoverCards || discoverCards.length === 0) return null;
 
@@ -759,7 +739,7 @@ export default function HomePage() {
     );
   };
 
-  // â"€â"€ Portfolio banner â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Portfolio banner ──────────────────────────────────────────────────────
   const renderBanner = () => {
     const totalSets = allSets.length;
     const stale = isStale(portfolioUpdatedAt);
@@ -768,12 +748,10 @@ export default function HomePage() {
     return (
       <div className="relative rounded-2xl overflow-hidden border border-[var(--po-border-strong)]"
            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))", borderTop: "1px solid rgba(200,255,74,0.35)" }}>
-        {/* Iridescent conic glow behind content */}
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none"
              style={{ background: "conic-gradient(from 220deg at 30% 0%, rgba(200,255,74,0.06), rgba(215,107,255,0.06), rgba(95,182,255,0.06), rgba(200,255,74,0.06))", opacity: 0.8 }} />
 
         <div className="relative px-5 pt-5 pb-4">
-          {/* Label */}
           <div className="text-[10px] uppercase tracking-[0.18em] font-bold flex items-center gap-2" style={{ color: "var(--po-text-faint)" }}>
             Total Collection Value
             {refreshing && (
@@ -788,7 +766,6 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Big value */}
           <div
             className="mt-2.5 text-4xl font-black tabular-nums leading-none transition-colors duration-300"
             style={{ color: totalFlash ? "#ffffff" : "var(--po-green)", letterSpacing: "-0.02em", textShadow: `0 0 24px rgba(200,255,74,0.4)` }}
@@ -796,13 +773,11 @@ export default function HomePage() {
             {fmtMoneyBig(bannerTotal, currency)}
           </div>
 
-          {/* Meta: set count + staleness */}
           <div className="mt-2 flex items-center gap-2 text-[11px]" style={{ color: "var(--po-text-dim)" }}>
             <span>Across {totalSets} set{totalSets !== 1 ? "s" : ""}</span>
             {updatedLabel && <><span style={{ color: "var(--po-text-faint)" }}>·</span><span className={stale ? "text-amber-400" : ""}>{stale && <Clock size={9} className="inline mr-0.5 -mt-0.5" />}{updatedLabel}</span></>}
           </div>
 
-          {/* Trend line â€" hidden until first refresh */}
           {portfolioTrend && (
             <div
               className={`mt-1 text-xs font-bold ${
@@ -820,7 +795,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Meta: set count + staleness â€" kept for backward compat below, now merged above */}
           <div
             className={`hidden items-center gap-1 text-[10px] ${
               stale ? "text-amber-400" : "text-[var(--po-text-dim)]"
@@ -834,7 +808,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Refresh button */}
         {refreshErrors.length > 0 && (
           <div className="mx-5 mb-2 flex items-center justify-between gap-2 text-[11px] text-amber-400">
             <span>⚠ {refreshErrors.length === 1 ? refreshErrors[0] : `${refreshErrors.length} sets`} failed to update</span>
@@ -876,235 +849,191 @@ export default function HomePage() {
   };
 
   return (
-    <div
-      className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]"
-      onClick={() => { closeAllSwipes(); setMenuState({}); }}
-    >
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <BracketHeading className="text-2xl">My Sets</BracketHeading>
-            <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">@{profile?.handle}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={currency}
-              onChange={(e) => switchCurrency(e.target.value)}
-              className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
-            >
-              <option value="AUD">AUD</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
-            <Link
-              href="/favourites"
-              className="flex items-center justify-center w-8 h-8 rounded-lg border border-[var(--po-border)] bg-[var(--po-bg-soft)]"
-              style={{ color: "#FFB830", fontSize: 16, lineHeight: 1 }}
-              aria-label="Favourites"
-            >
-              ★
-            </Link>
-            <Link
-              href="/friends"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-xs transition-colors"
-              style={{ background: "var(--po-bg-soft)", border: "1px solid var(--po-border)", color: "var(--po-green)" }}
-              aria-label="Friends"
-            >
-              <Users size={14} />
-              Friends
-            </Link>
-            <Link href="/messages" className="relative text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Messages">
-              <MessageCircle size={18} />
-              {unreadCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[8px] font-black px-0.5"
-                  style={{ background: "#ef4444", color: "#fff" }}
-                >
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </Link>
-            <button onClick={signOut} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]" aria-label="Sign out">
-              <LogOut size={18} />
-            </button>
-          </div>
+    <MSShell>
+      <div onClick={() => { closeAllSwipes(); setMenuState({}); }}>
+        <MSPageTitle sub={`@${profile?.handle || ""}`}>My Sets</MSPageTitle>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 16px 8px" }}>
+          <select
+            value={currency}
+            onChange={(e) => switchCurrency(e.target.value)}
+            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
+          >
+            <option value="AUD">AUD</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+          </select>
         </div>
-      </header>
 
-      <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
-        {/* Portfolio banner â€" only shown when user has sets */}
-        {allSets.length > 0 && renderBanner()}
+        <div className="px-4 pb-4 space-y-3 max-w-md mx-auto">
+          {allSets.length > 0 && renderBanner()}
 
-        {/* Discover panel â€" friends' duplicates you're missing */}
-        {renderDiscoverPanel()}
+          {renderDiscoverPanel()}
 
-        <Link
-          href="/sets"
-          className="block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"
-        >
-          <Plus size={20} className="inline mr-1 -mt-1" />
-          Add a set
-        </Link>
+          <Link
+            href="/sets"
+            className="block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"
+          >
+            <Plus size={20} className="inline mr-1 -mt-1" />
+            Add a set
+          </Link>
 
-        {userSets.length === 0 && hiddenSets.length === 0 ? (
-          <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
-            No sets yet â€" tap above to start collecting.
-          </div>
-        ) : (
-          userSets.map((set) => renderSetCard(set))
-        )}
+          {userSets.length === 0 && hiddenSets.length === 0 ? (
+            <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
+              No sets yet — tap above to start collecting.
+            </div>
+          ) : (
+            userSets.map((set) => renderSetCard(set))
+          )}
 
-        {/* Hidden sets section */}
-        {hiddenSets.length > 0 && (
-          <div className="pt-2">
-            <button
-              onClick={() => setShowHidden((v) => !v)}
-              className="w-full flex items-center justify-between px-1 py-2 text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
-            >
-              <span className="text-xs uppercase tracking-widest font-bold">
-                Hidden Sets ({hiddenSets.length})
-              </span>
-              {showHidden ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-            {showHidden && (
-              <div className="space-y-2 mt-1">
-                {hiddenSets.map((set) => {
-                  const primary = set.theme_primary || "#b9ff3c";
-                  const bg = set.theme_bg || "#050507";
-                  return (
-                    <div
-                      key={set.id}
-                      className="rounded-2xl overflow-hidden border border-[var(--po-border)] opacity-50"
-                      style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
-                    >
-                      <div className="p-3 flex items-center gap-3">
-                        {set.logo_url ? (
-                          <img src={set.logo_url} alt={set.name} className="w-12 h-12 object-contain flex-shrink-0" />
-                        ) : (
-                          <div
-                            className="w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0"
-                            style={{ background: primary, color: bg }}
-                          >
-                            {set.code}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-sm leading-tight truncate" style={{ color: primary }}>
-                            {set.name}
-                          </div>
-                          {set.series && (
-                            <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                              {set.series}
+          {hiddenSets.length > 0 && (
+            <div className="pt-2">
+              <button
+                onClick={() => setShowHidden((v) => !v)}
+                className="w-full flex items-center justify-between px-1 py-2 text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+              >
+                <span className="text-xs uppercase tracking-widest font-bold">
+                  Hidden Sets ({hiddenSets.length})
+                </span>
+                {showHidden ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {showHidden && (
+                <div className="space-y-2 mt-1">
+                  {hiddenSets.map((set) => {
+                    const primary = set.theme_primary || "#b9ff3c";
+                    const bg = set.theme_bg || "#050507";
+                    return (
+                      <div
+                        key={set.id}
+                        className="rounded-2xl overflow-hidden border border-[var(--po-border)] opacity-50"
+                        style={{ background: `linear-gradient(135deg, ${bg} 0%, #050507 100%)` }}
+                      >
+                        <div className="p-3 flex items-center gap-3">
+                          {set.logo_url ? (
+                            <img src={set.logo_url} alt={set.name} className="w-12 h-12 object-contain flex-shrink-0" />
+                          ) : (
+                            <div
+                              className="w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm flex-shrink-0"
+                              style={{ background: primary, color: bg }}
+                            >
+                              {set.code}
                             </div>
                           )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-sm leading-tight truncate" style={{ color: primary }}>
+                              {set.name}
+                            </div>
+                            {set.series && (
+                              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
+                                {set.series}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => executeUnhide(set.id)}
+                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] text-xs font-bold uppercase tracking-widest transition-colors"
+                          >
+                            <Eye size={12} />
+                            Unhide
+                          </button>
                         </div>
-                        <button
-                          onClick={() => executeUnhide(set.id)}
-                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] text-xs font-bold uppercase tracking-widest transition-colors"
-                        >
-                          <Eye size={12} />
-                          Unhide
-                        </button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Discover card action modal */}
+        {discoverModal && (
+          <div
+            className="fixed inset-0 z-30 bg-black/70 flex items-end justify-center"
+            onClick={() => setDiscoverModal(null)}
+          >
+            <div
+              className="w-full max-w-md bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl p-5 pb-8 shadow-2xl overflow-y-auto"
+              style={{ maxHeight: "80vh" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 rounded-full bg-[var(--po-border-strong)] mx-auto mb-4" />
+              <div className="flex items-center gap-3 mb-5">
+                {discoverModal.imageUrl && (
+                  <img src={discoverModal.imageUrl} alt={discoverModal.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="font-bold text-sm text-[var(--po-text)] truncate">{discoverModal.cardName}</p>
+                  <p className="text-[11px] text-[var(--po-text-dim)] truncate">{discoverModal.setName}</p>
+                  {discoverModal.priceUsd > 0 && (
+                    <p className="text-[11px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
+                      {fmtMoney(discoverModal.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                    </p>
+                  )}
+                </div>
               </div>
-            )}
+
+              <div className="space-y-2">
+                <Link
+                  href={`/friend/${discoverModal.friendHandle}/${discoverModal.setId}?from=discover`}
+                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
+                  onClick={() => setDiscoverModal(null)}
+                >
+                  <span>View in @{discoverModal.friendHandle}{"'"}s collection</span>
+                  <ChevronRight size={16} className="text-[var(--po-text-faint)]" />
+                </Link>
+                <Link
+                  href={`/messages/${discoverModal.friendHandle}?card=${encodeURIComponent(JSON.stringify({ cardName: discoverModal.cardName, setName: discoverModal.setName, imageUrl: discoverModal.imageUrl, priceUsd: discoverModal.priceUsd }))}`}
+                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-bold transition-colors"
+                  style={{ background: "var(--po-green)", color: "#050507" }}
+                  onClick={() => setDiscoverModal(null)}
+                >
+                  <span>Message @{discoverModal.friendHandle}</span>
+                  <MessageCircle size={16} />
+                </Link>
+              </div>
+            </div>
           </div>
         )}
-      </main>
 
-      {/* Discover card action modal */}
-      {discoverModal && (
-        <div
-          className="fixed inset-0 z-30 bg-black/70 flex items-end justify-center"
-          onClick={() => setDiscoverModal(null)}
-        >
+        {/* Confirm modal (Hide / Remove) */}
+        {confirmAction && (
           <div
-            className="w-full max-w-md bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl p-5 pb-8 shadow-2xl overflow-y-auto"
-            style={{ maxHeight: "80vh" }}
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-30 bg-black/80 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setConfirmAction(null)}
           >
-            {/* Drag handle */}
-            <div className="w-10 h-1 rounded-full bg-[var(--po-border-strong)] mx-auto mb-4" />
-            {/* Card preview */}
-            <div className="flex items-center gap-3 mb-5">
-              {discoverModal.imageUrl && (
-                <img src={discoverModal.imageUrl} alt={discoverModal.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
-              )}
-              <div className="min-w-0">
-                <p className="font-bold text-sm text-[var(--po-text)] truncate">{discoverModal.cardName}</p>
-                <p className="text-[11px] text-[var(--po-text-dim)] truncate">{discoverModal.setName}</p>
-                {discoverModal.priceUsd > 0 && (
-                  <p className="text-[11px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                    {fmtMoney(discoverModal.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                  </p>
+            <div
+              className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-sm p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className={`text-base font-bold mb-2 ${confirmAction.type === "remove" ? "text-rose-300" : "text-amber-300"}`}>
+                {confirmAction.type === "hide" ? "Hide set?" : "Remove set?"}
+              </h2>
+              <p className="text-sm text-[var(--po-text-dim)] mb-4">
+                {confirmAction.type === "hide" ? (
+                  <>Hide <strong className="text-[var(--po-text)]">{confirmAction.setName}</strong> from your list? Your collection data is preserved.</>
+                ) : (
+                  <>Remove <strong className="text-[var(--po-text)]">{confirmAction.setName}</strong> from your list? Your collection data is preserved.</>
                 )}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmAction(null)}
+                  className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => confirmAction.type === "hide" ? executeHide(confirmAction.setId) : executeRemove(confirmAction.setId)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${confirmAction.type === "hide" ? "bg-amber-600" : "bg-rose-700"}`}
+                >
+                  {confirmAction.type === "hide" ? "Hide it" : "Remove it"}
+                </button>
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Link
-                href={`/friend/${discoverModal.friendHandle}/${discoverModal.setId}?from=discover`}
-                className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
-                onClick={() => setDiscoverModal(null)}
-              >
-                <span>View in @{discoverModal.friendHandle}{"'"}s collection</span>
-                <ChevronRight size={16} className="text-[var(--po-text-faint)]" />
-              </Link>
-              <Link
-                href={`/messages/${discoverModal.friendHandle}?card=${encodeURIComponent(JSON.stringify({ cardName: discoverModal.cardName, setName: discoverModal.setName, imageUrl: discoverModal.imageUrl, priceUsd: discoverModal.priceUsd }))}`}
-                className="flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-bold transition-colors"
-                style={{ background: "var(--po-green)", color: "#050507" }}
-                onClick={() => setDiscoverModal(null)}
-              >
-                <span>Message @{discoverModal.friendHandle}</span>
-                <MessageCircle size={16} />
-              </Link>
-            </div>
           </div>
-        </div>
-      )}
-
-      {/* Confirm modal (Hide / Remove) */}
-      {confirmAction && (
-        <div
-          className="fixed inset-0 z-30 bg-black/80 flex items-end sm:items-center justify-center p-4"
-          onClick={() => setConfirmAction(null)}
-        >
-          <div
-            className="bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl w-full max-w-sm p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className={`text-base font-bold mb-2 ${confirmAction.type === "remove" ? "text-rose-300" : "text-amber-300"}`}>
-              {confirmAction.type === "hide" ? "Hide set?" : "Remove set?"}
-            </h2>
-            <p className="text-sm text-[var(--po-text-dim)] mb-4">
-              {confirmAction.type === "hide" ? (
-                <>Hide <strong className="text-[var(--po-text)]">{confirmAction.setName}</strong> from your list? Your collection data is preserved.</>
-              ) : (
-                <>Remove <strong className="text-[var(--po-text)]">{confirmAction.setName}</strong> from your list? Your collection data is preserved.</>
-              )}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => confirmAction.type === "hide" ? executeHide(confirmAction.setId) : executeRemove(confirmAction.setId)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${confirmAction.type === "hide" ? "bg-amber-600" : "bg-rose-700"}`}
-              >
-                {confirmAction.type === "hide" ? "Hide it" : "Remove it"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </MSShell>
   );
 }
-

@@ -1,6 +1,6 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v6";
+const CACHE = "perfect-order-v7";
 
 const PRECACHE_URLS = ["/", "/welcome", "/login", "/friends", "/manifest.json"];
 
@@ -26,6 +26,9 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
+
+  // Never cache non-http(s) schemes (chrome-extension, data, etc.)
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
 
   // Never intercept Supabase API calls.
   if (url.hostname.includes("supabase.co")) return;

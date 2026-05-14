@@ -1,10 +1,12 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const timeAgo = (ts) => {
   const diff = (Date.now() - new Date(ts).getTime()) / 1000;
@@ -35,7 +37,6 @@ export default function InboxPage() {
 
       if (!messages?.length) { setConversations([]); return; }
 
-      // Group by the other person
       const threadMap = {};
       for (const msg of messages) {
         const otherId = msg.sender_id === user.id ? msg.recipient_id : msg.sender_id;
@@ -59,17 +60,10 @@ export default function InboxPage() {
   }, [router, supabase]);
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
-        <div className="flex items-center gap-3 max-w-md mx-auto">
-          <button onClick={() => router.back()} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-            <ArrowLeft size={20} />
-          </button>
-          <h1 className="font-black text-base flex-1">Messages</h1>
-        </div>
-      </header>
+    <MSShell>
+      <MSPageTitle>Messages</MSPageTitle>
 
-      <main className="max-w-md mx-auto px-4 py-4">
+      <div className="max-w-md mx-auto px-4 pb-4">
         {conversations === null && (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading...</div>
         )}
@@ -120,8 +114,7 @@ export default function InboxPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </MSShell>
   );
 }
-

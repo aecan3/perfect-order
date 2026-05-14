@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -137,42 +138,40 @@ export default function FriendOverviewPage() {
   }, [handle, router, supabase]);
 
   if (status === "loading") {
-    return <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">Loading…</div>;
+    return (
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>Loading…</div>
+      </MSShell>
+    );
   }
 
   if (status === "not-found") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
-        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
+          <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
+        </div>
+      </MSShell>
     );
   }
 
   if (status === "not-friends") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text)] mb-3">You're not friends with @{handle} yet.</p>
-        <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text)] mb-3">You're not friends with @{handle} yet.</p>
+          <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
+        </div>
+      </MSShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Link href="/friends" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <h1 className="text-lg font-bold leading-none">{friend.display_name || friend.handle}</h1>
-            <p className="text-[10px] text-[var(--po-text-dim)]">@{friend.handle}</p>
-          </div>
-        </div>
-      </header>
+    <MSShell>
+      <MSPageTitle sub={`@${friend.handle}`}>{friend.display_name || friend.handle}</MSPageTitle>
 
-      <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
+      <div className="px-4 py-4 space-y-3 max-w-md mx-auto">
         {friendSets.length === 0 ? (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
             {friend.handle} hasn't added any sets yet.
@@ -235,7 +234,7 @@ export default function FriendOverviewPage() {
             );
           })
         )}
-      </main>
-    </div>
+      </div>
+    </MSShell>
   );
 }

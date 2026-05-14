@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
 import { selectAllPrintings } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -81,9 +82,11 @@ export default function FavouritesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading…
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+          Loading…
+        </div>
+      </MSShell>
     );
   }
 
@@ -183,47 +186,26 @@ export default function FavouritesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      <header
-        className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
-        style={{ background: "rgba(5,5,7,0.92)", borderBottom: "1px solid var(--po-border)" }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <Link
-            href="/"
-            className="flex items-center justify-center w-9 h-9 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg-soft)]"
-            style={{ color: "var(--po-text-dim)" }}
-          >
-            <ArrowLeft size={18} />
-          </Link>
-          <div
-            style={{
-              fontFamily: '"IBM Plex Mono", monospace',
-              fontSize: 11,
-              letterSpacing: "0.1em",
-              color: "#FFB830",
-              fontWeight: 700,
-            }}
-          >
-            ★ FAVOURITES
-          </div>
-          <select
-            value={currency}
-            onChange={(e) => { setCurrency(e.target.value); localStorage.setItem("po:currency", e.target.value); }}
-            className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
-            style={{ color: "var(--po-text-dim)" }}
-          >
-            <option value="AUD">AUD</option>
-            <option value="USD">USD</option>
-            <option value="GBP">GBP</option>
-          </select>
-        </div>
-        <p style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: "var(--po-text-faint)" }}>
-          Star up to 6 cards you're chasing. They'll show up first in your discovery feed when friends have them spare.
-        </p>
-      </header>
+    <MSShell>
+      <MSPageTitle>Favourites</MSPageTitle>
 
-      <main style={{ padding: "16px", maxWidth: 480, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 12px" }}>
+        <p style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: "var(--po-text-faint)", margin: 0 }}>
+          Star up to 6 cards you&apos;re chasing.
+        </p>
+        <select
+          value={currency}
+          onChange={(e) => { setCurrency(e.target.value); localStorage.setItem("po:currency", e.target.value); }}
+          className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
+          style={{ color: "var(--po-text-dim)" }}
+        >
+          <option value="AUD">AUD</option>
+          <option value="USD">USD</option>
+          <option value="GBP">GBP</option>
+        </select>
+      </div>
+
+      <div style={{ padding: "0 16px 16px", maxWidth: 480, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           {slots.map((printing, i) => {
             if (!printing) {
@@ -346,9 +328,9 @@ export default function FavouritesPage() {
             );
           })}
         </div>
-      </main>
+      </div>
 
       {sheet}
-    </div>
+    </MSShell>
   );
 }

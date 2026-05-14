@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Check, X, Camera, Trash2, ArrowLeft, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
+import { Check, X, Camera, Trash2, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
 import { AchievementCelebration } from "@/components/AchievementCelebration";
 import { selectMasterPrintings } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -856,15 +858,21 @@ export default function SetTrackerPage() {
   };
 
   if (!authChecked) {
-    return <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">Loading…</div>;
+    return (
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>Loading…</div>
+      </MSShell>
+    );
   }
 
   if (!setRow) {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-[var(--po-text-dim)] mb-3">Set not found.</p>
-        <Link href="/" className="text-[var(--po-green)] underline text-sm">Back to my sets</Link>
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
+          <p className="text-[var(--po-text-dim)] mb-3">Set not found.</p>
+          <Link href="/" className="text-[var(--po-green)] underline text-sm">Back to my sets</Link>
+        </div>
+      </MSShell>
     );
   }
 
@@ -1149,7 +1157,7 @@ export default function SetTrackerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
+    <MSShell>
       {celebration && (
         <AchievementCelebration
           type={celebration.type}
@@ -1186,34 +1194,28 @@ export default function SetTrackerPage() {
           ★ Added to favourites · View →
         </Link>
       )}
-      <header
-        className="sticky top-0 z-20 backdrop-blur px-4 pt-3 pb-3"
-        style={{ background: "rgba(5,5,7,0.92)", borderBottom: `1px solid ${themePrimary}30` }}
-      >
-        {/* Top nav row */}
-        <div className="flex items-center justify-between mb-3">
-          <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg-soft)]" style={{ color: "var(--po-text-dim)" }}>
-            <ArrowLeft size={18} />
-          </Link>
-          <div className="flex items-center gap-2">
-            <select
-              value={currency}
-              onChange={(e) => switchCurrency(e.target.value)}
-              className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
-              style={{ color: "var(--po-text-dim)" }}
-            >
-              <option value="AUD">AUD</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
-            <button
-              onClick={() => setResetConfirm(true)}
-              className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
-              style={{ color: "var(--po-text-dim)" }}
-            >
-              Reset
-            </button>
-          </div>
+      <MSPageTitle sub={setRow.series || ""}>{setRow.name}</MSPageTitle>
+
+      <div className="px-4 pt-0 pb-3" style={{ borderBottom: `1px solid ${themePrimary}30` }}>
+        {/* Controls row */}
+        <div className="flex items-center justify-end gap-2 mb-3">
+          <select
+            value={currency}
+            onChange={(e) => switchCurrency(e.target.value)}
+            className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
+            style={{ color: "var(--po-text-dim)" }}
+          >
+            <option value="AUD">AUD</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+          </select>
+          <button
+            onClick={() => setResetConfirm(true)}
+            className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
+            style={{ color: "var(--po-text-dim)" }}
+          >
+            Reset
+          </button>
         </div>
 
         {/* Set hero: logo + name + series */}
@@ -1328,9 +1330,9 @@ export default function SetTrackerPage() {
             );
           })}
         </div>
-      </header>
+      </div>
 
-      <main className="px-3 py-4">
+      <div className="px-3 py-4">
         {view === "rarity" ? (
           <div className="space-y-2">
             {viewSections.length === 0 && (
@@ -1477,7 +1479,7 @@ export default function SetTrackerPage() {
             <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>
           )
         )}
-      </main>
+      </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} className="hidden" />
 
@@ -1696,6 +1698,6 @@ export default function SetTrackerPage() {
           </div>
         </div>
       )}
-    </div>
+    </MSShell>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { MSShell } from "@/components/chrome/MSShell";
 
 const BATCH = 200;
 async function fetchInBatches(supabase, table, select, ids) {
@@ -32,9 +33,11 @@ const fmtMoney = (usd, currency) => {
 export default function TradeNewPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading...
-      </div>
+      <MSShell hideTabBar>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+          Loading...
+        </div>
+      </MSShell>
     }>
       <TradeNewInner />
     </Suspense>
@@ -283,24 +286,28 @@ function TradeNewInner() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading your collection…
-      </div>
+      <MSShell hideTabBar>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+          Loading your collection…
+        </div>
+      </MSShell>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex flex-col items-center justify-center px-6 gap-4">
-        <p className="text-sm text-rose-300 text-center">{loadError}</p>
-        <button onClick={() => router.back()} className="text-[var(--po-green)] underline text-sm">Go back</button>
-      </div>
+      <MSShell hideTabBar>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 24px", gap: 16 }}>
+          <p className="text-sm text-rose-300 text-center">{loadError}</p>
+          <button onClick={() => router.back()} className="text-[var(--po-green)] underline text-sm">Go back</button>
+        </div>
+      </MSShell>
     );
   }
 
   return (
-    <div className="h-screen bg-[var(--po-bg)] text-[var(--po-text)] overflow-hidden">
-      <div className="flex flex-col h-full max-w-sm mx-auto">
+    <MSShell hideTabBar>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", maxWidth: 384, margin: "0 auto", width: "100%" }}>
 
         {/* Header */}
         <header className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-[var(--po-border)]">
@@ -593,6 +600,6 @@ function TradeNewInner() {
         </div>
 
       </div>
-    </div>
+    </MSShell>
   );
 }

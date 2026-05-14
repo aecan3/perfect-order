@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Send } from "lucide-react";
 import { TradePanel } from "@/components/TradePanel";
 import { createClient } from "@/lib/supabase";
+import { MSShell } from "@/components/chrome/MSShell";
 
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -184,20 +185,23 @@ export default function ThreadPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)] flex flex-col">
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3 flex-shrink-0">
-        <div className="flex items-center gap-3 max-w-md mx-auto">
-          <button onClick={() => router.back()} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-            <ArrowLeft size={20} />
-          </button>
-          <Link href={`/friend/${handle}`} className="flex-1 min-w-0">
-            <p className="font-black text-base leading-tight">@{handle}</p>
-          </Link>
+    <MSShell hideTabBar>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Thread header with back arrow */}
+        <div style={{ flexShrink: 0, borderBottom: "1px solid var(--po-border)", padding: "12px 16px", background: "var(--po-bg)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 448, margin: "0 auto" }}>
+            <button onClick={() => router.back()} style={{ color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+              <ArrowLeft size={20} />
+            </button>
+            <Link href={`/friend/${handle}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
+              <p style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2, color: "var(--po-text)", margin: 0 }}>@{handle}</p>
+            </Link>
+          </div>
         </div>
-      </header>
 
-      {/* Message list */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 max-w-md mx-auto w-full">
+        {/* Scrollable message list */}
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        <div className="px-4 py-4 max-w-md mx-auto w-full">
         {messages.length === 0 && (
           <div className="text-center text-[var(--po-text-faint)] text-sm py-12">
             No messages yet — say something!
@@ -349,64 +353,66 @@ export default function ThreadPage() {
           </div>
         ))}
         <div ref={bottomRef} />
-      </main>
-
-      {/* Card previews above input when arriving from Discover — horizontal scroll */}
-      {cardsMeta?.length > 0 && (
-        <div
-          className="max-w-md mx-auto w-full px-4 pb-2 flex gap-2 overflow-x-auto"
-          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
-        >
-          {cardsMeta.map((c, i) => (
-            <div
-              key={i}
-              className="flex-none flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
-              style={{ background: "var(--po-bg-soft)", scrollSnapAlign: "start", minWidth: 180, maxWidth: 240 }}
-            >
-              {c.imageUrl && (
-                <img src={c.imageUrl} alt={c.cardName} className="w-8 h-10 object-cover rounded flex-shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
-                <p className="text-[var(--po-text-faint)] truncate">{c.setName}</p>
-                {c.priceUsd > 0 && (
-                  <p className="font-black" style={{ color: "var(--po-green)" }}>
-                    {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
         </div>
-      )}
+        </div>
 
-      {/* Input bar */}
-      <div className="flex-shrink-0 border-t border-[var(--po-border)] bg-[var(--po-bg)] px-4 py-3 max-w-md mx-auto w-full">
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message…"
-            rows={1}
-            className="flex-1 resize-none bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl px-4 py-2.5 text-sm text-[var(--po-text)] placeholder:text-[var(--po-text-faint)] outline-none focus:border-[var(--po-green)] transition-colors leading-relaxed"
-            style={{ maxHeight: 120, overflowY: "auto" }}
-            onInput={(e) => {
-              e.target.style.height = "auto";
-              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-            }}
-          />
-          <button
-            onClick={send}
-            disabled={!body.trim() || sending}
-            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all disabled:opacity-30"
-            style={{ background: body.trim() ? "var(--po-green)" : "var(--po-bg-soft)", color: body.trim() ? "#050507" : "var(--po-text-faint)" }}
+        {/* Card previews above input when arriving from Discover — horizontal scroll */}
+        {cardsMeta?.length > 0 && (
+          <div
+            style={{ flexShrink: 0, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+            className="max-w-md mx-auto w-full px-4 pb-2 flex gap-2 overflow-x-auto"
           >
-            <Send size={16} />
-          </button>
+            {cardsMeta.map((c, i) => (
+              <div
+                key={i}
+                className="flex-none flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--po-border)] text-xs"
+                style={{ background: "var(--po-bg-soft)", scrollSnapAlign: "start", minWidth: 180, maxWidth: 240 }}
+              >
+                {c.imageUrl && (
+                  <img src={c.imageUrl} alt={c.cardName} className="w-8 h-10 object-cover rounded flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold truncate text-[var(--po-text)]">{c.cardName}</p>
+                  <p className="text-[var(--po-text-faint)] truncate">{c.setName}</p>
+                  {c.priceUsd > 0 && (
+                    <p className="font-black" style={{ color: "var(--po-green)" }}>
+                      {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input bar */}
+        <div style={{ flexShrink: 0, borderTop: "1px solid var(--po-border)", background: "var(--po-bg)", padding: "12px 16px" }}>
+          <div className="flex items-end gap-2 max-w-md mx-auto">
+            <textarea
+              ref={inputRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message…"
+              rows={1}
+              className="flex-1 resize-none bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-2xl px-4 py-2.5 text-sm text-[var(--po-text)] placeholder:text-[var(--po-text-faint)] outline-none focus:border-[var(--po-green)] transition-colors leading-relaxed"
+              style={{ maxHeight: 120, overflowY: "auto" }}
+              onInput={(e) => {
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+              }}
+            />
+            <button
+              onClick={send}
+              disabled={!body.trim() || sending}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all disabled:opacity-30"
+              style={{ background: body.trim() ? "var(--po-green)" : "var(--po-bg-soft)", color: body.trim() ? "#050507" : "var(--po-text-faint)" }}
+            >
+              <Send size={16} />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </MSShell>
   );
 }

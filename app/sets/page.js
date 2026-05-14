@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { BracketHeading } from "@/components/BracketHeading";
 import { selectMasterPrintings } from "@/lib/queries/printings";
+import { MSShell } from "@/components/chrome/MSShell";
+import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -420,9 +421,11 @@ export default function SetBrowserPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center text-[var(--po-text-dim)]">
-        Loading...
-      </div>
+      <MSShell>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+          Loading...
+        </div>
+      </MSShell>
     );
   }
 
@@ -436,15 +439,11 @@ export default function SetBrowserPage() {
     "Done!";
 
   return (
-    <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
-      <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3">
-        <div className="flex items-center gap-3 mb-3">
-          <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-            <ArrowLeft size={20} />
-          </Link>
-          <BracketHeading className="text-xl">Add a Set</BracketHeading>
-        </div>
-        <div className="relative">
+    <MSShell>
+      <MSPageTitle>ADD A SET</MSPageTitle>
+
+      <div className="px-4 pb-3 max-w-md mx-auto">
+        <div className="relative mb-2">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--po-text-dim)]" />
           <input
             type="text"
@@ -454,7 +453,7 @@ export default function SetBrowserPage() {
             className="w-full pl-9 pr-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg text-[var(--po-text)] placeholder-[var(--po-text-dim)] focus:outline-none focus:border-[var(--po-green)]"
           />
         </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {seriesList.map((s) => (
             <button
               key={s}
@@ -469,9 +468,9 @@ export default function SetBrowserPage() {
             </button>
           ))}
         </div>
-      </header>
+      </div>
 
-      <main className="px-4 py-4 space-y-2 max-w-md mx-auto">
+      <div className="px-4 py-4 space-y-2 max-w-md mx-auto">
         {filteredSets.length === 0 ? (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
             No sets match.
@@ -542,9 +541,9 @@ export default function SetBrowserPage() {
             );
           })
         )}
-      </main>
+      </div>
 
-      {/* â"€â"€ Setup wizard bottom sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+      {/* Setup wizard bottom sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
       {wizardSet && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={closeWizard} />
@@ -824,7 +823,7 @@ export default function SetBrowserPage() {
           )}
         </>
       )}
-    </div>
+    </MSShell>
   );
 }
 
