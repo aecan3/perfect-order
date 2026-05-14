@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
+import { getFriendIds } from "@/lib/queries/friends";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -185,15 +186,9 @@ export default function HomePage() {
       // Non-blocking discover fetch — runs after main load so it doesn't delay the page
       (async () => {
         try {
-          const { data: fships } = await supabase
-            .from("friendships")
-            .select("user_a, user_b")
-            .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
-            .eq("status", "accepted");
+          const friendIds = await getFriendIds(supabase, user.id);
 
-          if (!fships?.length) { setDiscoverCards([]); return; }
-
-          const friendIds = fships.map((f) => f.user_a === user.id ? f.user_b : f.user_a);
+          if (!friendIds.length) { setDiscoverCards([]); return; }
 
           const [{ data: friendDups }, { data: myMissing }] = await Promise.all([
             supabase
@@ -201,6 +196,7 @@ export default function HomePage() {
               .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings!inner(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
               .eq("printing.collection_tier", "master")
               .in("user_id", friendIds)
+              .eq("checked", true)
               .gt("duplicate_count", 0),
             supabase
               .from("collection_entries")

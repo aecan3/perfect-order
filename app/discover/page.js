@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { getFriendIds } from "@/lib/queries/friends";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -42,15 +43,9 @@ export default function DiscoverPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/welcome"); return; }
 
-      const { data: fships } = await supabase
-        .from("friendships")
-        .select("user_a, user_b")
-        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
-        .eq("status", "accepted");
+      const friendIds = await getFriendIds(supabase, user.id);
 
-      if (!fships?.length) { setCards([]); return; }
-
-      const friendIds = fships.map((f) => f.user_a === user.id ? f.user_b : f.user_a);
+      if (!friendIds.length) { setCards([]); return; }
 
       const [{ data: friendEntries }, { data: myMissing }] = await Promise.all([
         supabase
