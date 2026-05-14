@@ -1,6 +1,6 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v10";
+const CACHE = "perfect-order-v11";
 
 const PRECACHE_URLS = ["/", "/welcome", "/login", "/friends", "/manifest.json"];
 
