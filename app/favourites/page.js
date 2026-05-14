@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -29,7 +29,6 @@ const collectorNum = (card, set) => {
 };
 
 export default function FavouritesPage() {
-  console.log("favourites debug ENTRY");
   const router = useRouter();
   const supabase = createClient();
 
@@ -73,11 +72,12 @@ export default function FavouritesPage() {
     })();
   }, [router, supabase]);
 
-  const removeFav = async (printingId) => {
+  const removeFav = useCallback(async (printingId) => {
+    if (!user) return;
     setItems((prev) => prev.filter((p) => p.id !== printingId));
     setActiveCard(null);
     await supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", printingId);
-  };
+  }, [user, supabase]);
 
   if (loading) {
     return (
@@ -86,12 +86,6 @@ export default function FavouritesPage() {
       </div>
     );
   }
-
-  console.log("favourites debug PAST LOADING", {
-    favouritesCount: items?.length,
-    sample: items?.[0],
-    selectedCard: activeCard,
-  });
 
   const SLOTS = 6;
   const slots = [
@@ -230,12 +224,8 @@ export default function FavouritesPage() {
       </header>
 
       <main style={{ padding: "16px", maxWidth: 480, margin: "0 auto" }}>
-        {(() => {
-          let gridContent;
-          try {
-            gridContent = (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                {slots.map((printing, i) => {
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {slots.map((printing, i) => {
             if (!printing) {
               return (
                 <div key={`empty-${i}`}>
@@ -354,15 +344,8 @@ export default function FavouritesPage() {
                 </div>
               </div>
             );
-                })}
-              </div>
-            );
-          } catch (err) {
-            console.error("favourites grid render error:", err);
-            gridContent = <div style={{ color: "red", padding: 16 }}>Render error: {err.message}</div>;
-          }
-          return gridContent;
-        })()}
+          })}
+        </div>
       </main>
 
       {sheet}
