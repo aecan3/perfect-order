@@ -8,10 +8,11 @@ import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 export default function ResetPasswordPage() {
   const router = useRouter();
   const supabase = createClient();
-  // "loading" while waiting for Supabase to process the recovery token from the URL hash.
-  // "ready"   once PASSWORD_RECOVERY event fires — token is valid.
-  // "expired" if no recovery event arrives quickly — link is invalid or already used.
-  // "done"    after a successful password update.
+  // "loading"  while waiting for Supabase to process the recovery token.
+  // "ready"    once recovery session is confirmed — show the password form.
+  // "expired"  after getSession() returned nothing AND no PASSWORD_RECOVERY
+  //            event arrived within the grace period — link is invalid or used.
+  // "done"     after a successful password update.
   const [status, setStatus] = useState("loading");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -19,20 +20,46 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // createBrowserClient automatically parses the recovery hash token from the URL
-    // and fires PASSWORD_RECOVERY via onAuthStateChange if the token is valid.
+    let settled = false;
+
+    function markReady() {
+      if (settled) return;
+      settled = true;
+      setStatus("ready");
+    }
+
+    function markExpired() {
+      if (settled) return;
+      settled = true;
+      setStatus("expired");
+    }
+
+    // Listen for PASSWORD_RECOVERY — fires when Supabase exchanges the hash
+    // token after the listener attaches.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setStatus("ready");
+      if (event === "PASSWORD_RECOVERY") markReady();
     });
 
-    // If no PASSWORD_RECOVERY fires within 800 ms, the token is absent or expired.
-    const timeout = setTimeout(() => {
-      setStatus((prev) => (prev === "loading" ? "expired" : prev));
-    }, 800);
+    // Also check whether Supabase already processed the token before the listener
+    // attached (this happens when the page hydrates after the hash is consumed).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        markReady();
+      } else {
+        // No session yet. Give the PASSWORD_RECOVERY event a real grace period —
+        // on a slow mobile connection, Supabase may need several seconds to parse
+        // the hash, validate the token, and fire the event.
+        const timeout = setTimeout(markExpired, 5000);
+        // Store cleanup ref on the closure so the return below can clear it.
+        cleanupTimeout = timeout;
+      }
+    });
+
+    let cleanupTimeout = null;
 
     return () => {
       subscription.unsubscribe();
-      clearTimeout(timeout);
+      if (cleanupTimeout) clearTimeout(cleanupTimeout);
     };
   }, []);
 
@@ -74,7 +101,7 @@ export default function ResetPasswordPage() {
         </div>
 
         {status === "loading" && (
-          <p className="text-center text-sm text-[var(--po-text-dim)]">Verifying reset link...</p>
+          <p className="text-center text-sm text-[var(--po-text-dim)]">Verifying your reset link...</p>
         )}
 
         {status === "expired" && (
