@@ -86,6 +86,12 @@ export default function FavouritesPage() {
     );
   }
 
+  console.log("favourites debug", {
+    favouritesCount: items?.length,
+    sample: items?.[0],
+    selectedCard: activeCard,
+  });
+
   const SLOTS = 6;
   const slots = [
     ...items,
