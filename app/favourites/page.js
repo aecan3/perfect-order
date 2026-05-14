@@ -29,6 +29,7 @@ const collectorNum = (card, set) => {
 };
 
 export default function FavouritesPage() {
+  console.log("favourites debug ENTRY");
   const router = useRouter();
   const supabase = createClient();
 
@@ -86,7 +87,7 @@ export default function FavouritesPage() {
     );
   }
 
-  console.log("favourites debug", {
+  console.log("favourites debug PAST LOADING", {
     favouritesCount: items?.length,
     sample: items?.[0],
     selectedCard: activeCard,
@@ -229,14 +230,12 @@ export default function FavouritesPage() {
       </header>
 
       <main style={{ padding: "16px", maxWidth: 480, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 12,
-          }}
-        >
-          {slots.map((printing, i) => {
+        {(() => {
+          let gridContent;
+          try {
+            gridContent = (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                {slots.map((printing, i) => {
             if (!printing) {
               return (
                 <div key={`empty-${i}`}>
@@ -355,8 +354,15 @@ export default function FavouritesPage() {
                 </div>
               </div>
             );
-          })}
-        </div>
+                })}
+              </div>
+            );
+          } catch (err) {
+            console.error("favourites grid render error:", err);
+            gridContent = <div style={{ color: "red", padding: 16 }}>Render error: {err.message}</div>;
+          }
+          return gridContent;
+        })()}
       </main>
 
       {sheet}
