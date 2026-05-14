@@ -50,8 +50,11 @@ export default function FavouritesPage() {
       if (!favData || favData.length === 0) { setLoading(false); return; }
 
       const printingIds = favData.map((f) => f.printing_id);
-      const { data: printingData } = await selectAllPrintings(supabase, "*, card:cards(id, name, number, rarity, image_large, image_small, set_id), set:sets(id, name, code, logo_url, total, theme_primary)")
+      const { data: printingData, error: printingError } = await selectAllPrintings(supabase, "*, card:cards(id, name, number, rarity, image_large, image_small, set_id), set:sets(id, name, code, logo_url, total, theme_primary)")
         .in("id", printingIds);
+      if (printingError) {
+        console.error("favourites fetch error:", printingError);
+      }
 
       const orderedItems = printingIds.map((pid) => printingData?.find((p) => p.id === pid)).filter(Boolean);
       setItems(orderedItems);
