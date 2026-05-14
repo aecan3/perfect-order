@@ -6,6 +6,8 @@ import { NextResponse } from "next/server";
 const PUBLIC_PATHS = new Set([
   "/welcome",
   "/login",
+  "/forgot-password",
+  "/reset-password",
   "/manifest.json",
   "/sw.js",
   "/icon-192.png",
