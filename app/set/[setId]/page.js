@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useParams } from "next/navigation";
 import { Check, X, Camera, Trash2, ChevronDown, LayoutGrid, BookOpen, Clock } from "lucide-react";
 import Link from "next/link";
@@ -193,7 +192,6 @@ function MasterSetCelebration({ themePrimary, themeSecondary, logoUrl, setName, 
     return () => cancelAnimationFrame(r);
   }, []);
 
-  useEffect(() => { setMounted(true); }, []);
 
   // Lock body scroll while overlay is open
   useEffect(() => {
@@ -581,7 +579,6 @@ export default function SetTrackerPage() {
   const [openSections, setOpenSections] = useState({});
   const [resetConfirm, setResetConfirm] = useState(false);
   const [dupConfirmPrinting, setDupConfirmPrinting] = useState(null);
-  const [mounted, setMounted] = useState(false);
   const [resetTyped, setResetTyped] = useState("");
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const [shimmerMain, setShimmerMain] = useState(false);
@@ -1720,7 +1717,7 @@ export default function SetTrackerPage() {
           </div>
         </div>
       )}
-      {mounted && dupConfirmPrinting && createPortal(
+      {dupConfirmPrinting && (
         <div
           className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center p-4"
           onClick={() => setDupConfirmPrinting(null)}
@@ -1764,8 +1761,7 @@ export default function SetTrackerPage() {
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
     </MSShell>
   );
