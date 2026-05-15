@@ -19,7 +19,7 @@ const PUBLIC_PATHS = new Set([
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/icons/")) {
+  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/icons/") || pathname.startsWith("/brand/")) {
     return NextResponse.next();
   }
 
