@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { getFriendIds } from "@/lib/queries/friends";
+import { getDiscoverMatches } from "@/lib/queries/discover";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -187,56 +188,9 @@ export default function HomePage() {
       (async () => {
         try {
           const friendIds = await getFriendIds(supabase, user.id);
-
           if (!friendIds.length) { setDiscoverCards([]); return; }
-
-          const [{ data: friendDups }, { data: myMissing }] = await Promise.all([
-            supabase
-              .from("collection_entries")
-              .select("user_id, printing_id, card_number, set_id, duplicate_count, printing:printings!inner(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
-              .eq("printing.collection_tier", "master")
-              .in("user_id", friendIds)
-              .eq("checked", true)
-              .gt("duplicate_count", 0),
-            supabase
-              .from("collection_entries")
-              .select("printing_id, set_id, card_number")
-              .eq("user_id", user.id)
-              .eq("checked", false),
-          ]);
-
-          if ((friendDups || []).length === 1000)
-            console.warn("Discover scroller: friend-dups query may be truncated — hit 1000-row cap. Friend network has grown; needs tighter filter or explicit pagination.");
-
-          const missingPrintingIds = new Set((myMissing || []).map((e) => e.printing_id).filter(Boolean));
-          const missingKeys = new Set((myMissing || []).map((e) => `${e.set_id}:${e.card_number}`));
-
-          const friendProfileIds = [...new Set((friendDups || []).map((d) => d.user_id))];
-          const { data: friendProfiles } = friendProfileIds.length > 0
-            ? await supabase.from("profiles").select("id, handle").in("id", friendProfileIds)
-            : { data: [] };
-          const profileMap = Object.fromEntries((friendProfiles || []).map((p) => [p.id, p]));
-
-          const results = (friendDups || [])
-            .filter((entry) =>
-              (entry.printing_id && missingPrintingIds.has(entry.printing_id)) ||
-              missingKeys.has(`${entry.set_id}:${entry.card_number}`)
-            )
-            .map((entry) => ({
-              printingId: entry.printing_id,
-              cardNumber: entry.card_number,
-              setId: entry.set_id,
-              duplicateCount: entry.duplicate_count,
-              friendHandle: profileMap[entry.user_id]?.handle || "unknown",
-              priceUsd: entry.printing?.price_usd || 0,
-              imageUrl: entry.printing?.image_url || entry.printing?.card?.image_large || null,
-              setName: entry.set?.name || "",
-              cardName: entry.printing?.card?.name || "",
-            }))
-            .sort((a, b) => b.priceUsd - a.priceUsd)
-            .slice(0, 20);
-
-          setDiscoverCards(results);
+          const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
+          setDiscoverCards(results.slice(0, 20));
         } catch {
           setDiscoverCards([]);
         }
