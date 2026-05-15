@@ -48,6 +48,8 @@ const PUBLIC_PATHS = new Set([
   "/forgot-password",
   "/reset-password",
   "/auth/confirm",
+  "/terms",
+  "/privacy",
   "/manifest.json",
   "/sw.js",
   "/icon-192.png",

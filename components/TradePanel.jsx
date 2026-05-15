@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle, Camera, Clock, ArrowLeftRight, MapPin, Users, Package, AlertTriangle } from "lucide-react";
 import { CameraCapture } from "@/components/CameraCapture";
+import { LocationExplainer } from "@/components/LocationExplainer";
+import { SuburbAutocomplete } from "@/components/SuburbAutocomplete";
 
 const DISCLAIMER =
   "Photo confirmation indicates a card matching this description was photographed at the time of this trade. Master Setter does not authenticate, grade, or guarantee the condition or authenticity of any card. All trades are between users. Master Setter accepts no liability for trade disputes.";
@@ -28,6 +30,9 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   const [nearbyShops, setNearbyShops] = useState(null);
   const [shopsLoading, setShopsLoading] = useState(false);
   const [notesValue, setNotesValue] = useState("");
+  const [showLocationExplainer, setShowLocationExplainer] = useState(false);
+  const [useSuburbFallback, setUseSuburbFallback] = useState(false);
+  const [suburbSaved, setSuburbSaved] = useState(false);
   const channelRef = useRef(null);
 
   useEffect(() => {
@@ -152,6 +157,16 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
     }
   };
 
+  const handleSuburbSelectInTrade = async (selection) => {
+    if (!selection) return;
+    await supabase.from("profiles").update({
+      suburb: selection.suburb,
+      postcode: selection.postcode,
+      state: selection.state,
+    }).eq("id", user.id);
+    setSuburbSaved(true);
+  };
+
   const handleFindShops = () => {
     setShopsLoading(true);
     navigator.geolocation.getCurrentPosition(
@@ -179,6 +194,21 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
         <CameraCapture
           onCapture={handlePhotoCapture}
           onClose={() => setShowCamera(false)}
+        />
+      )}
+
+      {showLocationExplainer && (
+        <LocationExplainer
+          onEnable={() => {
+            localStorage.setItem("ms_location_explained", "1");
+            setShowLocationExplainer(false);
+            handleFindShops();
+          }}
+          onNotNow={() => {
+            localStorage.setItem("ms_location_explained", "1");
+            setShowLocationExplainer(false);
+            setUseSuburbFallback(true);
+          }}
         />
       )}
 
@@ -330,7 +360,21 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
                   <div className="space-y-2">
                     <LogisticsButton icon={<Package size={14} />} label="Post" onClick={() => setLogisticsChoice("post")} />
                     <LogisticsButton icon={<Users size={14} />} label="Meet in Person" onClick={() => setLogisticsChoice("in_person")} />
-                    <LogisticsButton icon={<MapPin size={14} />} label="Card Shop Nearby" onClick={() => { setLogisticsChoice("card_shop"); handleFindShops(); }} />
+                    <LogisticsButton
+                      icon={<MapPin size={14} />}
+                      label="Card Shop Nearby"
+                      onClick={() => {
+                        setLogisticsChoice("card_shop");
+                        setUseSuburbFallback(false);
+                        setSuburbSaved(false);
+                        const explained = typeof localStorage !== "undefined" && localStorage.getItem("ms_location_explained");
+                        if (!explained) {
+                          setShowLocationExplainer(true);
+                        } else {
+                          handleFindShops();
+                        }
+                      }}
+                    />
                   </div>
                 </>
               )}
@@ -360,7 +404,10 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
                 <CardShopLogistics
                   shops={nearbyShops}
                   loading={shopsLoading}
-                  onBack={() => setLogisticsChoice(null)}
+                  onBack={() => { setLogisticsChoice(null); setUseSuburbFallback(false); setSuburbSaved(false); }}
+                  useSuburbFallback={useSuburbFallback}
+                  onSuburbSelect={handleSuburbSelectInTrade}
+                  suburbSaved={suburbSaved}
                 />
               )}
             </div>
@@ -474,34 +521,52 @@ function InPersonLogistics({ notesValue, setNotesValue, onBack }) {
   );
 }
 
-function CardShopLogistics({ shops, loading, onBack }) {
+function CardShopLogistics({ shops, loading, onBack, useSuburbFallback, onSuburbSelect, suburbSaved }) {
   return (
     <div className="space-y-3">
       <button onClick={onBack} className="text-[10px] text-[var(--po-text-dim)] underline">Back</button>
-      <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Nearby Card Shops</p>
 
-      {loading && <p className="text-xs text-[var(--po-text-dim)]">Finding shops near you…</p>}
+      {useSuburbFallback ? (
+        <>
+          <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Set Your Suburb</p>
+          <p className="text-xs text-[var(--po-text-dim)] leading-relaxed">
+            Save your suburb to help find nearby traders and card shops.
+          </p>
+          <SuburbAutocomplete value={null} onChange={onSuburbSelect} placeholder="Search suburb..." />
+          {suburbSaved && (
+            <p style={{ fontSize: 12, color: "var(--po-green)", marginTop: 6, fontFamily: '"IBM Plex Sans", sans-serif' }}>
+              Suburb saved to your profile.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Nearby Card Shops</p>
 
-      {!loading && shops?.length === 0 && (
-        <p className="text-xs text-[var(--po-text-dim)]">No card shops found within 10km. Try searching Google Maps for hobby stores nearby.</p>
+          {loading && <p className="text-xs text-[var(--po-text-dim)]">Finding shops near you…</p>}
+
+          {!loading && shops?.length === 0 && (
+            <p className="text-xs text-[var(--po-text-dim)]">No card shops found within 10km. Try searching Google Maps for hobby stores nearby.</p>
+          )}
+
+          {!loading && shops?.map((shop, i) => (
+            <a
+              key={i}
+              href={shop.mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col gap-0.5 px-4 py-3 rounded-xl border border-[var(--po-border)] hover:border-[var(--po-green)] transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-sm font-bold text-[var(--po-text)]">{shop.name}</span>
+                <span className="text-xs text-[var(--po-text-dim)] flex-shrink-0">{shop.distKm}km</span>
+              </div>
+              <span className="text-[10px] text-[var(--po-text-dim)]">{shop.address}</span>
+              <span className="text-[10px] mt-1" style={{ color: "var(--po-green)" }}>Open in Maps →</span>
+            </a>
+          ))}
+        </>
       )}
-
-      {!loading && shops?.map((shop, i) => (
-        <a
-          key={i}
-          href={shop.mapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex flex-col gap-0.5 px-4 py-3 rounded-xl border border-[var(--po-border)] hover:border-[var(--po-green)] transition-colors"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-sm font-bold text-[var(--po-text)]">{shop.name}</span>
-            <span className="text-xs text-[var(--po-text-dim)] flex-shrink-0">{shop.distKm}km</span>
-          </div>
-          <span className="text-[10px] text-[var(--po-text-dim)]">{shop.address}</span>
-          <span className="text-[10px] mt-1" style={{ color: "var(--po-green)" }}>Open in Maps →</span>
-        </a>
-      ))}
     </div>
   );
 }

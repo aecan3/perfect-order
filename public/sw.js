@@ -1,6 +1,6 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v18";
+const CACHE = "perfect-order-v19";
 
 // /data/au-localities.json is the static suburb autocomplete dataset (~134 KB gzipped).
 // Precached so suburb search works offline after first SW install.

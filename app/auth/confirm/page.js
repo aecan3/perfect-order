@@ -76,7 +76,16 @@ function ConfirmContent() {
           // Insert is idempotent: if a prior attempt already created the row
           // (e.g. StrictMode second mount), the conflict is silently ignored.
           await supabase.from("profiles").upsert(
-            { id: user.id, handle, display_name: displayName },
+            {
+              id: user.id,
+              handle,
+              display_name: displayName,
+              country: meta.country ?? null,
+              tos_version: meta.tos_version ?? null,
+              tos_agreed_at: meta.tos_agreed_at ?? null,
+              privacy_version: meta.privacy_version ?? null,
+              privacy_agreed_at: meta.privacy_agreed_at ?? null,
+            },
             { onConflict: "id", ignoreDuplicates: true }
           );
         }
