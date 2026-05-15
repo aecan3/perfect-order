@@ -1,8 +1,47 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
-// Paths that must remain publicly accessible — never require auth.
-// Includes PWA assets, icons, the SW itself, and the login page.
+// =============================================================================
+// SERVER-SIDE AUTH GATE — proxy.js
+//
+// This is a Next.js 16 Proxy handler (NOT middleware.js). Next.js 16 compiles
+// and runs it before any page or API route handler, on every request that
+// matches the config.matcher below.
+//
+// WHAT IT DOES
+//   - Reads the Supabase session from cookies via createServerClient.
+//   - If the user is authenticated: passes the request through.
+//   - If the user is NOT authenticated: issues a 307 redirect to /welcome.
+//
+// WHAT THE MATCHER DOES (AND DOES NOT DO)
+//   The matcher only exempts Next.js internals (_next/static, _next/image,
+//   _next/webpack-hmr) and favicon.ico. It is NOT a general static-asset
+//   filter. Every other path — including pages, API routes, and files served
+//   from the public/ folder (images, JSON, the SW, brand assets) — hits the
+//   auth check in this file.
+//
+// THE RULE: ADD NEW PUBLIC PATHS HERE
+//   Any route or asset that a logged-out user must be able to reach needs to
+//   be explicitly allowed below — either by adding it to PUBLIC_PATHS (exact
+//   match) or by adding a pathname.startsWith() prefix check in the proxy
+//   function. Failure to do this silently gates the path behind auth and
+//   redirects logged-out requests to /welcome with no error.
+//
+//   Examples of things that MUST be listed here:
+//     - Auth pages: /login, /welcome, /forgot-password, /reset-password
+//     - Auth callback routes: e.g. /auth/callback if one is ever added
+//     - PWA assets: /manifest.json, /sw.js, /icon-*.png
+//     - Public asset directories: /brand/ (email images, og-images), /icons/
+//     - Any future legal/marketing pages visible to logged-out users
+//
+// This file has caused two incidents from missing entries:
+//   1. /forgot-password and /reset-password were not listed — logged-out
+//      users were bounced before reaching the password reset flow.
+//   2. /brand/ was not listed — email clients fetching the logo PNG (a
+//      logged-out request) received a 307 redirect instead of the image.
+// =============================================================================
+
+// Exact-match paths that bypass the auth check.
 const PUBLIC_PATHS = new Set([
   "/welcome",
   "/login",

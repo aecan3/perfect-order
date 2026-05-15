@@ -75,6 +75,14 @@ const fetchAllEntries = async (userId) => {
 
 **ownedPrintingsRef pattern**: When a debounced write needs current state, assign `ref.current = state` directly in the render body (not in useEffect). The debounce closure captures `ref` and reads `.current` at fire time.
 
+## Auth gate — proxy.js (CRITICAL)
+
+`proxy.js` at the project root is the app's **server-side auth gate** — a Next.js 16 Proxy handler that runs before every page and API route. It checks the Supabase session and redirects unauthenticated requests to `/welcome`.
+
+**The matcher is not a static-asset filter.** It only exempts `_next/static`, `_next/image`, `_next/webpack-hmr`, and `favicon.ico`. Everything else — including files served from `public/` — hits the auth check.
+
+**The rule:** Any path a logged-out user must reach (auth pages, PWA assets, public images, og-images, auth callbacks, legal pages, public API routes) **must** be listed in `PUBLIC_PATHS` (exact match) or covered by a `pathname.startsWith()` prefix check in `proxy.js`. Missing entries produce a silent 307 redirect to `/welcome` with no error. This has caused two incidents — always check `proxy.js` when adding any new publicly-accessible route or asset.
+
 ## PWA service worker
 
 Cache name: `"perfect-order-v2"` in `public/sw.js`.  
