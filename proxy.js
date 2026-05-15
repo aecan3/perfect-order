@@ -47,6 +47,7 @@ const PUBLIC_PATHS = new Set([
   "/login",
   "/forgot-password",
   "/reset-password",
+  "/auth/confirm",
   "/manifest.json",
   "/sw.js",
   "/icon-192.png",

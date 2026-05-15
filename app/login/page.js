@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -8,13 +8,14 @@ import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [mode, setMode] = useState("signin"); // "signin" or "signup"
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [handle, setHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -29,7 +30,7 @@ export default function LoginPage() {
         return;
       }
 
-      // Check handle availability first
+      // Check handle availability
       const { data: existing } = await supabase
         .from("profiles")
         .select("id")
@@ -42,9 +43,20 @@ export default function LoginPage() {
         return;
       }
 
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      // Store handle + display_name in user metadata so the confirm route can
+      // create the profile row after the session is established. The profile
+      // insert cannot happen here — with email confirmation enforced, signUp()
+      // returns no session, so the authenticated-only INSERT RLS policy blocks it.
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            handle: handle.toLowerCase(),
+            display_name: displayName || handle,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/confirm`,
+        },
       });
 
       if (signUpError) {
@@ -53,22 +65,10 @@ export default function LoginPage() {
         return;
       }
 
-      // Create profile row
-      if (data.user) {
-        const { error: profileError } = await supabase.from("profiles").insert({
-          id: data.user.id,
-          handle: handle.toLowerCase(),
-          display_name: displayName || handle,
-        });
-        if (profileError) {
-          setError("Account created but profile failed: " + profileError.message);
-          setLoading(false);
-          return;
-        }
-      }
-
-      router.push("/");
-      router.refresh();
+      // Email confirmation is required before the user can sign in.
+      // Do not navigate into the app — the proxy will bounce them.
+      setAwaitingConfirmation(true);
+      setLoading(false);
     } else {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -82,6 +82,35 @@ export default function LoginPage() {
       router.push("/");
       router.refresh();
     }
+  }
+
+  if (awaitingConfirmation) {
+    return (
+      <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center px-4">
+        <div className="w-full max-w-sm flex flex-col items-center space-y-6">
+          <MasterSetterLogo variant="stacked" height={72} className="mb-2" />
+          <div className="text-center space-y-3">
+            <h1 className="text-xl font-black text-[var(--po-text)]">Check your email</h1>
+            <p className="text-sm text-[var(--po-text-dim)]">
+              We sent a confirmation link to <span className="text-[var(--po-text)]">{email}</span>.
+              Click it to activate your account.
+            </p>
+            <p className="text-xs text-[var(--po-text-dim)]">
+              Check your spam folder if you don't see it within a minute.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setAwaitingConfirmation(false);
+              setMode("signin");
+            }}
+            className="w-full text-xs text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -192,4 +221,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
