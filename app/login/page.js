@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
@@ -46,10 +46,15 @@ function renderLegalMarkdown(text) {
   );
 }
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
-  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+
+  // Honor ?mode=signup from the welcome page "Create Account" button.
+  const initialMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
+
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [handle, setHandle] = useState("");
@@ -85,7 +90,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Check handle availability
       const { data: existing } = await supabase
         .from("profiles")
         .select("id")
@@ -100,9 +104,6 @@ export default function LoginPage() {
 
       const agreedAt = new Date().toISOString();
 
-      // Store all metadata so /auth/confirm can create the profile row after
-      // the session is established. The profile insert cannot happen here —
-      // with email confirmation enforced, signUp() returns no session.
       const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -129,10 +130,7 @@ export default function LoginPage() {
       setAwaitingConfirmation(true);
       setLoading(false);
     } else {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
         setError(signInError.message);
         setLoading(false);
@@ -177,29 +175,9 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* ── Legal modal ── */}
       {legalModal && legalModalContent && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.9)",
-            zIndex: 500,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "16px 20px",
-              borderBottom: "1px solid var(--po-border)",
-              background: "var(--po-bg-soft)",
-              flexShrink: 0,
-            }}
-          >
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 500, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid var(--po-border)", background: "var(--po-bg-soft)", flexShrink: 0 }}>
             <div>
               <span style={{ fontWeight: 700, color: "var(--po-text)", fontSize: 15, fontFamily: '"IBM Plex Sans", sans-serif' }}>
                 {legalModalContent.title}
@@ -213,7 +191,7 @@ export default function LoginPage() {
               style={{ color: "var(--po-text-dim)", background: "none", border: "none", fontSize: 22, cursor: "pointer", lineHeight: 1, padding: "4px 8px" }}
               aria-label="Close"
             >
-              ×
+              x
             </button>
           </div>
           <div style={{ overflowY: "auto", flex: 1, padding: "16px 20px 32px", background: "var(--po-bg)" }}>
@@ -233,9 +211,7 @@ export default function LoginPage() {
             {mode === "signup" && (
               <>
                 <div>
-                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
-                    Handle
-                  </label>
+                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Handle</label>
                   <input
                     type="text"
                     value={handle}
@@ -244,14 +220,10 @@ export default function LoginPage() {
                     required
                     className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
                   />
-                  <p className="text-[10px] text-[var(--po-text-dim)] mt-1">
-                    Your friend will use this to add you.
-                  </p>
+                  <p className="text-[10px] text-[var(--po-text-dim)] mt-1">Your friend will use this to add you.</p>
                 </div>
                 <div>
-                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
-                    Display name
-                  </label>
+                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Display name</label>
                   <input
                     type="text"
                     value={displayName}
@@ -262,10 +234,9 @@ export default function LoginPage() {
                 </div>
               </>
             )}
+
             <div>
-              <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
-                Email
-              </label>
+              <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Email</label>
               <input
                 type="email"
                 value={email}
@@ -275,9 +246,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
-                Password
-              </label>
+              <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Password</label>
               <input
                 type="password"
                 value={password}
@@ -291,9 +260,7 @@ export default function LoginPage() {
             {mode === "signup" && (
               <>
                 <div>
-                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">
-                    Country
-                  </label>
+                  <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Country</label>
                   <select
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
@@ -307,43 +274,24 @@ export default function LoginPage() {
                   </select>
                 </div>
 
-                <label
-                  style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}
-                  onClick={() => setLegalAgreed((v) => !v)}
-                >
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }} onClick={() => setLegalAgreed((v) => !v)}>
                   <div
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 4,
-                      flexShrink: 0,
-                      marginTop: 1,
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 1,
                       background: legalAgreed ? "var(--po-green)" : "transparent",
                       border: `2px solid ${legalAgreed ? "var(--po-green)" : "var(--po-border)"}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                   >
-                    {legalAgreed && (
-                      <span style={{ color: "#000", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>
-                    )}
+                    {legalAgreed && <span style={{ color: "#000", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>v</span>}
                   </div>
                   <p style={{ fontSize: 12, color: "var(--po-text-dim)", lineHeight: 1.6, margin: 0, fontFamily: '"IBM Plex Sans", sans-serif' }}>
                     I am 18 or older and agree to the{" "}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setLegalModal("terms"); }}
-                      style={{ color: "var(--po-green)", background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit", fontFamily: "inherit", textDecoration: "underline" }}
-                    >
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setLegalModal("terms"); }} style={{ color: "var(--po-green)", background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit", fontFamily: "inherit", textDecoration: "underline" }}>
                       Terms of Service
                     </button>
                     {" "}and{" "}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setLegalModal("privacy"); }}
-                      style={{ color: "var(--po-green)", background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit", fontFamily: "inherit", textDecoration: "underline" }}
-                    >
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setLegalModal("privacy"); }} style={{ color: "var(--po-green)", background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "inherit", fontFamily: "inherit", textDecoration: "underline" }}>
                       Privacy Policy
                     </button>
                     .
@@ -369,29 +317,34 @@ export default function LoginPage() {
 
           {mode === "signin" && (
             <div className="mt-3 text-center">
-              <a
-                href="/forgot-password"
-                style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: '0.875rem', color: 'rgba(244,244,246,0.6)', textDecoration: 'none', letterSpacing: '0.05em' }}
-              >
+              <a href="/forgot-password" style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: '0.875rem', color: 'rgba(244,244,246,0.6)', textDecoration: 'none', letterSpacing: '0.05em' }}>
                 Forgot password?
               </a>
             </div>
           )}
 
           <button
-            onClick={() => {
-              setMode(mode === "signup" ? "signin" : "signup");
-              setError(null);
-              setLegalAgreed(false);
-            }}
+            onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(null); setLegalAgreed(false); }}
             className="w-full mt-4 text-xs text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
           >
-            {mode === "signup"
-              ? "Already have an account? Sign in"
-              : "Don't have an account? Create one"}
+            {mode === "signup" ? "Already have an account? Sign in" : "Don't have an account? Create one"}
           </button>
         </div>
       </div>
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[var(--po-bg)] flex items-center justify-center px-4">
+          <MasterSetterLogo variant="stacked" height={72} />
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
