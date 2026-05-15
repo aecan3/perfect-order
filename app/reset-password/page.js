@@ -10,10 +10,9 @@ function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  // "loading"  while the PKCE code exchange / session check is in progress.
-  // "ready"    once a recovery session is confirmed — show the password form.
-  // "expired"  after a genuine failure: bad/used code, upstream error, or
-  //            timeout with no session and no PASSWORD_RECOVERY event.
+  // "loading"  while verifyOtp is in flight.
+  // "ready"    once the recovery session is confirmed — show the password form.
+  // "expired"  token missing, invalid, or already used.
   // "done"     after a successful password update.
   const [status, setStatus] = useState("loading");
   const [errorMsg, setErrorMsg] = useState(null);
@@ -22,81 +21,61 @@ function ResetPasswordContent() {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  // Persists across React StrictMode double-mount; reset at effect start.
-  const settledRef = useRef(false);
+  // Prevents verifyOtp being called twice (React StrictMode double-mount).
+  // Reset at effect start so each genuine mount gets one attempt.
+  const verifiedRef = useRef(false);
 
   useEffect(() => {
-    // Reset on each effect invocation so StrictMode double-mount works correctly.
-    settledRef.current = false;
+    verifiedRef.current = false;
 
-    function markReady() {
-      if (settledRef.current) return;
-      settledRef.current = true;
-      setStatus("ready");
-    }
+    async function verify() {
+      if (verifiedRef.current) return;
+      verifiedRef.current = true;
 
-    function markExpired(msg) {
-      if (settledRef.current) return;
-      settledRef.current = true;
-      if (msg) setErrorMsg(msg);
-      setStatus("expired");
-    }
+      // If Supabase rejected the token before the redirect, the error is
+      // in the URL — surface it immediately.
+      const urlError = searchParams.get("error_description") || searchParams.get("error");
+      if (urlError) {
+        setErrorMsg(urlError);
+        setStatus("expired");
+        return;
+      }
 
-    // If Supabase rejected the token before the redirect, the error lands in
-    // the URL — surface it immediately without waiting.
-    const urlError = searchParams.get("error_description") || searchParams.get("error");
-    if (urlError) {
-      markExpired(urlError);
-      return;
-    }
+      const token_hash = searchParams.get("token_hash");
+      const type = searchParams.get("type");
 
-    const hasCode = Boolean(searchParams.get("code"));
+      // No token — user visited /reset-password directly with no link.
+      if (!token_hash) {
+        setStatus("expired");
+        return;
+      }
 
-    // createBrowserClient is configured with flowType: "pkce" and
-    // detectSessionInUrl: true. It auto-exchanges the ?code= param during
-    // client init, before this effect runs. Calling exchangeCodeForSession
-    // manually would try to use an already-consumed code — do NOT do that.
-    //
-    // Instead: listen for PASSWORD_RECOVERY (fires after a successful
-    // auto-exchange) AND check getSession() (handles the case where the
-    // exchange completed before the listener attached).
+      // verifyOtp exchanges the token_hash for a recovery session.
+      // Unlike PKCE, this requires no code verifier in localStorage —
+      // it works regardless of which browser or context opens the link.
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash,
+        type: type || "recovery",
+      });
 
-    let timeoutId = null;
+      if (!error) {
+        setStatus("ready");
+        return;
+      }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") markReady();
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
+      // verifyOtp failed. Before showing "expired", check whether a
+      // session already exists — this covers the StrictMode double-mount
+      // case where the first call succeeded and consumed the token.
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // Exchange already completed — session exists.
-        markReady();
-        return;
+        setStatus("ready");
+      } else {
+        setErrorMsg(error.message);
+        setStatus("expired");
       }
+    }
 
-      if (!hasCode) {
-        // No code in URL and no session — user arrived without a valid link.
-        markExpired(null);
-        return;
-      }
-
-      // Code is present but session isn't established yet — the auto-exchange
-      // is in flight. Give the PASSWORD_RECOVERY event time to arrive.
-      // After 5 s, do one final getSession() check before giving up.
-      timeoutId = setTimeout(async () => {
-        const { data: { session: lateSess } } = await supabase.auth.getSession();
-        if (lateSess) {
-          markReady();
-        } else {
-          markExpired(null);
-        }
-      }, 5000);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeoutId);
-    };
+    verify();
   }, []);
 
   async function handleSubmit(e) {
