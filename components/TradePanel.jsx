@@ -9,9 +9,6 @@ import { SuburbAutocomplete } from "@/components/SuburbAutocomplete";
 const DISCLAIMER =
   "Photo confirmation indicates a card matching this description was photographed at the time of this trade. Master Setter does not authenticate, grade, or guarantee the condition or authenticity of any card. All trades are between users. Master Setter accepts no liability for trade disputes.";
 
-const LIABILITY_CHECKBOX =
-  "I understand Master Setter is a platform only and accepts no responsibility for the outcome of this trade.";
-
 export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCard, supabase }) {
   const [trade, setTrade] = useState(null);
   const [tradeItems, setTradeItems] = useState([]);
@@ -23,10 +20,6 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   const [acceptError, setAcceptError] = useState(null);
   const [declineError, setDeclineError] = useState(null);
   const [logisticsChoice, setLogisticsChoice] = useState(null);
-  const [liabilityChecked, setLiabilityChecked] = useState(false);
-  const [revealedAddress, setRevealedAddress] = useState(null);
-  const [revealLoading, setRevealLoading] = useState(false);
-  const [revealError, setRevealError] = useState(null);
   const [nearbyShops, setNearbyShops] = useState(null);
   const [shopsLoading, setShopsLoading] = useState(false);
   const [notesValue, setNotesValue] = useState("");
@@ -132,28 +125,6 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
       setDeclineError("Network error — please try again.");
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const handleRevealAddress = async () => {
-    setRevealLoading(true);
-    setRevealError(null);
-    try {
-      const res = await fetch(`/api/trade/${tradeId}/reveal-address`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.error === "no_address") {
-          setRevealError(`@${otherHandle} hasn't added a mailing address to their profile yet. Ask them to add one in their profile settings.`);
-        } else {
-          setRevealError(data.error || "Failed to reveal address");
-        }
-        return;
-      }
-      setRevealedAddress(data);
-    } catch {
-      setRevealError("Network error — please try again.");
-    } finally {
-      setRevealLoading(false);
     }
   };
 
@@ -380,16 +351,13 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
               )}
 
               {logisticsChoice === "post" && (
-                <PostLogistics
-                  liabilityChecked={liabilityChecked}
-                  setLiabilityChecked={setLiabilityChecked}
-                  revealedAddress={revealedAddress}
-                  revealLoading={revealLoading}
-                  revealError={revealError}
-                  onReveal={handleRevealAddress}
-                  otherHandle={otherHandle}
-                  onBack={() => { setLogisticsChoice(null); setRevealedAddress(null); setLiabilityChecked(false); setRevealError(null); }}
-                />
+                <div className="space-y-3">
+                  <button onClick={() => setLogisticsChoice(null)} className="text-[10px] text-[var(--po-text-dim)] underline">Back</button>
+                  <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Exchanging postal addresses</p>
+                  <p className="text-xs text-[var(--po-text-dim)] leading-relaxed">
+                    Master Setter doesn&apos;t store or share addresses. Swap mailing details with @{otherHandle} directly in the chat below — and only once you&apos;re comfortable proceeding with this trade.
+                  </p>
+                </div>
               )}
 
               {logisticsChoice === "in_person" && (
@@ -451,56 +419,6 @@ function LogisticsButton({ icon, label, onClick }) {
       <span style={{ color: "var(--po-green)" }}>{icon}</span>
       {label}
     </button>
-  );
-}
-
-function PostLogistics({ liabilityChecked, setLiabilityChecked, revealedAddress, revealLoading, revealError, onReveal, otherHandle, onBack }) {
-  return (
-    <div className="space-y-3">
-      <button onClick={onBack} className="text-[10px] text-[var(--po-text-dim)] underline">Back</button>
-      <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Postal Exchange</p>
-
-      {!revealedAddress ? (
-        <>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <div
-              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
-              style={{
-                background: liabilityChecked ? "var(--po-green)" : "transparent",
-                border: `2px solid ${liabilityChecked ? "var(--po-green)" : "var(--po-border)"}`,
-              }}
-              onClick={() => setLiabilityChecked((v) => !v)}
-            >
-              {liabilityChecked && <span className="text-black text-[9px] font-black">✓</span>}
-            </div>
-            <p className="text-xs text-[var(--po-text-dim)] leading-relaxed">{LIABILITY_CHECKBOX}</p>
-          </label>
-
-          <button
-            onClick={onReveal}
-            disabled={!liabilityChecked || revealLoading}
-            className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-40 po-glow-green"
-            style={{ background: "var(--po-green)" }}
-          >
-            {revealLoading ? "Loading…" : `See @${otherHandle}'s Address`}
-          </button>
-
-          {revealError && (
-            <p className="text-xs text-rose-300 leading-relaxed">{revealError}</p>
-          )}
-        </>
-      ) : (
-        <div className="rounded-xl border border-[var(--po-green)]/40 p-4 space-y-1" style={{ background: "rgba(200,255,74,0.05)" }}>
-          <p className="text-[10px] uppercase tracking-widest" style={{ color: "var(--po-green)" }}>
-            @{revealedAddress.handle}'s Mailing Address
-          </p>
-          <p className="text-sm font-bold text-[var(--po-text)] whitespace-pre-wrap">{revealedAddress.address}</p>
-          <p className="text-[9px] text-[var(--po-text-dim)] pt-1">
-            Screenshot this — it won't be shown again in this session.
-          </p>
-        </div>
-      )}
-    </div>
   );
 }
 
