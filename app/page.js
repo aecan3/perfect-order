@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Plus, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
-  RefreshCw, Clock, MessageCircle,
+  RefreshCw, Clock, MessageCircle, ArrowLeftRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
@@ -927,22 +927,44 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    const requests = encodeURIComponent(JSON.stringify([{
+                      printingId: discoverModal.printingId,
+                      cardName: discoverModal.cardName,
+                      setName: discoverModal.setName,
+                      setId: discoverModal.setId,
+                      imageUrl: discoverModal.imageUrl,
+                      priceUsd: discoverModal.priceUsd,
+                    }]));
+                    setDiscoverModal(null);
+                    router.push(`/trade/new?with=${discoverModal.friendHandle}&requests=${requests}`);
+                  }}
+                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-black text-sm po-glow-green"
+                  style={{ background: "var(--po-green)", color: "#050507" }}
+                >
+                  <span className="flex items-center gap-2">
+                    <ArrowLeftRight size={14} />
+                    Propose Trade · @{discoverModal.friendHandle}
+                  </span>
+                </button>
                 <Link
                   href={`/friend/${discoverModal.friendHandle}/${discoverModal.setId}?from=discover`}
                   className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
                   onClick={() => setDiscoverModal(null)}
                 >
-                  <span>View in @{discoverModal.friendHandle}{"'"}s collection</span>
+                  <span>View @{discoverModal.friendHandle}{"'"}s Collection</span>
                   <ChevronRight size={16} className="text-[var(--po-text-faint)]" />
                 </Link>
                 <Link
                   href={`/messages/${discoverModal.friendHandle}?card=${encodeURIComponent(JSON.stringify({ cardName: discoverModal.cardName, setName: discoverModal.setName, imageUrl: discoverModal.imageUrl, priceUsd: discoverModal.priceUsd }))}`}
-                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-bold transition-colors"
-                  style={{ background: "var(--po-green)", color: "#050507" }}
+                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
                   onClick={() => setDiscoverModal(null)}
                 >
-                  <span>Message @{discoverModal.friendHandle}</span>
-                  <MessageCircle size={16} />
+                  <span className="flex items-center gap-2">
+                    <MessageCircle size={14} />
+                    Message · @{discoverModal.friendHandle}
+                  </span>
                 </Link>
               </div>
             </div>
