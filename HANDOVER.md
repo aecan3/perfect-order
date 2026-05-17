@@ -159,9 +159,8 @@ require some of these to be true.
    confirm errors flow to a dashboard. Note region (US or EU) — the policy
    says either.
 
-4. **Verify Vercel Analytics is correctly configured.** Confirm
-   `@vercel/analytics` is installed and active. Consider adding Speed
-   Insights too — if added, mention in policy.
+4. ~~**Verify Vercel Analytics is correctly configured.**~~ **DONE 17 May 2026 (commit `9d3b8a2`).** `@vercel/analytics` v2.0.1 installed and `<Analytics />` mounted in root layout. Page-view collection only — no Speed Insights.
+   **Follow-up:** Verify page-view events appearing in Vercel dashboard within ~24h of deploy.
 
 ### Trust & safety (required because messaging is on at launch)
 
@@ -283,60 +282,23 @@ require some of these to be true.
     Discover row after the viewer collected it. Same root cause as #11
     likely.
 
-13a. **Discover preview action buttons inconsistent across entry points.**
-    Tapping a card in the Discover *page* opens a preview with "Propose
-    Trade with @xxx" and "Message @xxx Directly" buttons. Tapping a card
-    in the Discover *preview* on the home page, OR in the Discover preview
-    on a set page, opens a preview with "View @xxx's Collection" and
-    "Message @xxx" — no Propose Trade option. Same card, same preview
-    surface, different actions depending on entry point.
-    Diagnose-first: are these literally two different preview components
-    (likely), or one component receiving different props? If two
-    components, this is a duplication problem — consolidate into one and
-    pass the relevant context. If one component with prop-driven actions,
-    just fix the callers on home/sets pages to pass the trade-capable
-    action set. Same class of bug as the Discover query duplication we
-    extracted into `lib/queries/discover.js` this session — two surfaces
-    of the same feature drifting apart.
+13a. ~~**Discover preview action buttons inconsistent across entry points.**~~ **DONE 17 May 2026 (commits `f2bf467`, `4c59ed4`).** Two separate surfaces fixed independently (two different implementations, not a shared component):
+    - Home modal: added "Propose Trade" as primary action (`f2bf467`)
+    - Discover page sticky action bar: added "View Collection" as third button (`4c59ed4`)
+    **Design decision captured:** Discover intentionally uses three different UI mechanisms across surfaces — tappable handle for profile, action bar for trade/message, three-button modal on home preview. This is NOT drift. Do not "fix" by consolidating.
+    *Correction to original description: "set detail page" was wrong — there are only two surfaces (home preview + Discover page), not three.*
 
-13b. **Messages tab on MSTabBar missing unread-count badge.** New
-    messages currently fire a notification (correct) but the Messages
-    icon in the bottom tab bar shows no unread indicator. Build: a
-    badge on the Messages tab showing the count of unread message
-    threads (not unread messages — unread *threads*, the standard
-    iMessage/WhatsApp model). Trade proposals are deliberately NOT
-    counted here — they already surface in notifications, doubling
-    them up on the Messages tab would be noise.
-    Implementation notes for next session: needs a count query
-    (probably an RPC or a SELECT COUNT against `messages` filtered to
-    threads where the viewer is a participant AND `last_read_at <
-    last_message_at`, or whatever the existing unread-tracking model
-    is — read it before building). Update on: app focus, route change
-    to/from `/messages`, real-time message-received event. Should
-    update *down* when the user opens a thread, not only on
-    notification fire.
+13b. ~~**Messages tab on MSTabBar missing unread-count badge.**~~ **DONE 17 May 2026 (commit `b037328`).** Red dot badge on Messages tab icon in MSTabBar. Deduped by `sender_id` so it counts unread *threads*, not raw message count. Updates on: pathname change, Supabase real-time INSERT subscription, and visibilitychange on tab restore. Only counts `message_type = "message"` — trade proposals excluded.
+    **Architectural note:** First global real-time subscription in the app. Written so it can be lifted into a shared hook (e.g. `useUnreadSubscription`) when a third use case appears — rule of three. Lives in `components/chrome/MSShell.jsx`.
 
-13c. **Variant picker tick hit-target too small.** In the variant
-    picker bottom sheet (the one that opens when you tap a card in a
-    set — shows e.g. "Holo / Reverse Holo" rows for a card), the only
-    thing that toggles the tick is the small green circle on the far
-    left. Since the duplicate-counter (`−` count `+`) and camera icon
-    were added on the right, the central "passive" area of the row is
-    now dead space and the tick circle is a small thumb target.
-    **Fix:** make the entire row tappable to toggle the tick, EXCEPT
-    for the explicit control buttons on the right (`−`, count, `+`,
-    camera). Tapping anywhere on the variant name, price, or empty
-    space between text and the right-hand controls should toggle the
-    tick. Tapping the `−` / `+` / camera controls must continue to do
-    only their own action and NOT toggle the tick.
-    Implementation note: probably an outer `onClick` on the row with
-    `e.stopPropagation()` on the right-hand control buttons, rather
-    than expanding the tick button's hit area — the row-level approach
-    handles the empty-space tapping naturally. Test on iPhone PWA
-    after the change; thumb-reach on the inner controls is the failure
-    mode to watch.
-    Out of scope for this fix: whether `+` from 0 → 1 should
-    auto-tick the card. Separate UX decision, capture if user raises it.
+13c. ~~**Variant picker tick hit-target too small.**~~ **DONE 17 May 2026 (commit `0da9c37`).** Entire variant picker row now toggles the tick. Right-hand controls (`−`, count, `+`, camera) all already had `stopPropagation` in place — only the row container needed `onClick`, `role="button"`, `tabIndex`, and `onKeyDown` added. One file changed (`app/set/[setId]/page.js`), 5-line diff.
+    *Open: whether `+` from 0 → 1 should auto-tick the card — separate UX decision, capture if raised.*
+
+13d. **Messages list real-time updates. DONE 17 May 2026 (commit `85b5734`).** The messages inbox (`app/messages/page.js`) previously fetched once on mount with no live updates. Now subscribes to INSERT and UPDATE events on `messages` filtered server-side by `recipient_id`, triggering a full refetch on each event. Followed the pattern established in item 13b. Second global real-time subscription in the app — not yet extracted to a shared hook per the rule of three.
+
+13e. **Thread auto-scroll to first unread. DONE 17 May 2026 (commit `cce3d45`).** When opening a thread with unread messages, the view positions on the first unread message with a "New messages" divider above it, matching iMessage/WhatsApp. Threads with no unread messages continue to scroll to bottom as before. Auto-follow-to-bottom on live message receipt is preserved. Existing mark-as-read logic unchanged.
+
+13f. **Prevent use of leaked passwords (Supabase Attack Protection — deferred).** Currently disabled. Dashboard → Authentication → Attack Protection → "Prevent use of leaked passwords" toggle — runs new and changed passwords against HaveIBeenPwned. Small defence-in-depth step. Not urgent.
 
 ---
 
@@ -350,9 +312,7 @@ require some of these to be true.
     become the standard entry point. AI reviewers flagged this kind of
     just-in-time consent is privacy-best-practice.
 
-15. **Password minimum length consistency.** `/reset-password` validates
-    min 6 chars. Unconfirmed whether sign-up matches. Worth aligning,
-    and considering bumping both to 8.
+15. ~~**Password minimum length consistency.**~~ **DONE 17 May 2026 (commit `15a12f9`).** Bumped to 8 in both signup (`app/login/page.js`) and reset-password (`app/reset-password/page.js`). Supabase Auth dashboard also set to 8 (manual config). Both layers enforce.
 
 16. **The 800ms timer in `/auth/confirm`.** Tested and works, but never
     explicitly confirmed it's a cosmetic post-success delay and not a race
@@ -491,8 +451,7 @@ All safe at current scale; flagged so they're not forgotten.
     serving cached `/` masked routing bugs repeatedly in this project. It
     should serve a proper offline page / real 404 instead. Genuine footgun.
 
-32. **`/manifest.json` 401 on Vercel** — was deployment protection on the
-    preview URL; should be resolved now the custom domain is live. Verify.
+32. ~~**`/manifest.json` 401 on Vercel**~~ **DONE 17 May 2026 (no commit — verification only).** Returns 200 with `application/json` content type to anonymous curl against `mastersettertcg.com`. Resolved when custom domain went live.
 
 ---
 
@@ -593,6 +552,16 @@ All safe at current scale; flagged so they're not forgotten.
   Code reported "done" while having silently skipped parts of a brief
   (most notably the legal-integration build that did Part 5 and skipped
   Parts 1-4).
+
+### Gotchas — 30-second fixes that took 20 minutes to find
+
+- **Windows PowerShell glob expansion.** `[` and `]` in file paths (Next.js dynamic routes like `[tradeId]`) are treated as wildcards by PowerShell's `Remove-Item`. Use `Remove-Item -LiteralPath ...` to actually delete dynamic-route files.
+
+- **Supabase Auth config location.** Password minimum length, leaked-password check, and other auth-provider config lives at: Dashboard → Authentication → Sign In / Providers → scroll to Auth Providers → expand the Email provider row. NOT the Policies page (that's RLS). NOT Attack Protection (that's captcha + leaked-password toggle only). NOT Email under NOTIFICATIONS (that's email templates). The `auth.config` SQL table no longer exists in current Supabase — must use the dashboard.
+
+- **PowerShell `curl` is aliased to `Invoke-WebRequest`.** Use `curl.exe -i ...` (with the `.exe`) for real curl behaviour. Important for testing public endpoint accessibility — `Invoke-WebRequest` uses session cookies which can mask 401 errors.
+
+- **Verifying public asset accessibility.** Don't test by opening a URL in a browser — your browser session masks auth issues. Use `curl -i` (or `curl.exe -i` on Windows) with no cookies to test as an anonymous client would.
 
 ---
 
