@@ -60,6 +60,7 @@ export default function ThreadPage() {
   const channelRef = useRef(null);
   const initialScrollDone = useRef(false);
   const prevCountRef = useRef(0);
+  const firstUnreadRef = useRef(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -133,7 +134,11 @@ export default function ThreadPage() {
   useEffect(() => {
     if (messages.length === 0) return;
     if (!initialScrollDone.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      if (firstUnreadRef.current) {
+        firstUnreadRef.current.scrollIntoView({ block: "start", behavior: "instant" });
+      } else {
+        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      }
       initialScrollDone.current = true;
     } else if (messages.length > prevCountRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -175,6 +180,10 @@ export default function ThreadPage() {
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
+
+  const firstUnreadMsgId = user
+    ? (messages.find((m) => m.recipient_id === user.id && !m.read)?.id ?? null)
+    : null;
 
   // Group messages by date
   const grouped = messages.reduce((acc, msg) => {
@@ -222,9 +231,17 @@ export default function ThreadPage() {
                 const isMine = msg.sender_id === user?.id;
                 const showTime = i === msgs.length - 1 || msgs[i + 1]?.sender_id !== msg.sender_id;
                 const meta = msg.metadata;
+                const isFirstUnread = msg.id === firstUnreadMsgId;
 
                 return (
                   <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                    {isFirstUnread && (
+                      <div ref={firstUnreadRef} className="self-stretch flex items-center gap-3 mb-2">
+                        <div className="flex-1 h-px bg-[var(--po-border)]" />
+                        <span className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">New messages</span>
+                        <div className="flex-1 h-px bg-[var(--po-border)]" />
+                      </div>
+                    )}
                     {/* Verification photo message */}
                     {msg.message_type === "trade_verification_photo" && (
                       <div className="w-full max-w-[80%] rounded-2xl overflow-hidden border border-[var(--po-border)]" style={{ background: "var(--po-bg-soft)" }}>
