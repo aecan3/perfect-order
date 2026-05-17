@@ -1,5 +1,6 @@
 import './globals.css';
 import SwRegister from './sw-register';
+import { Analytics } from '@vercel/analytics/react';
 
 export const metadata = {
   title: 'Master Setter',
@@ -38,6 +39,7 @@ export default function RootLayout({ children }) {
       <body>
         <SwRegister />
         {children}
+        <Analytics />
       </body>
     </html>
   );
