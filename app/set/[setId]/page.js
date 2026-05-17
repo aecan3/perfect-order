@@ -1580,7 +1580,11 @@ export default function SetTrackerPage() {
                 return (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => togglePrinting(p)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePrinting(p); } }}
+                    className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0 cursor-pointer"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
