@@ -125,7 +125,7 @@ export default function DiscoverPage() {
   return (
     <MSShell hideTabBar={isSelecting}>
       <div className="pb-32">
-        <MSPageTitle sub={isSelecting ? `${selected.size} selected` : "Cards your friends have as duplicates"}>
+        <MSPageTitle sub={isSelecting ? `${selected.size} selected` : "Possible trades — cards your friends have as duplicates"}>
           Discover
         </MSPageTitle>
 

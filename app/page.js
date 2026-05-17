@@ -652,7 +652,7 @@ export default function HomePage() {
             NEW
           </span>
           <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-[var(--po-text-dim)] flex-1 truncate">
-            Discover &mdash; {discoverCards.length} cards your friends have
+            Discover &mdash; {discoverCards.length} from your friends&rsquo; collections
           </span>
           <ChevronRight size={14} className="text-[var(--po-text-faint)] flex-shrink-0" />
         </Link>

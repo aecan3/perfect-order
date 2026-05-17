@@ -584,6 +584,9 @@ function TradeNewInner() {
         {/* Footer — always visible at bottom */}
         <div className="flex-shrink-0 border-t border-[var(--po-border)] px-4 py-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           {submitError && <p className="text-xs text-rose-400 mb-2 text-center">{submitError}</p>}
+          <p className="text-[8px] text-center mb-2" style={{ color: "var(--po-text-faint)" }}>
+            Trades happen between users. Trade at your own risk.
+          </p>
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
