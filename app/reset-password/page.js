@@ -86,8 +86,8 @@ function ResetPasswordContent() {
       setFormError("Passwords don't match.");
       return;
     }
-    if (password.length < 6) {
-      setFormError("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      setFormError("Password must be at least 8 characters.");
       return;
     }
 
@@ -140,7 +140,7 @@ function ResetPasswordContent() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
               autoFocus
               className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
             />
@@ -154,7 +154,7 @@ function ResetPasswordContent() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
               className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
             />
           </div>
