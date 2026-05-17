@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
@@ -22,42 +22,63 @@ export default function InboxPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [conversations, setConversations] = useState(null);
+  const channelRef = useRef(null);
+
+  const loadConversations = async (userId) => {
+    const { data: messages } = await supabase
+      .from("messages")
+      .select("id, sender_id, recipient_id, body, read, created_at, message_type, metadata")
+      .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+      .order("created_at", { ascending: false });
+
+    if (!messages?.length) { setConversations([]); return; }
+
+    const threadMap = {};
+    for (const msg of messages) {
+      const otherId = msg.sender_id === userId ? msg.recipient_id : msg.sender_id;
+      if (!threadMap[otherId]) threadMap[otherId] = { otherId, latest: msg, unread: 0 };
+      if (!msg.read && msg.recipient_id === userId) threadMap[otherId].unread++;
+    }
+
+    const otherIds = Object.keys(threadMap);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, handle, display_name")
+      .in("id", otherIds);
+    const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+
+    const convos = Object.values(threadMap)
+      .sort((a, b) => new Date(b.latest.created_at) - new Date(a.latest.created_at))
+      .map((t) => ({ ...t, profile: profileMap[t.otherId] }));
+
+    setConversations(convos);
+  };
 
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/welcome"); return; }
       setUser(user);
-
-      const { data: messages } = await supabase
-        .from("messages")
-        .select("id, sender_id, recipient_id, body, read, created_at, message_type, metadata")
-        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-        .order("created_at", { ascending: false });
-
-      if (!messages?.length) { setConversations([]); return; }
-
-      const threadMap = {};
-      for (const msg of messages) {
-        const otherId = msg.sender_id === user.id ? msg.recipient_id : msg.sender_id;
-        if (!threadMap[otherId]) threadMap[otherId] = { otherId, latest: msg, unread: 0 };
-        if (!msg.read && msg.recipient_id === user.id) threadMap[otherId].unread++;
-      }
-
-      const otherIds = Object.keys(threadMap);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, handle, display_name")
-        .in("id", otherIds);
-      const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
-
-      const convos = Object.values(threadMap)
-        .sort((a, b) => new Date(b.latest.created_at) - new Date(a.latest.created_at))
-        .map((t) => ({ ...t, profile: profileMap[t.otherId] }));
-
-      setConversations(convos);
+      await loadConversations(user.id);
     })();
   }, [router, supabase]);
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`inbox:${user.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "messages",
+        filter: `recipient_id=eq.${user.id}`,
+      }, () => loadConversations(user.id))
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "messages",
+        filter: `recipient_id=eq.${user.id}`,
+      }, () => loadConversations(user.id))
+      .subscribe();
+    channelRef.current = channel;
+    return () => supabase.removeChannel(channel);
+  }, [user, supabase]);
 
   return (
     <MSShell>
