@@ -1,446 +1,622 @@
-# Handover Notes — 2026-05-10 (Session 3)
+# Master Setter — Handover Note
 
-## Session summary
-
-Social/trading layer, discover panel, full messaging system, smart friend search, welcome/landing page, and PokéBinder rebrand. Several encoding and redirect bugs fixed. All changes committed and pushed to main; Vercel auto-deploys from main.
-
-Previous session notes (design system, animations, master set celebration) are preserved at the bottom of this file.
+*Written end of session, 16 May 2026. Single source of truth for the next session.*
+*Supersedes the previous handover note from 14 May.*
 
 ---
 
-## Bugs fixed this session
+## 0. WHAT MASTER SETTER IS
 
-### collection_entries 1000-row truncation (home page + friend page)
-**Root cause**: PostgREST default 1000-row cap. Raff has ~1598 entries. Single `.select()` calls silently returned only 1000 rows, making set values and checked counts wrong.
+A Pokémon TCG "master set" collection-tracking PWA with social trading. Users
+track which cards they own, mark cards they want, add friends, message each
+other, and arrange trades of physical cards between themselves. Master Setter
+does not handle payment, does not escrow, is not a party to any trade.
 
-**Fix**: Paginated `.range()` loop with `PAGE=1000`. Runs until a page returns fewer rows than PAGE.
+**Stack:** Next.js 16 (App Router), Tailwind v4 (PostCSS), Supabase (Postgres
++ Auth, RLS on all tables, **Tokyo region — ap-northeast-1**), Vercel
+(auto-deploys from `main`, GitHub `aecan3/perfect-order`). Project root:
+`C:\Users\alexc\Documents\perfect-order`. Dark theme, IBM Plex Sans/Mono, lime
+`#c8ff4a` accent on near-black `#07070a`, amber `#FFB830` for Grand Master /
+favourites. User works primarily on iPhone PWA.
 
-```js
-const fetchAllEntries = async (userId) => {
-  const PAGE = 1000;
-  const rows = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("collection_entries")
-      .select("set_id, printing:printings(price_usd)")
-      .eq("user_id", userId)
-      .eq("checked", true)
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    rows.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return rows;
-};
-```
+**Operator:** A E Cann Pty Ltd, ABN 98 655 390 284. Domain
+`mastersettertcg.com`.
 
-**Files changed**: `app/page.js`, `app/friend/[handle]/page.js`
-
----
-
-### Unauthenticated users landing on /login instead of /welcome
-**Root cause**: `proxy.js` (Next.js middleware) was redirecting all unauthenticated requests to `/login`, and `/welcome` was not in `PUBLIC_PATHS`, so it also got intercepted and redirected — creating a redirect loop.
-
-**Fix**: Added `/welcome` to `PUBLIC_PATHS` and changed the redirect target from `/login` to `/welcome`.
-
-**File changed**: `proxy.js`
+**Working-style discipline (proven critical this project):**
+- Diagnose before fixing. Get hard evidence before theorising.
+- Test on the real device before declaring something done. "Reasoned-through"
+  is not "tested."
+- When two fixes in a row don't move the symptom, stop fixing and go read the
+  actual request path — the bug is somewhere nobody's looked.
+- For SW-involved issues: check Network tab **Initiator column** early —
+  `sw.js:NN` is ground truth.
+- When changing data-model semantics (what a row's presence/absence means),
+  audit every reader of that data, not just the writer being fixed.
+- The user does all dashboard work (Vercel, Supabase, Resend, VentureIP) and
+  runs Claude Code. Do NOT request OAuth access to their infrastructure.
+- Stop when tired rather than stacking late changes. Auth changes especially.
 
 ---
 
-### Character encoding corruption throughout the app
-**Root cause**: Windows PowerShell 5.1 default encoding (UTF-16 LE) corrupting multibyte UTF-8 characters when files were batch-processed. Affected: `é` → `Ã©`, `·` → `Â·`, `✦` → `âœ¦`, `…` → `â€¦`, `£` → `Â£`.
+## 1. CURRENT STATE — WHAT'S LIVE AND WORKING
 
-**Fixes applied**:
-- `Loading…` → `Loading...` (plain ASCII, avoids encoding issues entirely)
-- Discover label `Â·` → `&mdash;` HTML entity
-- Master Set badge `âœ¦` → `&#10022;` HTML entity
-- GBP symbol `Â£` → literal `£` in RATES object
-- `PokéBinder` in JSX → `Pok{"é"}Binder` or `const BRAND = "PokéBinder"` constant at file top (prevents Prettier mangling)
+### Auth surface — complete
+- Custom domain `mastersettertcg.com` live, SSL, `www` 307s to bare domain
+- Resend transactional email — verified, sending from
+  `noreply@send.mastersettertcg.com`, **proven delivering** (Gmail confirmed,
+  Outlook reputation now built up)
+- Supabase Auth routed through Resend custom SMTP (verified)
+- Login, signup, forgot-password, reset-password, email confirmation — all
+  branded, all working end-to-end
+- Both auth emails (reset + confirm) use the real Master Setter logo (PNG
+  hosted at `mastersettertcg.com/brand/master-setter-stacked-email.png`),
+  dark theme, on-brand
+- Auth flow: `signUp()` → "check your email" screen → confirmation email →
+  `/auth/confirm` → `verifyOtp` → profile row created with all consent
+  metadata → into the app
 
-**Files changed**: `app/page.js`, `app/friends/page.js`, `app/messages/page.js`, `app/discover/page.js`, `app/sets/page.js`, `app/login/page.js`, `app/welcome/page.js`, `app/layout.js`
+### Auth gate — proxy.js
+- `proxy.js` is the app's server-side auth gate (Next.js 16 feature, NOT
+  middleware.js — different filename/export). It runs before any page or API
+  route. Logged-out users hitting any path NOT in `PUBLIC_PATHS` (or matched
+  by a prefix check) get 307'd to `/welcome`.
+- Documented at both the file level (35-line header comment) AND in
+  `CLAUDE.md` so future sessions don't re-discover it.
+- Current `PUBLIC_PATHS`: `/welcome`, `/login`, `/forgot-password`,
+  `/reset-password`, `/auth/confirm`, `/terms`, `/privacy`, `/manifest.json`,
+  `/sw.js`, `/icon-192.png`, `/icon-512.png`, `/apple-touch-icon.png`,
+  `/favicon.ico`. Plus prefix checks for `/icons/` and `/brand/`.
+- **Rule for any new public route/asset:** add to `PUBLIC_PATHS` or it gets
+  silently gated. This has bitten three times across the project.
 
----
+### Legal documents — live
+- ToS v1.0 and Privacy Policy v1.0 live in `content/legal/terms.js` and
+  `content/legal/privacy.js`. Last updated 16 May 2026. Governing law:
+  Victoria. Reviewed by ChatGPT and Gemini, revised against their feedback.
+- `lib/legalVersions.js` exports `TOS_VERSION = "1.0"`, `PRIVACY_VERSION = "1.0"`.
+- `/terms` and `/privacy` routes render them, dark-themed, accessible to
+  logged-out users.
+- Signup form has the country dropdown + 18+/ToS/Privacy checkbox. Create
+  Account button disabled until both are set. Both documents open in a modal
+  without destroying the half-filled form.
+- Profile row records: `country`, `tos_version`, `tos_agreed_at`,
+  `privacy_version`, `privacy_agreed_at` (carried through `signUp()` user
+  metadata → `/auth/confirm` → profile upsert).
+- The legal integration spec with the pre-launch must-do list is at
+  `docs/legal-integration-spec-v1.0.md`.
 
-## Features built this session
+### Recent feature work
+- Welcome page "Create Account" button now correctly routes to signup mode
+  (was routing to sign-in)
+- Suburb + postcode + state autocomplete component
+  (`SuburbAutocomplete.jsx`) using a static AU locality dataset (18,085
+  entries, ~134KB gzipped, cached by the SW for offline). Renders in the
+  location-fallback flow when a user taps "Not now" on the location prompt.
+- Location-permission explainer modal (`LocationExplainer.jsx`) — shown
+  once before the OS geolocation prompt, with `ms_location_explained`
+  localStorage flag, currently only triggered in `TradePanel.jsx` (see
+  loose threads below).
+- Profiles table migration run: added `country`, `tos_version`,
+  `tos_agreed_at`, `privacy_version`, `privacy_agreed_at`, `suburb`,
+  `postcode`, `state` columns. All nullable, existing rows unaffected.
 
-### 1. Discover panel — home page (`app/page.js`)
+### Earlier work that landed earlier in the project
+- Favourites redesign (3×2 grid, max 6, unified bottom sheet)
+- Grand Master tier hidden everywhere except dedicated set-page sections
+  (`selectMasterPrintings` helper, `master_printing_counts` RPC)
+- Navigation chrome (MSHeader/MSTabBar/MSShell/MSPageTitle)
+- Duplicate-orphan bug fix (untick now deletes the row entirely)
+- Variant dot-system on multi-printing cards
+- Discover bug (this session): "wants" logic was looking for `checked=false`
+  rows that no longer exist post the untick-orphan fix. Inverted the logic
+  to check what the viewer HAS, and extracted the Discover query into
+  `lib/queries/discover.js` so the home scroller and detail page share one
+  helper.
 
-Horizontal snap-scroll row of card thumbnails in the middle of the home page. Shows cards that friends own as duplicates that the logged-in user is missing.
-
-**Data fetch** (non-blocking IIFE, fires after `setLoading(false)` so it never delays the main page):
-1. Load accepted friendships
-2. Load friends' `collection_entries` where `duplicate_count > 0`
-3. Load user's own entries where `checked = false` (missing cards)
-4. Cross-reference by `printing_id` OR `set_id:card_number` key
-5. Sort by `price_usd` desc, limit 20
-6. Image source: `printing.image_url` with fallback to `printing.card.image_large`
-
-**Key PostgREST join** (must use alias syntax):
-```js
-.select("..., printing:printings(price_usd, image_url, card:cards(name, image_large)), set:sets(name, code)")
-```
-Do NOT use `card:cards(name, image_url)` — `image_url` doesn't exist on the `cards` table, only on `printings`.
-
-**Tap behaviour**: opens a bottom sheet modal with two actions:
-- "View in @handle's collection" → `/friend/${handle}/${setId}?from=discover`
-- "Message @handle" → `/messages/${handle}?card=<json>`
-
-**Panel hidden** when `discoverCards` is null (loading) or empty.
-
----
-
-### 2. /discover full page (`app/discover/page.js`)
-
-Same data fetch as the home panel but without the 20-card limit. Cards grouped by friend handle, displayed as a 3-column grid.
-
-**Multi-select with single-friend lock**:
-- `selected`: `Set` of card keys (`${printingId}:${friendHandle}`)
-- `selectedFriend`: derived from `selectedCards[0]?.friendHandle ?? null`
-- `toggleCard`: blocks selection if `selectedFriend && card.friendHandle !== selectedFriend`
-- Other friends' cards: `opacity: 0.3`, `disabled={true}`
-- "Select All" only selects cards from the locked friend
-- Sticky bottom bar (fixed, z-20): "Message @handle" button per friend in selected set
-
-**Filters**: set dropdown + minimum value dropdown, hidden during selection mode.
-
-**Navigation back to discover**: `/friend/[handle]/[setId]/page.js` reads `?from=discover` param and sets back arrow destination accordingly.
-
----
-
-### 3. Messaging system
-
-**Database migration** (`messages` table):
-```sql
-CREATE TABLE messages (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  sender_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  recipient_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  body text NOT NULL,
-  read boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  message_type text NOT NULL DEFAULT 'message', -- 'message' | 'trade_proposal'
-  metadata jsonb
-);
-```
-RLS policies: users can SELECT their own messages (sender or recipient), INSERT as sender, UPDATE read=true on received messages.
-
-**Inbox** (`app/messages/page.js`): groups all messages by the other participant, shows last message preview, time-ago timestamp, unread dot.
-
-**Thread** (`app/messages/[handle]/page.js`):
-- Resolves other user by handle from profiles table
-- Loads messages with `.or(and(sender=me,recipient=other),and(sender=other,recipient=me))`
-- Auto-marks received messages read on open
-- Realtime: `supabase.channel('thread:${[userId, otherId].sort().join(":")}')` with `postgres_changes` INSERT listener
-- Bubbles: lime (#c8ff4a) background right (sent), dark left (received), 4px tail radius
-- Card previews in bubble: horizontal scroll row, 88px wide per card, `maxWidth: 280`
-
-**Card attachment via URL params**:
-- `?card=<json>` — single card (legacy, still parsed)
-- `?cards=<json-array>` — bulk from discover multi-select
-- `?prefill=<text>` — pre-populated message body
-- After first send, `router.replace('/messages/${handle}')` strips card params
-
-**Unread badge** on home page header: non-blocking count query after main load. Red dot with count on MessageCircle icon.
+### Operational facts about the deployment
+- **Supabase region:** Tokyo (ap-northeast-1) — free tier doesn't allow
+  Sydney. Disclosed in the Privacy Policy.
+- **Resend region:** ap-northeast-1 (Tokyo). Disclosed in the Privacy Policy.
+- **Vercel:** global edge network, primary in US. Disclosed.
+- **Analytics:** Vercel Analytics is enabled and disclosed. Sentry is
+  disclosed in the policy but NOT YET WIRED IN — must-do item.
+- **Card data sources:** pokemontcg.io (names, set info, prices),
+  Limitless TCG (image hotlinks). Documented in the policy.
+- **Affiliate scope:** eBay only currently. Policy is scoped accordingly.
 
 ---
 
-### 4. Smart friend search (`app/friends/page.js`)
+## 2. MUST-DO BEFORE PUBLIC LAUNCH
 
-Replaced exact-handle input with debounced fuzzy search:
-- Fires 300ms after last keystroke
-- Queries `profiles` with `.or('handle.ilike.%q%,display_name.ilike.%q%').limit(8)`
-- Dropdown below input shows avatar initial + display name + @handle
-- Excludes existing friends and self from results
-- Tapping a result locks it in (`selectedResult` state); submitting sends without second DB lookup
-- Dropdown closes on outside click (mousedown listener on `document`)
-- "No users found" shown when search returns empty
+These items are tracked in `docs/legal-integration-spec-v1.0.md` as the
+pre-launch list. Ordered by priority. The legal documents *make claims* that
+require some of these to be true.
 
----
+### Privacy / accuracy (reconcile the docs to the code)
 
-### 5. Welcome / landing page (`app/welcome/page.js`)
+1. **Strip EXIF metadata on all photo uploads.** Privacy Policy 2.6 claims
+   this. Likely NOT happening currently. A photo taken at home contains GPS
+   coordinates of the home — a real leak. Process every uploaded image to
+   strip EXIF, GPS, and camera info before storing to Supabase.
 
-Pre-login landing page at `/welcome`. Logged-in users are immediately redirected to `/`. All protected routes now redirect to `/welcome` (not `/login`) via `proxy.js`.
+2. ~~**Remove the unused `mailing_address` column from `profiles`**~~
+   **DONE 16 May 2026 (commit `0453cb5`).** Audit found the column had zero
+   writers and was read only by `app/api/trade/[tradeId]/reveal-address/route.js`,
+   which always returned 404. Removed: the API route, the `PostLogistics`
+   sub-component and related state in `TradePanel.jsx`, the column itself
+   (`ALTER TABLE profiles DROP COLUMN mailing_address;`). The "Post" logistics
+   option in TradePanel now renders a message directing users to exchange
+   addresses in chat, consistent with the messages-based design described in
+   the Privacy Policy.
+   **Follow-up: TradePanel "Post" copy change is untested on device.** Verify
+   `@handle` interpolates to the actual other-party handle (not literally
+   "@handle" or "@undefined") and the back button works, on first real use.
+   Low risk but the project's "reasoned-through ≠ tested" rule means this
+   should land on a real device before being declared fully done.
 
-**Platform detection** (client-side, in `useEffect`):
-- `standalone` check: `window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches`
-- iOS: `/iPad|iPhone|iPod/.test(ua)`
-- Android: `/Android/.test(ua)`
+3. **Wire up Sentry error reporting.** Privacy Policy 2.8b discloses Sentry.
+   Install `@sentry/nextjs`, configure with a Sentry project DSN as env var,
+   confirm errors flow to a dashboard. Note region (US or EU) — the policy
+   says either.
 
-**Android**: shows native "Install App" button when `beforeinstallprompt` fires; manual instructions if event never fires (already installed, or unsupported).
+4. **Verify Vercel Analytics is correctly configured.** Confirm
+   `@vercel/analytics` is installed and active. Consider adding Speed
+   Insights too — if added, mention in policy.
 
-**iOS** (6-step guide matching iOS 17+ Safari UI):
-1. Open in Safari (not Chrome)
-2. Tap the **...** button (bottom right corner)
-3. Tap **Share**
-4. Tap **View More**
-5. Tap **Add to Home Screen**
-6. Tap **Add** (top right)
+### Trust & safety (required because messaging is on at launch)
 
-Note shown: Apple does not allow programmatic install on iOS — must be done manually through Safari.
+5. **Build "Report user" feature.** Accessible from another user's profile
+   AND from a message thread. Reason dropdown (harassment, scam/fraud, fake
+   cards, inappropriate content, other) + optional details field. Stores
+   into a `user_reports` table (needs creating: reporter_id,
+   reported_user_id, reason, details, created_at, status).
 
-**Other platforms**: generic "open in Safari/Chrome" message.
+6. **Build "Block user" feature.** Same surfaces as Report. Effects: blocker
+   and blocked can't see each other in Discover; blocker doesn't receive
+   messages from blocked; existing threads hidden; can't initiate new
+   trades. Needs `user_blocks` table.
 
----
+7. **Admin moderation queue.** Admin-only view of the `user_reports` table
+   with action buttons (warn, suspend, terminate, dismiss). Doesn't need
+   to be fancy — a table view is enough for launch.
 
-### 6. PokéBinder rebrand
+8. **Address-reveal nudge in messages.** When a user types something that
+   looks like a mailing address into a message thread, show a one-time
+   inline reminder ("only share your address with someone you trust... etc").
+   Optional polish but explicitly flagged by AI reviewers.
 
-- `public/manifest.json`: `name` and `short_name` updated to `"PokéBinder"`
-- `app/layout.js`: `metadata.title`, `metadata.appleWebApp.title` updated
-- `app/login/page.js`: heading updated (using `Pok{"é"}Binder` to prevent Prettier mangling)
-- `app/welcome/page.js`: `const BRAND = "PokéBinder"` constant at top, used in JSX
-- `public/sw.js`: cache bumped from `perfect-order-v2` → `perfect-order-v3` to force all existing installs to pick up the new name and clear old cached pages
+### Legal / UI compliance
 
----
+9. **Affiliate disclosure visible near eBay links.** Small "Affiliate link —
+   Master Setter may earn a small commission" text near actual eBay buttons,
+   not just in the ToS.
 
-### 7. Home page header updates (`app/page.js`)
-
-- **Friends button**: pill-shaped with lime text, `Users` icon + "Friends" label — primary nav feel, not a utility icon. Style: `bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-green)] rounded-full px-3 py-1.5`
-- **Messages icon**: `MessageCircle` with red unread badge (count, or "9+" if >9)
-- **Logout**: `LogOut` icon, utility weight
-
----
-
-## Current state of all features
-
-| Feature | Status | Notes |
-|---|---|---|
-| Paginated `fetchAllEntries` | ✅ Deployed | Home + friend pages. PAGE=1000 loop. |
-| SW caching strategy | ✅ Deployed | Cache **v3**, NetworkFirst for HTML/other, StaleWhileRevalidate for `_next/static/` |
-| Price badge on all cards | ✅ Deployed | Owned and unowned |
-| 3-way view toggle (Rarity/Binder/Missing) | ✅ Deployed | Persists to localStorage `po:setView` |
-| Duplicate counter | ✅ Deployed | Debounced 800ms, `duplicate_count` column live in prod |
-| Holo design system | ✅ Deployed | `globals.css`, all pages |
-| RaritySection animations | ✅ Deployed | Bar fill on load, shimmer+badge on 100%, real-time completion |
-| MasterSetCelebration | ✅ Deployed | Full cinematic overlay, auto-dismiss 4s, canvas particles |
-| Home page master set card treatment | ✅ Deployed | Gradient border + glow + colour wash + &#10022; badge |
-| Theme colour DB fixes | ✅ Applied | CRZ, ASC, PFL, POR corrected in Supabase |
-| proxy.js auth middleware | ✅ Deployed | `/welcome` in PUBLIC_PATHS, redirects unauthenticated to `/welcome` |
-| Discover panel (home page) | ✅ Deployed | Non-blocking, hidden if empty, bottom sheet modal |
-| /discover full page | ✅ Deployed | Multi-select, single-friend lock, bulk message |
-| Messaging system | ✅ Deployed | DB table, RLS, inbox, thread, realtime, card previews |
-| Unread badge on messages icon | ✅ Deployed | Non-blocking count query, red dot |
-| Smart friend search | ✅ Deployed | Debounced ilike, dropdown, excludes existing friends |
-| Welcome landing page | ✅ Deployed | Platform-aware PWA install instructions |
-| PokéBinder rebrand | ✅ Deployed | manifest, layout, login, SW v3 |
+10. **"Suggested match" / "trade at your own risk" UI language.** Matching
+    surfaces should describe matches as "suggested." Trade-action surface
+    should include a brief at-your-own-risk note near the start-trade
+    button. Small wording, real legal value — backs up the
+    platform-not-a-party framing in the ToS operationally.
 
 ---
 
-## What still needs testing
+## 3. BUGS LOGGED (not launch-blocking but real)
 
-- [ ] Discover panel appears on home page when friends have duplicates you're missing
-- [ ] Discover bottom sheet shows both buttons (View in collection + Message)
-- [ ] /discover multi-select locks to one friend — other friends' cards dim and become untappable
-- [ ] Message thread shows card attachment as horizontal scroll row (not vertical stack)
-- [ ] Real-time message delivery (send from one account, receive on another)
-- [ ] Unread badge clears when you open the thread
-- [ ] Smart friend search: partial match on handle and display name works
-- [ ] Smart friend search: existing friends excluded from dropdown
-- [ ] Welcome page shown to logged-out users (not /login)
-- [ ] Welcome page: logged-in users bypass immediately to /
-- [ ] iOS install guide shows correct 6-step flow
-- [ ] Android install button triggers native prompt when available
-- [ ] PokéBinder name appears correctly in manifest (check on installed PWA)
+11. **Discover refresh-after-tick.** Tick a card → return to Discover → that
+    card should drop off (because the viewer now has it). Currently it
+    stays until something else forces a refetch. Same class as the Discover
+    bug we fixed this session — viewer-state changed but the reader doesn't
+    refresh. Diagnose first (cached query? stale myHavePrintingIds in the
+    helper?); don't rebuild blind.
 
----
+12. **Inflated set values across the app — price ingestion bug (DIAGNOSED
+    16 May 2026, not fixed).** Originally logged as "Perfect Order showing
+    close to A$1000, suspected too high." The original three hypotheses
+    (GM filter, duplicate multi-counting, unticked summing) were all
+    **wrong**. Real bug, diagnosed via SQL + external price-source check:
 
-## Known issues
+    **The price-refresh job is writing wrong prices to `printings.price_usd`.**
+    Specifically, when a card has a high-value promo variant alongside
+    regular pack-pulled printings, the promo's price is being written to
+    the regular Holo and Reverse Holo printings.
 
-- **Linter encoding corruption**: The project's linter (Prettier) runs on file save and corrupts non-ASCII characters in files it processes. Workaround: use HTML entities (`&mdash;`, `&#10022;`) or JSX string expressions (`{"é"}`) for any special characters. Never use raw Unicode in string literals that Prettier might reformat.
-- **Test data not reverted**: `raffertydall`'s `me3-118-holofoil` has `duplicate_count=1` and `alex2`'s same printing also has `duplicate_count=1`. These were set for discover panel testing. Revert both to 0 in Supabase when testing is complete.
-- **Login page accessible directly**: `/login` is in `PUBLIC_PATHS` so users with bookmarks can still navigate there directly. This is intentional — the page works fine — but users who type the URL won't see the welcome page first.
+    **Worked example — Gengar #50 (`me3-50`), Perfect Order:**
+    - `me3-50-holofoil` price in DB: **$220.73 USD** (updated 16 May)
+    - `me3-50-reverse_holofoil` price in DB: **$187.62 USD** (updated 16 May)
+    - Actual market price (per packmagik/PriceCharting, May 2026):
+      regular Holo and Reverse Holo are ~$2–3 USD each
+    - The GameStop/EB Games Exclusive promo variant of Gengar #50 is the
+      $270 USD card — that's a separate printing not currently in our DB.
+    - The promo's price is being mapped onto the regular printings.
 
----
+    **Magnitude:** Removing just the Gengar over-pricing from @alex's
+    Perfect Order total drops it from US$570 (~A$878) to ~US$162 (~A$250) —
+    matches the user's gut-check estimate of A$200. So the bug is almost
+    entirely concentrated in a small number of mis-priced "chase" cards
+    per set, not a broad scaling error.
 
-## Pending decisions
+    **Scope:** Likely app-wide. Any set with a promo variant of a card
+    (GameStop exclusives, EB Games exclusives, Build & Battle promos,
+    pre-release promos, etc.) is at risk. Note the related observation
+    under item 24: Prismatic Evolutions has been flagged at 181 vs 180
+    community-reported cards — same likely cause (promo printings
+    missing from our `printings` table, prices bleeding into existing
+    rows). Worth investigating these together.
 
-### App name
-Currently branded as **PokéBinder**. Considering **Pokebase** (no accented characters, simpler to type, potentially cleaner for trademark). If renamed:
-- Update `manifest.json` `name` and `short_name`
-- Update `app/layout.js` metadata
-- Update `app/login/page.js` heading
-- Update `app/welcome/page.js` `BRAND` constant
-- Bump SW cache version (`perfect-order-v3` → `perfect-order-v4`)
+    **Next-session investigation plan:**
+    1. Find the price-refresh code. Likely a scheduled job, a script in
+       `scripts/`, or an API route. Source is `pokemontcg.io`.
+    2. Inspect the raw pokemontcg.io API response for `me3-50` (or
+       whatever their ID format is). The API returns a `tcgplayer.prices`
+       object with sub-keys (`holofoil`, `reverseHolofoil`, `normal`,
+       and likely variant entries for promos). Determine whether the
+       ingestion is picking the wrong sub-key, taking a max across all
+       variants, or matching by card-id rather than by printing-specific
+       key.
+    3. **Schema decision:** should promo variants get their own
+       `printings` row (e.g. `me3-50-promo-gamestop`)? Currently they
+       don't, and the price is leaking. If yes, the migration is small
+       but the ingestion logic needs to know how to create new rows from
+       API responses, not just update existing ones.
+    4. Once fixed, re-run the price refresh against ALL sets to correct
+       existing wrong prices. This is a data backfill, not just a code
+       fix.
 
-### App Store submission
-Requires:
-1. Apple Developer account ($149 AUD/year)
-2. Native wrapper — Capacitor (recommended) or a custom WKWebView shell
-3. Privacy policy page (required by Apple, must be hosted at a public URL)
-4. App Store screenshots and metadata
-5. Review — Pokémon-adjacent apps get extra scrutiny; ensure no official assets or names are used
+    **What this bug is NOT:**
+    - Not a calculator bug. The set-value math is faithfully summing
+      whatever prices it's given.
+    - Not a GM-tier filter bug. Perfect Order has zero GM-tier printings
+      (every printing in the set has `collection_tier = 'master'`).
+    - Not a duplicate-counting bug. Query confirmed zero hidden duplicate
+      rows for @alex's Perfect Order entries.
+    - Not a currency bug. Conversion rate is plausible (~0.65 AUD/USD).
 
-### Custom domain
-Purchase externally (e.g. Namecheap, Cloudflare Registrar), then:
-1. Add domain in Vercel project settings → Domains
-2. Set DNS A/CNAME records as instructed by Vercel
-3. Update `manifest.json` `start_url` and `scope` if needed
-4. Update Supabase project → Authentication → URL Configuration with new domain
+    **Related minor finding worth capturing:** `collection_entries.duplicate_count`
+    is almost entirely unused (3 across 193 rows for @alex's Perfect Order).
+    Vestigial column, like `mailing_address` was. Worth a future audit
+    pass — either start populating it via the UI or drop it. Not urgent.
 
----
+    **SQL diagnostic queries used to find this** are captured in this
+    session's chat — re-run them on other affected sets to confirm scope
+    before fixing.
 
-## Architecture reminders
+13. **Spewpa-style stale Discover issue.** Spewpa was still in @alex2's
+    Discover row after the viewer collected it. Same root cause as #11
+    likely.
 
-### Two-query split for user_sets + sets
-Never use nested aggregates like `printings!printings_set_id_fkey(count)` inside a join — PostgREST silently returns `[]`. Fetch `user_sets`, then separately fetch `sets` with `.in("id", setIds)`, and use a flat top-level count query if needed.
+13a. **Discover preview action buttons inconsistent across entry points.**
+    Tapping a card in the Discover *page* opens a preview with "Propose
+    Trade with @xxx" and "Message @xxx Directly" buttons. Tapping a card
+    in the Discover *preview* on the home page, OR in the Discover preview
+    on a set page, opens a preview with "View @xxx's Collection" and
+    "Message @xxx" — no Propose Trade option. Same card, same preview
+    surface, different actions depending on entry point.
+    Diagnose-first: are these literally two different preview components
+    (likely), or one component receiving different props? If two
+    components, this is a duplication problem — consolidate into one and
+    pass the relevant context. If one component with prop-driven actions,
+    just fix the callers on home/sets pages to pass the trade-capable
+    action set. Same class of bug as the Discover query duplication we
+    extracted into `lib/queries/discover.js` this session — two surfaces
+    of the same feature drifting apart.
 
-### Paginated fetchAllEntries — use everywhere
-Any query on `collection_entries` that doesn't have a tight `.limit()` must use the `.range()` loop. Apply this pattern in every new page that reads a user's full collection.
+13b. **Messages tab on MSTabBar missing unread-count badge.** New
+    messages currently fire a notification (correct) but the Messages
+    icon in the bottom tab bar shows no unread indicator. Build: a
+    badge on the Messages tab showing the count of unread message
+    threads (not unread messages — unread *threads*, the standard
+    iMessage/WhatsApp model). Trade proposals are deliberately NOT
+    counted here — they already surface in notifications, doubling
+    them up on the Messages tab would be noise.
+    Implementation notes for next session: needs a count query
+    (probably an RPC or a SELECT COUNT against `messages` filtered to
+    threads where the viewer is a participant AND `last_read_at <
+    last_message_at`, or whatever the existing unread-tracking model
+    is — read it before building). Update on: app focus, route change
+    to/from `/messages`, real-time message-received event. Should
+    update *down* when the user opens a thread, not only on
+    notification fire.
 
-### PostgREST join aliases
-Correct: `printing:printings(price_usd, image_url, card:cards(name, image_large))`
-Wrong: `card:cards(name, image_url)` — `image_url` doesn't exist on `cards`, only on `printings`
-
-### Service worker
-- Cache name: `perfect-order-v3`
-- Bump to `perfect-order-v4` on the **next SW change** (strategy or precache URL change)
-- Navigate requests → NetworkFirst (always fetch fresh HTML)
-- `/_next/static/` → StaleWhileRevalidate
-- Everything else → NetworkFirst
-- `skipWaiting()` + `clients.claim()` — new SW activates immediately on install
-
-### Auth middleware
-`proxy.js` at project root (not `middleware.js` — Next.js 16 uses the export name `proxy` with a `config.matcher`).
-
-PUBLIC_PATHS (no auth required):
-```
-/welcome, /login, /manifest.json, /sw.js, /icon-192.png, /icon-512.png, /apple-touch-icon.png, /favicon.ico
-```
-All other paths: redirect unauthenticated users to `/welcome`.
-
-### Test account
-- **raffertydall**: ~1598 checked entries. Always test pagination against this account.
-- **alex2**: Test account for messaging and discover. Has `me3-118-holofoil` with `duplicate_count=1` for discover panel testing.
-- Both accounts have an accepted friendship for discover/messaging flows.
-
----
-
-## Files changed this session
-
-| File | Changes |
-|---|---|
-| `proxy.js` | Added `/welcome` to PUBLIC_PATHS; redirect target `/login` → `/welcome` |
-| `app/page.js` | Discover panel + modal, unread badge, Friends pill button, encoding fixes |
-| `app/discover/page.js` | New file — full discover page with multi-select, single-friend lock |
-| `app/messages/page.js` | New file — inbox page |
-| `app/messages/[handle]/page.js` | New file — conversation thread with realtime and card previews |
-| `app/friends/page.js` | Smart search with debounced dropdown replacing exact-match input |
-| `app/friend/[handle]/[setId]/page.js` | Back arrow respects `?from=discover` param |
-| `app/welcome/page.js` | New file — landing page with platform-aware PWA install guide |
-| `app/login/page.js` | Heading updated to PokéBinder |
-| `app/layout.js` | Title/meta updated to PokéBinder |
-| `public/manifest.json` | name/short_name updated to PokéBinder |
-| `public/sw.js` | Cache bumped v2 → v3, `/welcome` added to PRECACHE_URLS |
-
----
-
-## Commit history this session (most recent first)
-
-| Hash | Message |
-|---|---|
-| `f41586f` | fix: update iOS install guide to match iOS 17+ Safari UI |
-| `fbf2bbf` | fix: loading ellipsis encoding, iOS install guide, Friends button prominence |
-| `64bfdab` | fix: welcome page redirect, friends icon, and encoding issues |
-| `6bb8f64` | feat: smart friend search, PokéBinder rebrand, and welcome/install page |
-| `b8c13af` | fix: discover UX — modal both options, single-friend lock, horizontal card scroll |
-| earlier | discover panel, messaging system, social features |
-
----
-
----
-
-# Session 2 Notes — 2026-05-09
-
-## Session summary
-
-Full visual redesign to a "Holo" dark aesthetic, completion animations across the set tracker and home page, master set trophy treatment, cinematic celebration screen, and a theme colour database audit/fix for four sets.
-
-## 1. Global design system — "Holo" direction
-
-**File:** `app/globals.css` (full rewrite)
-
-### CSS variables (`:root`)
-```
---po-bg:           #050507
---po-bg-soft:      #0c0c12
---po-border:       rgba(255,255,255,0.07)
---po-border-strong:rgba(255,255,255,0.13)
---po-green:        #c8ff4a
---po-green-dim:    rgba(200,255,74,0.42)
---po-text:         #f4f4f6
---po-text-dim:     rgba(244,244,246,0.55)
---po-text-faint:   rgba(244,244,246,0.32)
---po-progress-track: rgba(255,255,255,0.08)
---po-panel:        rgba(255,255,255,0.025)
-```
-
-### Keyframes added
-- `po-shimmer-sweep` — horizontal shimmer for progress bars
-- `po-dot-pop` — scale pulse for rarity dot on 100% bucket
-- `po-badge-in` — spring pop-in for Complete badge
-- `po-master-border-shift` — slow 4s background-position cycle for master set gradient border
-- `po-star-pulse` — alternating opacity/scale for &#10022; symbols
-- `po-glow-pulse` — pulsing radial glow orb (celebration overlay)
-- `po-logo-in`, `po-master-slide-up`, `po-master-slam` — celebration text reveals
-
-### CSS classes
-- `.po-dot-pop`, `.po-badge-in` — completion animations
-- `.po-master-border-wrap` — animated gradient border wrapper
-- `.po-master-star`, `.po-master-star-b` — star pulse, offset by 1.3s
-- `.po-master-logo`, `.po-master-glow-orb`, `.po-master-title-1`, `.po-master-title-2` — celebration animations
-
-## 2. Home page master set card treatment (`app/page.js`)
-
-Master sets (`checkedCount >= total`) get:
-1. **Gradient border wrapper** (`.po-master-border-wrap`): animated `linear-gradient(135deg, primary → secondary → primary)`
-2. **Dual-layer glow**: tight 6px burst + 28–32px mid-halo + 60–70px wide bloom
-3. **Background colour wash**: `radial-gradient(ellipse at 0% 55%, primary28, transparent)` from left edge
-4. **Master Set badge**: full-width pill with &#10022; stars, inset glow
-5. **Count stays**: `342 / 342`, percentage hidden (badge communicates completion)
-
-## 3. Set tracker redesign (`app/set/[setId]/page.js`)
-
-- Sticky header with logo, themed name, stats, gradient progress bar
-- 3-way toggle: Rarity / Binder / Missing (persists to `localStorage`)
-- `RaritySection` component: bar animates from 0 on mount, shimmer+badge on 100%, real-time completion detection via `prevPctRef`
-- `MasterSetCelebration` component: 100 burst particles + 35 drifters, canvas at z-60, overlay at z-200, auto-dismiss at 4s
-
-## 4. Theme colour DB fixes
-
-| Set | Code | theme_primary | theme_secondary | theme_bg |
-|---|---|---|---|---|
-| Crown Zenith | CRZ | `#c8b8e8` | `#7c5cbf` | `#0d0a18` |
-| Ascended Heroes | ASC | `#e8c840` | `#4dcfb8` | `#111214` |
-| Phantasmal Flames | PFL | `#e0359a` | `#38c8d4` | `#080a14` |
-| Perfect Order | POR | `#b9ff3c` | `#ff7820` | `#0a0e0a` |
+13c. **Variant picker tick hit-target too small.** In the variant
+    picker bottom sheet (the one that opens when you tap a card in a
+    set — shows e.g. "Holo / Reverse Holo" rows for a card), the only
+    thing that toggles the tick is the small green circle on the far
+    left. Since the duplicate-counter (`−` count `+`) and camera icon
+    were added on the right, the central "passive" area of the row is
+    now dead space and the tick circle is a small thumb target.
+    **Fix:** make the entire row tappable to toggle the tick, EXCEPT
+    for the explicit control buttons on the right (`−`, count, `+`,
+    camera). Tapping anywhere on the variant name, price, or empty
+    space between text and the right-hand controls should toggle the
+    tick. Tapping the `−` / `+` / camera controls must continue to do
+    only their own action and NOT toggle the tick.
+    Implementation note: probably an outer `onClick` on the row with
+    `e.stopPropagation()` on the right-hand control buttons, rather
+    than expanding the tick button's hit area — the row-level approach
+    handles the empty-space tapping naturally. Test on iPhone PWA
+    after the change; thumb-reach on the inner controls is the failure
+    mode to watch.
+    Out of scope for this fix: whether `+` from 0 → 1 should
+    auto-tick the card. Separate UX decision, capture if user raises it.
 
 ---
 
+## 4. LOOSE THREADS FROM EARLIER WORK
+
+14. **Location explainer is currently triggered only from `TradePanel`
+    ("Card Shop Nearby").** It should fire whenever ANY location-using
+    feature is first hit. Refactor into a reusable `requestLocation()`
+    hook/helper that any feature (Discover proximity matching, Find Online
+    geo-filtering, etc.) can call. The component exists; just needs to
+    become the standard entry point. AI reviewers flagged this kind of
+    just-in-time consent is privacy-best-practice.
+
+15. **Password minimum length consistency.** `/reset-password` validates
+    min 6 chars. Unconfirmed whether sign-up matches. Worth aligning,
+    and considering bumping both to 8.
+
+16. **The 800ms timer in `/auth/confirm`.** Tested and works, but never
+    explicitly confirmed it's a cosmetic post-success delay and not a race
+    against verifyOtp/getSession. Thirty-second check next time you're in
+    that file, given our project history with 800ms timers.
+
 ---
 
-# Session 1 Notes — 2026-05-09 (earlier)
+## 5. DESIGN & UX — DEFERRED
 
-## Bugs fixed
+The user explicitly wanted to step back from interface work, so these are
+NOT next-session priorities. Captured to not lose them.
 
-### collection_entries 1000-row truncation
-**Root cause**: PostgREST 1000-row default cap. Raff has 1598 entries.
-**Fix**: Paginated `.range()` loop (PAGE=1000) in `app/page.js` and `app/friend/[handle]/page.js`.
+- **Build real `/settings` page** — currently a partial real page (with the
+  Location/Suburb section that Claude Code added during the legal work).
+  Real full version should be a hub: currency picker, profile editing
+  (handle/avatar), country/suburb, location prefs, **2FA toggle** (see
+  Security), **"Chat help" entry point** (see Growth), notification prefs,
+  account deletion.
+- Audit existing `/friends` page — confirm full coverage (list/requests/
+  send/search/unfriend).
+- Real-time subscriptions on `/notifications` (currently fetch-on-mount).
+- Notifications polish — filter/sort, mark individual unread,
+  swipe-to-dismiss.
 
-### Deployed fixes not reaching PWA users
-**Root cause**: CacheFirst SW strategy; content-hashed chunks never evicted.
-**Fix**: NetworkFirst for navigate + everything else; StaleWhileRevalidate for `_next/static/`; bumped to cache v2.
+---
 
-### manifest.json returning 401
-**Root cause**: No auth middleware — Vercel deployment protection catching it.
-**Fix**: `proxy.js` with `PUBLIC_PATHS` set.
+## 6. SECURITY — DEFERRED
 
-### SW clone error
-**Root cause**: `res.clone()` called inside async `caches.open().then()` — body consumed before clone.
-**Fix**: Call `res.clone()` synchronously before the async chain.
+17. **Optional 2FA via Supabase MFA (TOTP).** Decision locked in earlier:
+    optional toggle in Settings, NOT mandatory at signup. Originally
+    considered as step-up auth for the trade mailing-address reveal flow,
+    but that flow no longer exists (see item 2). Still worth doing for
+    general account security. Supabase handles the hard part — this is
+    integration, not building auth. Don't let this slip far past launch —
+    a compromised account with no 2FA option is a real incident risk once
+    stranger-trades are happening.
 
-## Features shipped
+17a. **Mutual skip of photo verification — needs design thinking, not just
+    building.** Idea raised 16 May: let both parties in a trade agree to
+    skip the verification-photo step. Do NOT just build this as a toggle.
+    Trust-and-safety implications worth thinking through first: the pairs
+    most likely to mutually agree to skip are also the pairs where one
+    party is being socially pressured by the other ("c'mon, we don't need
+    photos, just trust me"). Before building, decide:
+    - per-trade toggle vs profile preference (per-trade is safer);
+    - consent record schema (who agreed, when, stored where, immutable?);
+    - whether skip is reversible mid-trade;
+    - whether reports involving skipped-verification trades get flagged
+      or prioritised in the admin queue (item 7);
+    - whether skip is gated behind some trust signal (e.g. existing
+      friend, N successful prior trades, account age) rather than open
+      to any two parties.
+    Probably worth pairing with items 5-7 (Report/Block/Admin queue)
+    rather than building standalone, since the moderation surface needs
+    to know about it.
 
-- Price badge on all cards (owned and unowned)
-- Rarity/Binder toggle + Missing Only pill (later unified into 3-way toggle in session 2)
-- Duplicate counter with debounced DB writes, `duplicate_count` column live in prod
+---
+
+## 7. GROWTH & FEATURES — DEFERRED
+
+18. **In-app help via the messenger.** A system "Master Setter Help"
+    profile that appears as a thread in the existing messenger. Accessed
+    via "Chat help" in You/Settings. User messages it → server-side hook
+    calls an AI → AI replies as the Help profile using a curated
+    app-knowledge base → AI self-escalates when needed → admin can reply
+    *as* the Help profile (user sees one continuous conversation).
+    Backend (AI loop + admin plumbing + system profile concept) is the
+    real work; UI largely reused from existing messenger. Watch the AI
+    layer — a confidently-wrong support bot is worse than none.
+
+19. **Instagram-style Browse feed on Discover** — infinite scroll;
+    sorted: favourited first → missing from active sets → nearby →
+    everything else.
+
+20. **Broader network matching engine** — beyond direct friends,
+    proximity-based.
+
+21. **Profile stat "X Grand Master completions"; leaderboard for most GM
+    completions.**
+
+22. **Push notifications** — friend gets a duplicate of your favourited
+    card; PWA notification API.
+
+---
+
+## 8. DATA — DEFERRED
+
+23. **Grand Master sourcing project.** Audit every set against the
+    master/GM line; source images + prices for GM sections. Sets needing
+    attention: Prismatic Evolutions, Ascended Heroes, Perfect Order,
+    Crown Zenith, White Flare, Black Bolt. White Flare GM section has
+    no images.
+
+24. **Re-run PB/MB inserts for Prismatic Evolutions** when pokemontcg.io
+    adds remaining cards (community reports 181 vs 180). Use
+    `ON CONFLICT DO NOTHING`.
+
+25. **Monthly DB-vs-community card count check.**
+
+26. **White Flare BWR card #174 (Reshiram ex)** — confirm if in DB. If
+    missing: `node scripts/patch-limitless.mjs rsv10pt5 WHT 174 174`.
+
+27. **Find Online search query** — Black Bolt 174/131 searched wrong;
+    pass the exact collector-number string from the card object, don't
+    reconstruct.
+
+---
+
+## 9. SCALING / QUERY-SAFETY — NONE URGENT
+
+All safe at current scale; flagged so they're not forgotten.
+
+- `messages/page.js ~L48` — profile fetch via `.in()` unbounded; breaks at
+  1000+ message partners.
+- `friends/page.js ~L41` — friend profile fetch via `.in()` unbounded;
+  breaks at 1000+ friends.
+- `favourites/page.js ~L57` — `.in()` on favourited printings; effectively
+  a non-issue (capped at 6).
+- When any of these matter, use the existing `fetchInBatches()` helper from
+  `trade/new/page.js`.
+
+---
+
+## 10. CLEANUP — REAL BUT LOW-PRIORITY
+
+28. **Update project `README.md`** — still default create-next-app
+    boilerplate.
+
+29. **Move `design_handoff_navigation_chrome/` to `docs/design/`.**
+
+30. **Grep hardcoded `rgba(244,244,246,0.08)` etc → replace with
+    `--ms-rule` token.**
+
+31. **Service worker offline fallback cleanup.** The SW's navigate fallback
+    serving cached `/` masked routing bugs repeatedly in this project. It
+    should serve a proper offline page / real 404 instead. Genuine footgun.
+
+32. **`/manifest.json` 401 on Vercel** — was deployment protection on the
+    preview URL; should be resolved now the custom domain is live. Verify.
+
+---
+
+## 11. EMAIL — POST-LAUNCH POLISH
+
+33. **Resend Insight: "Ensure link URLs match sending domain."** Now mostly
+    addressed by the token_hash flow — reset/confirm links point at
+    `mastersettertcg.com`, not raw `supabase.co`. Re-check the insight is
+    cleared next time Resend's checked.
+
+34. **Resend Insight: "Don't use no-reply."** Best-practice nudge. Could
+    switch sender to a friendlier address still on the verified
+    `send.mastersettertcg.com` subdomain (NOT `hello@mastersettertcg.com` —
+    bare domain not verified in Resend).
+
+35. **Post-launch:** proper inbox + "send as" so replies come from `hello@`.
+
+---
+
+## 12. REVENUE — MONITOR
+
+- eBay affiliate is live — monitor dashboard.
+- Contact Fetch TCG (fetchTCG.com.au) re partnership.
+- Revisit TCGPlayer affiliate when AU shipping is restored.
+- Revisit US expansion later.
+
+---
+
+## 13. OBSERVABILITY — NICE TO HAVE
+
+- Structured JSON logging on price refresh.
+- Axiom via Vercel marketplace.
+- Admin dashboard (sets returning `priceSource=none`, refresh durations,
+  error rates); alerting.
+
+---
+
+## 14. APP STORE — POST-LAUNCH
+
+- Apple App Store + Google Play wrappers; app icons all sizes; decide
+  Capacitor vs TWA vs PWA.
+
+---
+
+## 15. STORAGE — POST-LAUNCH
+
+- Monitor verification-photo storage; weekly cleanup function for
+  verification folders >30 days where the trade is resolved.
+
+---
+
+## 16. LEGAL — REVIEWED ROADMAP
+
+- **Get the ToS and Privacy Policy reviewed by a lawyer** before scaling
+  beyond the first ~100 friend-and-network users. A flat-fee startup
+  review is a few hundred dollars and is genuinely worth it before
+  strangers are on the platform. Specifically priority for lawyer eyes:
+  - The "platform not a party" framing vs the app actively suggesting
+    matches
+  - The limitation of liability vs Australian Consumer Law (ACL)
+    non-excludable guarantees
+  - The Pokémon/Nintendo IP use (data source licence, image hotlinking)
+  - The social-media-classification question (does Master Setter fall
+    under evolving AU social-media-age legislation?)
+
+---
+
+## 17. KEY WORKING-NOTES LESSONS FROM THE LAST FEW DAYS
+
+- **proxy.js has now bitten three times** — the missing forgot-password/
+  reset-password routes, the `/brand/` PNG, and very nearly the
+  `/terms`/`/privacy` routes. The documentation is now in place at both
+  file and `CLAUDE.md` level. **Any new public route or asset must be
+  added to PUBLIC_PATHS or a prefix check** — this is the single most
+  important repeating-lesson of the project.
+
+- **Data-model changes need reader audits.** The untick-orphan fix (which
+  was right) silently broke Discover because Discover was still reading
+  "unticked" as `checked=false` instead of "no row." When changing what
+  a row's presence/absence means, audit every consumer of that data.
+
+- **Observation before action.** Multiple multi-round sagas resolved only
+  when we stopped theorising and pulled hard evidence (HAR files, Network
+  tab Initiator, console errors, local prod-build tests). For SW issues,
+  the Initiator column is ground truth.
+
+- **Two fixes in a row that don't move the symptom** = stop fixing, go
+  read the actual request path. The bug is somewhere nobody's looked yet
+  (forgot-password was `proxy.js`; the password reset was the PKCE flow
+  not the page logic; etc.).
+
+- **Reasoned-through ≠ tested.** Every fix that "should work" has to land
+  on the real device before being declared done. SW cache cycling matters
+  for this — stale state has cost real time.
+
+- **Reports describing work ≠ proof the work matches the brief.** Read
+  what was actually built carefully. Several times this project Claude
+  Code reported "done" while having silently skipped parts of a brief
+  (most notably the legal-integration build that did Part 5 and skipped
+  Parts 1-4).
+
+---
+
+## 18. RECOMMENDED NEXT-SESSION ORDER
+
+When picking this back up, suggested sequence:
+
+1. **The two privacy-accuracy items that reconcile the docs:** EXIF
+   stripping (item 1) and the `mailing_address` column cleanup (item 2).
+   Both are small, both make the Privacy Policy *true*. Highest leverage.
+2. **Wire Sentry** (item 3). Quick install, gets you real error visibility,
+   and makes the policy true.
+3. **Verify Vercel Analytics** (item 4). Quick.
+4. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
+   This is the meatier chunk. Required before opening to strangers because
+   messaging is on. Build the data model first (`user_reports`,
+   `user_blocks` tables), then the UI, then the admin queue.
+5. **UI polish items** — affiliate disclosure (item 9), suggested-match
+   language (item 10), address-reveal nudge (item 8). Quick wins.
+6. **The two Discover bugs** (items 11, 12, 13) — diagnose first.
+7. Then the deferred items in priority order — 2FA, the help system,
+   browse feed, etc. — based on what feels most valuable at that time.
+
+The legal docs are *live*. The auth surface is *working*. The infrastructure
+is *in place*. From here, it's about closing the gap between what the docs
+promise and what the code does (items 1-4), then adding the trust-and-safety
+features that make stranger-trading safe (items 5-7), then polish.
