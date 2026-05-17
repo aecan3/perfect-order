@@ -290,6 +290,15 @@ export default function DiscoverPage() {
                     </span>
                     <span className="text-xs text-[var(--po-text-dim)]">{countLabel}</span>
                   </button>
+                  <Link
+                    href={`/friend/${handle}?from=discover`}
+                    className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ChevronRight size={14} />
+                      View @{handle}{"'"}s Collection
+                    </span>
+                  </Link>
                 </div>
               );
             })}
