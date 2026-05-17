@@ -54,7 +54,7 @@ function ActiveIndicator() {
   );
 }
 
-export function MSTabBar({ active }) {
+export function MSTabBar({ active, unreadMessages = 0 }) {
   return (
     <nav
       aria-label="Primary"
@@ -96,7 +96,21 @@ export function MSTabBar({ active }) {
             }}
           >
             {isActive && <ActiveIndicator />}
-            <Icon size={22} strokeWidth={2} />
+            {id === "messages" ? (
+              <span style={{ display: "inline-flex", position: "relative" }}>
+                <Icon size={22} strokeWidth={2} />
+                {unreadMessages > 0 && (
+                  <span aria-hidden="true" style={{
+                    position: "absolute", top: -1, right: -1,
+                    width: 8, height: 8, borderRadius: 9999,
+                    background: "var(--ms-danger)",
+                    boxShadow: "0 0 0 2px var(--ms-bg)",
+                  }} />
+                )}
+              </span>
+            ) : (
+              <Icon size={22} strokeWidth={2} />
+            )}
             <span
               style={{
                 fontFamily: '"IBM Plex Mono", monospace',
