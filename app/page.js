@@ -92,6 +92,20 @@ export default function HomePage() {
   // Discover panel
   const [discoverCards, setDiscoverCards] = useState(null);
   const [discoverModal, setDiscoverModal] = useState(null);
+  const homeDiscoverChannelRef = useRef(null);
+
+  const loadHomeDiscover = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const friendIds = await getFriendIds(supabase, user.id);
+      if (!friendIds.length) { setDiscoverCards([]); return; }
+      const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
+      setDiscoverCards(results.slice(0, 20));
+    } catch {
+      setDiscoverCards([]);
+    }
+  };
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -185,16 +199,7 @@ export default function HomePage() {
       setLoading(false);
 
       // Non-blocking discover fetch — runs after main load so it doesn't delay the page
-      (async () => {
-        try {
-          const friendIds = await getFriendIds(supabase, user.id);
-          if (!friendIds.length) { setDiscoverCards([]); return; }
-          const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
-          setDiscoverCards(results.slice(0, 20));
-        } catch {
-          setDiscoverCards([]);
-        }
-      })();
+      loadHomeDiscover();
 
       // Staggered count-up from zero — fires on every page load / navigate-back
       const loadTargets = {};
@@ -209,6 +214,28 @@ export default function HomePage() {
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    let cleanup = () => {};
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const channel = supabase
+        .channel(`home-discover:${user.id}`)
+        .on("postgres_changes", {
+          event: "INSERT", schema: "public", table: "collection_entries",
+          filter: `user_id=eq.${user.id}`,
+        }, () => loadHomeDiscover())
+        .on("postgres_changes", {
+          event: "DELETE", schema: "public", table: "collection_entries",
+          filter: `user_id=eq.${user.id}`,
+        }, () => loadHomeDiscover())
+        .subscribe();
+      homeDiscoverChannelRef.current = channel;
+      cleanup = () => supabase.removeChannel(channel);
+    })();
+    return () => cleanup();
   }, []);
 
   // ── Animation ────────────────────────────────────────────────────────────
