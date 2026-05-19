@@ -95,14 +95,12 @@ export default function HomePage() {
   const homeDiscoverChannelRef = useRef(null);
 
   const loadHomeDiscover = async () => {
-    console.log("[Discover-Home] refetching");
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const friendIds = await getFriendIds(supabase, user.id);
       if (!friendIds.length) { setDiscoverCards([]); return; }
       const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
-      console.log("[Discover-Home] refetched", results.length, "matches (showing first 20)");
       setDiscoverCards(results.slice(0, 20));
     } catch {
       setDiscoverCards([]);
@@ -223,26 +221,19 @@ export default function HomePage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      console.log("[Discover-Home] subscribing for user", user.id);
       const channel = supabase
         .channel(`home-discover:${user.id}`)
         .on("postgres_changes", {
           event: "INSERT", schema: "public", table: "collection_entries",
           filter: `user_id=eq.${user.id}`,
-        }, (payload) => {
-          console.log("[Discover-Home] event received:", payload.eventType, payload.table);
-          loadHomeDiscover();
-        })
+        }, () => loadHomeDiscover())
         .on("postgres_changes", {
           event: "DELETE", schema: "public", table: "collection_entries",
           filter: `user_id=eq.${user.id}`,
-        }, (payload) => {
-          console.log("[Discover-Home] event received:", payload.eventType, payload.table);
-          loadHomeDiscover();
-        })
+        }, () => loadHomeDiscover())
         .subscribe();
       homeDiscoverChannelRef.current = channel;
-      cleanup = () => { console.log("[Discover-Home] cleanup / unmount"); supabase.removeChannel(channel); };
+      cleanup = () => supabase.removeChannel(channel);
     })();
     return () => cleanup();
   }, []);

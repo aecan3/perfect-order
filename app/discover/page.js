@@ -36,13 +36,11 @@ export default function DiscoverPage() {
   const discoverChannelRef = useRef(null);
 
   const loadDiscover = async () => {
-    console.log("[Discover-Full] refetching");
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/welcome"); return; }
     const friendIds = await getFriendIds(supabase, user.id);
     if (!friendIds.length) { setCards([]); return; }
     const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
-    console.log("[Discover-Full] refetched", results.length, "matches");
     setCards(results);
   };
 
@@ -60,26 +58,19 @@ export default function DiscoverPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      console.log("[Discover-Full] subscribing for user", user.id);
       const channel = supabase
         .channel(`discover-page:${user.id}`)
         .on("postgres_changes", {
           event: "INSERT", schema: "public", table: "collection_entries",
           filter: `user_id=eq.${user.id}`,
-        }, (payload) => {
-          console.log("[Discover-Full] event received:", payload.eventType, payload.table);
-          loadDiscover();
-        })
+        }, () => loadDiscover())
         .on("postgres_changes", {
           event: "DELETE", schema: "public", table: "collection_entries",
           filter: `user_id=eq.${user.id}`,
-        }, (payload) => {
-          console.log("[Discover-Full] event received:", payload.eventType, payload.table);
-          loadDiscover();
-        })
+        }, () => loadDiscover())
         .subscribe();
       discoverChannelRef.current = channel;
-      cleanup = () => { console.log("[Discover-Full] cleanup / unmount"); supabase.removeChannel(channel); };
+      cleanup = () => supabase.removeChannel(channel);
     })();
     return () => cleanup();
   }, []);
