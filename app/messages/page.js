@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -22,7 +23,6 @@ export default function InboxPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [conversations, setConversations] = useState(null);
-  const channelRef = useRef(null);
 
   const loadConversations = async (userId) => {
     const { data: messages } = await supabase
@@ -63,22 +63,15 @@ export default function InboxPage() {
     })();
   }, [router, supabase]);
 
-  useEffect(() => {
-    if (!user) return;
-    const channel = supabase
-      .channel(`inbox:${user.id}`)
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "messages",
-        filter: `recipient_id=eq.${user.id}`,
-      }, () => loadConversations(user.id))
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "messages",
-        filter: `recipient_id=eq.${user.id}`,
-      }, () => loadConversations(user.id))
-      .subscribe();
-    channelRef.current = channel;
-    return () => supabase.removeChannel(channel);
-  }, [user, supabase]);
+  useTableRefetch({
+    supabase,
+    table: "messages",
+    events: ["INSERT", "UPDATE"],
+    filter: user ? `recipient_id=eq.${user.id}` : null,
+    channelName: `inbox:${user?.id}`,
+    onChange: () => user && loadConversations(user.id),
+    enabled: !!user?.id,
+  });
 
   return (
     <MSShell>

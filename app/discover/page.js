@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { getFriendIds } from "@/lib/queries/friends";
 import { getDiscoverMatches } from "@/lib/queries/discover";
+import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -28,16 +29,17 @@ const cardKey = (card) => `${card.printingId}:${card.friendHandle}`;
 export default function DiscoverPage() {
   const router = useRouter();
   const supabase = createClient();
+  const [userId, setUserId] = useState(null);
   const [cards, setCards] = useState(null);
   const [currency, setCurrency] = useState("AUD");
   const [filterSet, setFilterSet] = useState("all");
   const [minValue, setMinValue] = useState(0);
   const [selected, setSelected] = useState(new Set());
-  const discoverChannelRef = useRef(null);
 
   const loadDiscover = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/welcome"); return; }
+    if (!userId) setUserId(user.id);
     const friendIds = await getFriendIds(supabase, user.id);
     if (!friendIds.length) { setCards([]); return; }
     const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
@@ -53,27 +55,15 @@ export default function DiscoverPage() {
     loadDiscover();
   }, [router, supabase]);
 
-  useEffect(() => {
-    let cleanup = () => {};
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const channel = supabase
-        .channel(`discover-page:${user.id}`)
-        .on("postgres_changes", {
-          event: "INSERT", schema: "public", table: "collection_entries",
-          filter: `user_id=eq.${user.id}`,
-        }, () => loadDiscover())
-        .on("postgres_changes", {
-          event: "DELETE", schema: "public", table: "collection_entries",
-          filter: `user_id=eq.${user.id}`,
-        }, () => loadDiscover())
-        .subscribe();
-      discoverChannelRef.current = channel;
-      cleanup = () => supabase.removeChannel(channel);
-    })();
-    return () => cleanup();
-  }, []);
+  useTableRefetch({
+    supabase,
+    table: "collection_entries",
+    events: ["INSERT", "DELETE"],
+    filter: `user_id=eq.${userId}`,
+    channelName: `discover-page:${userId}`,
+    onChange: loadDiscover,
+    enabled: !!userId,
+  });
 
   const allSets = cards
     ? [...new Map(cards.map((c) => [c.setId, { id: c.setId, name: c.setName }])).values()]

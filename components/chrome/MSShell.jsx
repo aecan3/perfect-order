@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { MSHeader } from "./MSHeader";
 import { MSTabBar } from "./MSTabBar";
 import { createClient } from "@/lib/supabase";
+import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 
 function deriveTab(pathname) {
   if (!pathname) return null;
@@ -29,7 +30,7 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
   const [scrolled, setScrolled] = useState(false);
   const [fetchedUnreadCount, setFetchedUnreadCount] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const messagesChannelRef = useRef(null);
+  const [userId, setUserId] = useState(null);
 
   const resolvedTab = propActiveTab !== undefined ? propActiveTab : deriveTab(pathname);
   const unreadCount = propUnreadCount !== undefined ? propUnreadCount : fetchedUnreadCount;
@@ -52,6 +53,7 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      if (!userId) setUserId(user.id);
       const { count } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
@@ -62,23 +64,15 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
     fetchUnreadMessages();
   }, [pathname, supabase, propUnreadCount]);
 
-  useEffect(() => {
-    let cleanup = () => {};
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const channel = supabase
-        .channel(`unread-messages:${user.id}`)
-        .on("postgres_changes", {
-          event: "INSERT", schema: "public", table: "messages",
-          filter: `recipient_id=eq.${user.id}`,
-        }, () => fetchUnreadMessages())
-        .subscribe();
-      messagesChannelRef.current = channel;
-      cleanup = () => supabase.removeChannel(channel);
-    })();
-    return () => cleanup();
-  }, []);
+  useTableRefetch({
+    supabase,
+    table: "messages",
+    events: ["INSERT"],
+    filter: `recipient_id=eq.${userId}`,
+    channelName: `unread-messages:${userId}`,
+    onChange: fetchUnreadMessages,
+    enabled: !!userId,
+  });
 
   useEffect(() => {
     const handleVisibilityChange = () => {

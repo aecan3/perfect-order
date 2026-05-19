@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase";
 import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { getFriendIds } from "@/lib/queries/friends";
 import { getDiscoverMatches } from "@/lib/queries/discover";
+import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 
@@ -92,7 +93,6 @@ export default function HomePage() {
   // Discover panel
   const [discoverCards, setDiscoverCards] = useState(null);
   const [discoverModal, setDiscoverModal] = useState(null);
-  const homeDiscoverChannelRef = useRef(null);
 
   const loadHomeDiscover = async () => {
     try {
@@ -216,27 +216,15 @@ export default function HomePage() {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
   }, []);
 
-  useEffect(() => {
-    let cleanup = () => {};
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const channel = supabase
-        .channel(`home-discover:${user.id}`)
-        .on("postgres_changes", {
-          event: "INSERT", schema: "public", table: "collection_entries",
-          filter: `user_id=eq.${user.id}`,
-        }, () => loadHomeDiscover())
-        .on("postgres_changes", {
-          event: "DELETE", schema: "public", table: "collection_entries",
-          filter: `user_id=eq.${user.id}`,
-        }, () => loadHomeDiscover())
-        .subscribe();
-      homeDiscoverChannelRef.current = channel;
-      cleanup = () => supabase.removeChannel(channel);
-    })();
-    return () => cleanup();
-  }, []);
+  useTableRefetch({
+    supabase,
+    table: "collection_entries",
+    events: ["INSERT", "DELETE"],
+    filter: `user_id=eq.${user?.id}`,
+    channelName: `home-discover:${user?.id}`,
+    onChange: loadHomeDiscover,
+    enabled: !!user?.id,
+  });
 
   // ── Animation ────────────────────────────────────────────────────────────
   const startAnimations = (targets) => {
