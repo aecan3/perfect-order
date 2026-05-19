@@ -55,7 +55,7 @@ export default function ThreadPage() {
   // Keep legacy single reference for backwards-compat rendering
   const cardMeta = cardsMeta?.[0] ?? null;
 
-  const bottomRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const inputRef = useRef(null);
   const channelRef = useRef(null);
   const initialScrollDone = useRef(false);
@@ -67,7 +67,8 @@ export default function ThreadPage() {
     if (!initialScrollDone.current) return;
     if (Date.now() - initialScrollAtRef.current > 2000) return;
     if (firstUnreadRef.current) return;
-    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+    const container = scrollContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   }, []);
 
   useEffect(() => {
@@ -138,23 +139,31 @@ export default function ThreadPage() {
     };
   }, [handle, router, supabase]);
 
-  // Instant scroll on initial load; smooth scroll when a new message arrives
+  // Instant scroll on initial load; follow new messages only if near bottom
   useEffect(() => {
     if (messages.length === 0) return;
     if (!initialScrollDone.current) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          const container = scrollContainerRef.current;
+          if (!container) return;
           if (firstUnreadRef.current) {
             firstUnreadRef.current.scrollIntoView({ block: "start", behavior: "instant" });
           } else {
-            bottomRef.current?.scrollIntoView({ behavior: "instant" });
+            container.scrollTop = container.scrollHeight;
           }
           initialScrollDone.current = true;
           initialScrollAtRef.current = Date.now();
         });
       });
     } else if (messages.length > prevCountRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const container = scrollContainerRef.current;
+      if (container) {
+        const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (distFromBottom < 80) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }
     }
     prevCountRef.current = messages.length;
   }, [messages]);
@@ -222,7 +231,7 @@ export default function ThreadPage() {
         </div>
 
         {/* Scrollable message list */}
-        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        <div ref={scrollContainerRef} style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <div className="px-4 py-4 max-w-md mx-auto w-full">
         {messages.length === 0 && (
           <div className="text-center text-[var(--po-text-faint)] text-sm py-12">
@@ -382,7 +391,6 @@ export default function ThreadPage() {
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
         </div>
         </div>
 
