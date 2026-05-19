@@ -6,8 +6,11 @@ import Link from "next/link";
 import {
   Plus, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
-  RefreshCw, Clock, MessageCircle, ArrowLeftRight,
+  RefreshCw, Clock, MessageCircle, ArrowLeftRight, GripVertical,
 } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { SortableSetCard } from "@/components/home/SortableSetCard";
 import { createClient } from "@/lib/supabase";
 import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { getFriendIds } from "@/lib/queries/friends";
@@ -89,6 +92,11 @@ export default function HomePage() {
   const [displayValues, setDisplayValues] = useState({});
   const rafRef = useRef(null);
   const animTargetsRef = useRef({});
+
+  // Reorder state
+  const [isReordering, setIsReordering] = useState(false);
+  const [orderedSets, setOrderedSets] = useState([]);
+  const preReorderRef = useRef([]);
 
   // Discover panel
   const [discoverCards, setDiscoverCards] = useState(null);
@@ -192,10 +200,25 @@ export default function HomePage() {
       const initDisplay = {};
       enriched.forEach((s) => { initDisplay[s.id] = 0; });
 
-      setUserSets(enriched.filter((s) => !s.isHidden));
+      const visibleEnriched = enriched.filter((s) => !s.isHidden);
+      setUserSets(visibleEnriched);
       setHiddenSets(enriched.filter((s) => s.isHidden));
       setSetValues(vals);
       setDisplayValues(initDisplay);
+
+      // Fetch sort order preferences and apply custom ordering
+      const { data: prefs } = await supabase
+        .from("user_set_preferences")
+        .select("set_id, sort_order")
+        .eq("user_id", user.id)
+        .not("sort_order", "is", null);
+      const prefMap = Object.fromEntries((prefs || []).map((p) => [p.set_id, p.sort_order]));
+      const anyPrefs = (prefs || []).length > 0;
+      const sorted = anyPrefs
+        ? [...visibleEnriched].sort((a, b) => (prefMap[a.id] ?? -1) - (prefMap[b.id] ?? -1))
+        : visibleEnriched;
+      setOrderedSets(sorted);
+
       setLoading(false);
 
       // Non-blocking discover fetch — runs after main load so it doesn't delay the page
@@ -342,6 +365,44 @@ export default function HomePage() {
     });
   };
 
+  // ── Drag-to-reorder ───────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const enterReorderMode = () => {
+    preReorderRef.current = orderedSets;
+    setIsReordering(true);
+  };
+
+  const cancelReorder = () => {
+    setOrderedSets(preReorderRef.current);
+    setIsReordering(false);
+  };
+
+  const saveOrder = async () => {
+    const rows = orderedSets.map((set, i) => ({
+      user_id: user.id,
+      set_id: set.id,
+      sort_order: i,
+    }));
+    await supabase
+      .from("user_set_preferences")
+      .upsert(rows, { onConflict: "user_id,set_id" });
+    setIsReordering(false);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setOrderedSets((prev) => {
+      const oldIndex = prev.findIndex((s) => s.id === active.id);
+      const newIndex = prev.findIndex((s) => s.id === over.id);
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  };
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   const switchCurrency = (c) => { setCurrency(c); localStorage.setItem("po:currency", c); };
   const closeAllSwipes = () => setSwipeState({});
@@ -354,6 +415,7 @@ export default function HomePage() {
     const moving = userSets.find((s) => s.id === setId);
     if (moving) {
       setUserSets((prev) => prev.filter((s) => s.id !== setId));
+      setOrderedSets((prev) => prev.filter((s) => s.id !== setId));
       setHiddenSets((prev) => [{ ...moving, isHidden: true }, ...prev]);
     }
   };
@@ -363,6 +425,7 @@ export default function HomePage() {
     await supabase.from("user_sets").delete()
       .eq("user_id", user.id).eq("set_id", setId);
     setUserSets((prev) => prev.filter((s) => s.id !== setId));
+    setOrderedSets((prev) => prev.filter((s) => s.id !== setId));
   };
 
   const executeUnhide = async (setId) => {
@@ -374,6 +437,7 @@ export default function HomePage() {
       setHiddenSets((prev) => prev.filter((s) => s.id !== setId));
       const { isHidden: _, ...setData } = moving;
       setUserSets((prev) => [setData, ...prev]);
+      setOrderedSets((prev) => [setData, ...prev]);
     }
   };
 
@@ -846,12 +910,55 @@ export default function HomePage() {
             Add a set
           </Link>
 
-          {userSets.length === 0 && hiddenSets.length === 0 ? (
+          {orderedSets.length === 0 && hiddenSets.length === 0 ? (
             <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
               No sets yet — tap above to start collecting.
             </div>
+          ) : isReordering ? (
+            <>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={cancelReorder}
+                  className="text-xs font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <span className="text-[10px] uppercase tracking-widest text-[var(--po-text-faint)]">
+                  Drag to reorder
+                </span>
+                <button
+                  onClick={saveOrder}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  style={{ background: "var(--po-green)", color: "#050507" }}
+                >
+                  Done
+                </button>
+              </div>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={orderedSets.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-3">
+                    {orderedSets.map((set) => (
+                      <SortableSetCard key={set.id} set={set} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </>
           ) : (
-            userSets.map((set) => renderSetCard(set))
+            <>
+              {orderedSets.length > 1 && (
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={enterReorderMode}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+                  >
+                    <GripVertical size={13} />
+                    Edit Order
+                  </button>
+                </div>
+              )}
+              {orderedSets.map((set) => renderSetCard(set))}
+            </>
           )}
 
           {hiddenSets.length > 0 && (
