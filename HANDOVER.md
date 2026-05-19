@@ -104,6 +104,12 @@ favourites. User works primarily on iPhone PWA.
   (unread messages), messages inbox, Discover page, home page. Uses
   `onChangeRef` to avoid stale closures. Third real-time use triggered the
   extraction per the rule of three (commits `d97d6e5`).
+- **`lib/hooks/` is an emerging subsystem.** Two hooks now exist:
+  `useTableRefetch` and `useLocation`. If a third hook lands, treat
+  `lib/hooks/` as a real subsystem with its own conventions: `use*` naming,
+  SSR-safe `typeof window !== "undefined"` guards, `createPortal` for UI
+  output, `useCallback` for stable references. Don't add a hook here without
+  following those patterns.
 - **Discover real-time refresh** — Ticking a card now propagates to Discover
   in real time. Root cause of stale Discover was twofold: (a) no subscription
   on `collection_entries` for the viewer's own changes, fixed via
@@ -170,7 +176,7 @@ require some of these to be true.
 
 ### Privacy / accuracy (reconcile the docs to the code)
 
-1. ~~**Strip EXIF metadata on all photo uploads.**~~ **DONE 19 May 2026 (commit `669ed0e`).** Full audit of all upload paths confirmed EXIF is already stripped incidentally via `canvas.toBlob()` in both upload paths (trade verification via `CameraCapture.jsx`; collection photos via `handlePhoto` in `app/set/[setId]/page.js`). Canvas only holds pixel data — no metadata survives the re-encode. The Privacy Policy claim is accurate. No library needed, no logic change. Explicit comments added to all three relevant sites (`CameraCapture.jsx`, `app/set/[setId]/page.js`, `verify-photo/route.js`) so the strip can't be silently removed by a future refactor. Existing photos in Storage are also clean — both paths have always used canvas. No backfill required.
+1. ~~**Strip EXIF metadata on all photo uploads.**~~ **DONE 19 May 2026 (commit `669ed0e`) — verification + documentation pass, not a build.** Full audit of all upload paths confirmed EXIF is already stripped incidentally via `canvas.toBlob()` in both upload paths (trade verification via `CameraCapture.jsx`; collection photos via `handlePhoto` in `app/set/[setId]/page.js`). Canvas only holds pixel data — no metadata survives the re-encode. The Privacy Policy claim is accurate. No library needed, no logic change made. Explicit comments added to all three relevant sites so the strip can't be silently removed by a future refactor. Existing photos in Storage are also clean — both paths have always used canvas. No backfill required.
 
 2. ~~**Remove the unused `mailing_address` column from `profiles`**~~
    **DONE 16 May 2026 (commit `0453cb5`).** Audit found the column had zero
@@ -334,11 +340,11 @@ require some of these to be true.
 
 ## 4. LOOSE THREADS FROM EARLIER WORK
 
-14. ~~**Location explainer — extract into reusable hook.**~~ **DONE 19 May 2026 (commit `1cab435`).** `useLocation` hook created at `lib/hooks/useLocation.js`. Exposes `requestLocation({ onGranted, onDenied, title, purpose })` — checks `ms_location_explained` localStorage flag, renders `LocationExplainer` via portal if not yet seen, calls `navigator.geolocation.getCurrentPosition` via `callGeolocation` after consent. `LocationExplainer` now accepts optional `title`/`purpose` props (defaults to current card-shop copy) so any future caller can customise the sheet. `TradePanel` migrated: `showLocationExplainer` state and inline localStorage logic removed, replaced with `const { requestLocation, locationModal } = useLocation()`. `handleFindShops` now takes a `pos` parameter instead of calling geolocation itself.
+14. ~~**Location explainer — extract into reusable hook.**~~ **DONE 19 May 2026 (commit `1cab435`) — preparatory refactor, no live behaviour change.** `useLocation` hook created at `lib/hooks/useLocation.js`. Exposes `requestLocation({ onGranted, onDenied, title, purpose })` — checks `ms_location_explained` localStorage flag, renders `LocationExplainer` via portal if not yet seen, calls `navigator.geolocation.getCurrentPosition` via `callGeolocation` after consent. `LocationExplainer` now accepts optional `title`/`purpose` props (defaults to current card-shop copy) so any future caller can customise the sheet. `TradePanel` migrated: `showLocationExplainer` state and inline localStorage logic removed, replaced with `const { requestLocation, locationModal } = useLocation()`. `handleFindShops` now takes a `pos` parameter instead of calling geolocation itself. **Note: the Card Shop Nearby button is still disabled in production UI** — the hook is not exercised by any live feature today. The refactor sets up the correct entry point for Discover proximity matching and any other future location feature; it does not fix or change current user-visible behaviour.
 
 15. ~~**Password minimum length consistency.**~~ **DONE 17 May 2026 (commit `15a12f9`).** Bumped to 8 in both signup (`app/login/page.js`) and reset-password (`app/reset-password/page.js`). Supabase Auth dashboard also set to 8 (manual config). Both layers enforce.
 
-16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear.
+16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear. *(Item was originally item 15 in some earlier numbering — don't be confused by this. In the current handover item 15 is "Password minimum length consistency." The 800ms timer is correctly item 16.)*
 
 ---
 
@@ -589,14 +595,20 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Quick install,
-   gets real error visibility, makes the policy true.
+1. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
+   visibility in place before adding new T&S surface area — the ordering is
+   deliberate. **Do this first at the start of a session:** create the Sentry
+   account/project and grab the DSN before opening Claude Code. That's
+   account-creation work, not coding. Once you have the DSN, Claude Code can
+   do the install-and-wire-up in one focused pass.
 2. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
-   Required before opening to strangers. Build data model first (`user_reports`,
-   `user_blocks`), then UI, then admin queue.
+   Required before opening to strangers. Budget a full session per piece —
+   Report, Block, and Admin queue are each substantial. Treat the admin queue
+   as a fourth item even though the list groups it with items 5-7. Build data
+   model first (`user_reports`, `user_blocks`), then UI, then admin queue.
 3. **Price ingestion bug (item 12).** Promo-variant prices bleeding into
-   regular printings inflating set values significantly. Diagnose the
-   ingestion code before fixing.
+   regular printings inflating set values significantly. Launch-able-without
+   (users frustrated but not blocked), so correctly deferred behind T&S.
 4. **UI polish items** — suggested-match language (item 10), address-reveal
    nudge (item 8). Quick wins.
 5. Then deferred items — 2FA, help system, browse feed, etc.
