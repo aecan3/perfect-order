@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Written end of session, 16 May 2026. Single source of truth for the next session.*
-*Supersedes the previous handover note from 14 May.*
+*Updated end of session, 19 May 2026. Single source of truth for the next session.*
+*Supersedes the previous handover note from 16 May.*
 
 ---
 
@@ -99,6 +99,42 @@ favourites. User works primarily on iPhone PWA.
 - Profiles table migration run: added `country`, `tos_version`,
   `tos_agreed_at`, `privacy_version`, `privacy_agreed_at`, `suburb`,
   `postcode`, `state` columns. All nullable, existing rows unaffected.
+- **useTableRefetch hook** — `lib/hooks/useTableRefetch.js`. Extracted
+  shared Supabase real-time subscription pattern used in 4 sites: MSShell
+  (unread messages), messages inbox, Discover page, home page. Uses
+  `onChangeRef` to avoid stale closures. Third real-time use triggered the
+  extraction per the rule of three (commits `d97d6e5`).
+- **Discover real-time refresh** — Ticking a card now propagates to Discover
+  in real time. Root cause of stale Discover was twofold: (a) no subscription
+  on `collection_entries` for the viewer's own changes, fixed via
+  `useTableRefetch`; (b) the `myHave` query in `getDiscoverMatches` was
+  silently truncated at 1000 rows — raff had 2,618 checked entries — fixed
+  with a paginated loop (same `PAGE=1000` pattern from CLAUDE.md). This also
+  closed item 13 (Spewpa-style stale Discover). File: `lib/queries/discover.js`.
+  Commits: `c311c4e`, `9e5990f`.
+- **Thread scroll-to-bottom fixed** — All three scroll bugs in
+  `app/messages/[handle]/page.js` resolved (commit `427bc75`):
+  (1) opens in middle of all-read thread; (2) yanks user back when new message
+  arrives while scrolled up; (3) lands in middle after returning from another
+  surface. Root cause: `scrollIntoView` on `bottomRef` is ambiguous in the
+  nested-scroll layout — the `overflow: hidden` outer wrapper qualifies as a
+  scroll container under the CSS spec, so the browser could scroll the wrong
+  ancestor. Fix: replaced `bottomRef` with `scrollContainerRef` attached to
+  the inner `overflow-y: auto` div; all scroll-to-bottom calls now use
+  `container.scrollTop = container.scrollHeight`. Also added an 80px
+  near-bottom guard on the new-message auto-scroll so it doesn't yank the
+  user back while reading history.
+- **Drag-to-reorder sets on home page** — Edit-mode toggle: "Edit Order"
+  button appears when 2+ sets exist; tapping enters reorder mode where sets
+  become dnd-kit `SortableContext` items with GripVertical drag handles; Done
+  upserts `sort_order` values to `user_set_preferences`; Cancel reverts
+  in-memory. Order persists across sessions. New sets without a saved
+  sort_order appear at the top (−1 fallback). Hide/Unhide/Remove keep
+  `orderedSets` in sync. Migration: `sort_order integer` added to
+  `user_set_preferences`, `collection_mode` made nullable (no rows existed).
+  Files: `app/page.js`, `components/home/SortableSetCard.jsx`,
+  `supabase/migrations/20260519000000_add_sort_order_to_user_set_preferences.sql`.
+  Commit: `af71bc8`.
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
@@ -200,12 +236,9 @@ require some of these to be true.
 
 ## 3. BUGS LOGGED (not launch-blocking but real)
 
-11. **Discover refresh-after-tick.** Tick a card → return to Discover → that
-    card should drop off (because the viewer now has it). Currently it
-    stays until something else forces a refetch. Same class as the Discover
-    bug we fixed this session — viewer-state changed but the reader doesn't
-    refresh. Diagnose first (cached query? stale myHavePrintingIds in the
-    helper?); don't rebuild blind.
+11. ~~**Discover refresh-after-tick.**~~ **DONE 19 May 2026 (commits `c311c4e`, `9e5990f`).** Two separate root causes, both fixed:
+    (a) No subscription: viewer's own collection changes weren't triggering a Discover refetch. Fixed by adding `useTableRefetch` on `collection_entries` in the Discover page and home page.
+    (b) 1000-row truncation: `getDiscoverMatches` myHave query was silently capped by PostgREST default — raff had 2,618 checked entries, so the query only returned 1,000 and matched wrong cards as still-missing. Fixed with the standard paginated loop (PAGE=1000, `.range()`) in `lib/queries/discover.js`.
 
 12. **Inflated set values across the app — price ingestion bug (DIAGNOSED
     16 May 2026, not fixed).** Originally logged as "Perfect Order showing
@@ -278,9 +311,7 @@ require some of these to be true.
     session's chat — re-run them on other affected sets to confirm scope
     before fixing.
 
-13. **Spewpa-style stale Discover issue.** Spewpa was still in @alex2's
-    Discover row after the viewer collected it. Same root cause as #11
-    likely.
+13. ~~**Spewpa-style stale Discover issue.**~~ **DONE 19 May 2026 (same fix as item 11).** Same two-part root cause: no collection-changes subscription + myHave 1000-row truncation. Both resolved.
 
 13a. ~~**Discover preview action buttons inconsistent across entry points.**~~ **DONE 17 May 2026 (commits `f2bf467`, `4c59ed4`).** Two separate surfaces fixed independently (two different implementations, not a shared component):
     - Home modal: added "Propose Trade" as primary action (`f2bf467`)
@@ -296,7 +327,11 @@ require some of these to be true.
 
 13d. **Messages list real-time updates. DONE 17 May 2026 (commit `85b5734`).** The messages inbox (`app/messages/page.js`) previously fetched once on mount with no live updates. Now subscribes to INSERT and UPDATE events on `messages` filtered server-side by `recipient_id`, triggering a full refetch on each event. Followed the pattern established in item 13b. Second global real-time subscription in the app — not yet extracted to a shared hook per the rule of three.
 
-13e. **Thread auto-scroll to first unread. DONE 17 May 2026 (commit `cce3d45`).** When opening a thread with unread messages, the view positions on the first unread message with a "New messages" divider above it, matching iMessage/WhatsApp. Threads with no unread messages continue to scroll to bottom as before. Auto-follow-to-bottom on live message receipt is preserved. Existing mark-as-read logic unchanged.
+13e. **Thread scroll bugs — fully resolved 19 May 2026 (commits `cce3d45`, `f01b33a`, `427bc75`).** Three bugs fixed across two sessions:
+    - `cce3d45` (17 May): Scroll to first unread on thread open; "New messages" divider.
+    - `f01b33a` (19 May): Double rAF + `initialScrollAtRef` 2-second window + `onLoad` handlers on images — improved timing but didn't fix the target ambiguity.
+    - `427bc75` (19 May, final fix): Replaced `bottomRef` + `scrollIntoView` with `scrollContainerRef.scrollTop = scrollHeight`. Root cause was nested-scroll target ambiguity — the `overflow: hidden` outer wrapper qualifies as a scroll container under CSS spec. Also added 80px near-bottom guard on new-message auto-scroll so it doesn't yank the user while reading history.
+    All three symptoms (opens in middle, yanks on new message, lands in middle after returning) are resolved.
 
 13f. **Prevent use of leaked passwords (Supabase Attack Protection — deferred).** Currently disabled. Dashboard → Authentication → Attack Protection → "Prevent use of leaked passwords" toggle — runs new and changed passwords against HaveIBeenPwned. Small defence-in-depth step. Not urgent.
 
@@ -569,23 +604,26 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **The two privacy-accuracy items that reconcile the docs:** EXIF
-   stripping (item 1) and the `mailing_address` column cleanup (item 2).
-   Both are small, both make the Privacy Policy *true*. Highest leverage.
-2. **Wire Sentry** (item 3). Quick install, gets you real error visibility,
-   and makes the policy true.
-3. **Verify Vercel Analytics** (item 4). Quick.
-4. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
-   This is the meatier chunk. Required before opening to strangers because
-   messaging is on. Build the data model first (`user_reports`,
-   `user_blocks` tables), then the UI, then the admin queue.
-5. **UI polish items** — affiliate disclosure (item 9), suggested-match
+1. **Strip EXIF metadata on photo uploads (item 1).** Privacy Policy 2.6
+   claims this — it's currently not happening. GPS coordinates of a user's
+   home are a real leak. Highest-priority privacy item remaining.
+2. **Wire Sentry (item 3).** Quick install, gets real error visibility,
+   makes the policy true.
+3. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
+   Required before opening to strangers. Build data model first (`user_reports`,
+   `user_blocks`), then UI, then admin queue.
+4. **UI polish items** — affiliate disclosure (item 9), suggested-match
    language (item 10), address-reveal nudge (item 8). Quick wins.
-6. **The two Discover bugs** (items 11, 12, 13) — diagnose first.
-7. Then the deferred items in priority order — 2FA, the help system,
-   browse feed, etc. — based on what feels most valuable at that time.
+5. **Price ingestion bug (item 12).** Promo-variant prices bleeding into
+   regular printings inflating set values significantly. Diagnose the
+   ingestion code before fixing.
+6. Then deferred items — 2FA, help system, browse feed, etc.
 
-The legal docs are *live*. The auth surface is *working*. The infrastructure
-is *in place*. From here, it's about closing the gap between what the docs
-promise and what the code does (items 1-4), then adding the trust-and-safety
-features that make stranger-trading safe (items 5-7), then polish.
+**Done since last handover (19 May 2026):** items 11, 13 (Discover stale),
+13e (thread scroll), plus drag-to-reorder sets (new feature). Item 12 (price
+ingestion) is the only active bug remaining.
+
+The legal docs are *live*. The auth surface is *working*. Discover is *live
+and real-time*. From here: close the privacy doc / code gap (items 1, 3),
+add trust-and-safety (items 5-7), fix the price ingestion bug (item 12), then
+polish and deferred features.
