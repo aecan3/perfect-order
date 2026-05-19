@@ -92,7 +92,10 @@ function ConfirmContent() {
       }
 
       setStatus("confirmed");
-      // Brief pause so the "Confirmed!" message is readable before navigation.
+      // 800ms cosmetic delay — verification is fully complete at this point
+      // (verifyOtp and profile upsert are both awaited above). This is NOT
+      // a race against verifyOtp/getSession. The timer just lets the user
+      // read the "Confirmed!" state before the redirect fires.
       setTimeout(() => {
         router.push("/");
         router.refresh();
