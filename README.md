@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Master Setter
 
-## Getting Started
+Pokémon TCG collection tracker and trading PWA.
 
-First, run the development server:
+## What it does
+
+- Track your Pokémon TCG collection set by set — mark cards as owned, count duplicates, and see your progress toward a master set completion
+- Discover cards that friends own as duplicates and you're still missing
+- Propose trades with photo verification to confirm both parties are sending the right card
+- Real-time messaging between users to coordinate trades
+
+## Stack
+
+- **Next.js 16** (App Router, JavaScript)
+- **Supabase** — Postgres database, Auth, Realtime subscriptions, Storage (verification photos)
+- **Vercel** — hosting, auto-deploy from `main`, Analytics
+- **Tailwind CSS v4**
+- PWA — mobile-first, installable on iOS and Android via Safari/Chrome
+
+## Running locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create a `.env.local` file at the project root with the following variables:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```
+# Required — Supabase project credentials
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Required for price refresh (server-side API routes)
+POKEMON_TCG_API_KEY=
+POKETRACE_API_KEY=
+POKEMON_PRICE_TRACKER_KEY=
 
-## Learn More
+# Required for AI photo verification on trades
+ANTHROPIC_API_KEY=
 
-To learn more about Next.js, take a look at the following resources:
+# Optional — Google Places (card shop nearby feature)
+GOOGLE_PLACES_API_KEY=
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Optional — eBay affiliate campaign IDs (app works without these)
+NEXT_PUBLIC_EBAY_CAMPAIGN_AU=
+NEXT_PUBLIC_EBAY_CAMPAIGN_US=
+NEXT_PUBLIC_EBAY_CAMPAIGN_UK=
+NEXT_PUBLIC_EBAY_CAMPAIGN_DE=
+NEXT_PUBLIC_EBAY_CAMPAIGN_CA=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The app will run with only the two `NEXT_PUBLIC_SUPABASE_*` vars if you just want to browse — price refresh, photo verification, and Places will be no-ops.
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`app/` contains all routes following the Next.js App Router convention. `components/` holds shared UI components, including the navigation chrome (`MSShell`, `MSHeader`, `MSTabBar`) and feature-specific components. `lib/` contains Supabase client setup, shared query helpers (`lib/queries/`), and custom hooks (`lib/hooks/`). `public/` contains the service worker and PWA assets. `content/legal/` holds the Terms of Service and Privacy Policy as JS modules.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Auth is gated server-side by `proxy.js` at the project root — a Next.js 16 proxy handler that runs before every route. Any path not in its `PUBLIC_PATHS` list redirects unauthenticated users to `/welcome`.
+
+## Status
+
+Solo project in active development. Not yet open to the public.
