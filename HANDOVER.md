@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 19 May 2026. Single source of truth for the next session.*
-*Supersedes the previous handover note from 16 May.*
+*Updated end of session, 19 May 2026 (session 4). Single source of truth for the next session.*
+*Supersedes the previous handover note from session 3.*
 
 ---
 
@@ -170,10 +170,7 @@ require some of these to be true.
 
 ### Privacy / accuracy (reconcile the docs to the code)
 
-1. **Strip EXIF metadata on all photo uploads.** Privacy Policy 2.6 claims
-   this. Likely NOT happening currently. A photo taken at home contains GPS
-   coordinates of the home — a real leak. Process every uploaded image to
-   strip EXIF, GPS, and camera info before storing to Supabase.
+1. ~~**Strip EXIF metadata on all photo uploads.**~~ **DONE 19 May 2026 (commit `669ed0e`).** Full audit of all upload paths confirmed EXIF is already stripped incidentally via `canvas.toBlob()` in both upload paths (trade verification via `CameraCapture.jsx`; collection photos via `handlePhoto` in `app/set/[setId]/page.js`). Canvas only holds pixel data — no metadata survives the re-encode. The Privacy Policy claim is accurate. No library needed, no logic change. Explicit comments added to all three relevant sites (`CameraCapture.jsx`, `app/set/[setId]/page.js`, `verify-photo/route.js`) so the strip can't be silently removed by a future refactor. Existing photos in Storage are also clean — both paths have always used canvas. No backfill required.
 
 2. ~~**Remove the unused `mailing_address` column from `profiles`**~~
    **DONE 16 May 2026 (commit `0453cb5`).** Audit found the column had zero
@@ -222,9 +219,7 @@ require some of these to be true.
 
 ### Legal / UI compliance
 
-9. **Affiliate disclosure visible near eBay links.** Small "Affiliate link —
-   Master Setter may earn a small commission" text near actual eBay buttons,
-   not just in the ToS.
+9. ~~**Affiliate disclosure visible near eBay links.**~~ **DONE 19 May 2026 (commit `c96268e`).** Audit confirmed `FindOnline.jsx` already contained the disclosure text ("Master Setter may earn a commission from purchases made through links on this page. This does not affect the price you pay."). Fix: bumped opacity of that paragraph from 0.38 → 0.55 so it reads clearly. Also deleted two dead components (`FindOnEbay.jsx`, `FindCard.jsx`) that were never imported anywhere — found during audit.
 
 10. **"Suggested match" / "trade at your own risk" UI language.** Matching
     surfaces should describe matches as "suggested." Trade-action surface
@@ -339,20 +334,11 @@ require some of these to be true.
 
 ## 4. LOOSE THREADS FROM EARLIER WORK
 
-14. **Location explainer is currently triggered only from `TradePanel`
-    ("Card Shop Nearby").** It should fire whenever ANY location-using
-    feature is first hit. Refactor into a reusable `requestLocation()`
-    hook/helper that any feature (Discover proximity matching, Find Online
-    geo-filtering, etc.) can call. The component exists; just needs to
-    become the standard entry point. AI reviewers flagged this kind of
-    just-in-time consent is privacy-best-practice.
+14. ~~**Location explainer — extract into reusable hook.**~~ **DONE 19 May 2026 (commit `1cab435`).** `useLocation` hook created at `lib/hooks/useLocation.js`. Exposes `requestLocation({ onGranted, onDenied, title, purpose })` — checks `ms_location_explained` localStorage flag, renders `LocationExplainer` via portal if not yet seen, calls `navigator.geolocation.getCurrentPosition` via `callGeolocation` after consent. `LocationExplainer` now accepts optional `title`/`purpose` props (defaults to current card-shop copy) so any future caller can customise the sheet. `TradePanel` migrated: `showLocationExplainer` state and inline localStorage logic removed, replaced with `const { requestLocation, locationModal } = useLocation()`. `handleFindShops` now takes a `pos` parameter instead of calling geolocation itself.
 
 15. ~~**Password minimum length consistency.**~~ **DONE 17 May 2026 (commit `15a12f9`).** Bumped to 8 in both signup (`app/login/page.js`) and reset-password (`app/reset-password/page.js`). Supabase Auth dashboard also set to 8 (manual config). Both layers enforce.
 
-16. **The 800ms timer in `/auth/confirm`.** Tested and works, but never
-    explicitly confirmed it's a cosmetic post-success delay and not a race
-    against verifyOtp/getSession. Thirty-second check next time you're in
-    that file, given our project history with 800ms timers.
+16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear.
 
 ---
 
@@ -474,8 +460,7 @@ All safe at current scale; flagged so they're not forgotten.
 
 ## 10. CLEANUP — REAL BUT LOW-PRIORITY
 
-28. **Update project `README.md`** — still default create-next-app
-    boilerplate.
+28. ~~**Update project `README.md`**~~ **DONE 19 May 2026 (commit `3d6452f`).** Replaced create-next-app boilerplate with real project description: what Master Setter is, stack, running locally (all env vars documented), project structure, auth gate summary, status.
 
 29. **Move `design_handoff_navigation_chrome/` to `docs/design/`.**
 
@@ -604,26 +589,20 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **Strip EXIF metadata on photo uploads (item 1).** Privacy Policy 2.6
-   claims this — it's currently not happening. GPS coordinates of a user's
-   home are a real leak. Highest-priority privacy item remaining.
-2. **Wire Sentry (item 3).** Quick install, gets real error visibility,
-   makes the policy true.
-3. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
+1. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Quick install,
+   gets real error visibility, makes the policy true.
+2. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
    Required before opening to strangers. Build data model first (`user_reports`,
    `user_blocks`), then UI, then admin queue.
-4. **UI polish items** — affiliate disclosure (item 9), suggested-match
-   language (item 10), address-reveal nudge (item 8). Quick wins.
-5. **Price ingestion bug (item 12).** Promo-variant prices bleeding into
+3. **Price ingestion bug (item 12).** Promo-variant prices bleeding into
    regular printings inflating set values significantly. Diagnose the
    ingestion code before fixing.
-6. Then deferred items — 2FA, help system, browse feed, etc.
+4. **UI polish items** — suggested-match language (item 10), address-reveal
+   nudge (item 8). Quick wins.
+5. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (19 May 2026):** items 11, 13 (Discover stale),
-13e (thread scroll), plus drag-to-reorder sets (new feature). Item 12 (price
-ingestion) is the only active bug remaining.
+**Done since last handover (19 May 2026, session 4):** items 1 (EXIF stripping — already happening, made explicit), 9 (affiliate disclosure opacity + dead file cleanup), 14 (useLocation hook extracted), 16 (800ms timer audited and commented), 28 (README rewritten). Session 3 items already recorded: 11, 13 (Discover stale), 13e (thread scroll), drag-to-reorder sets (new feature).
 
-The legal docs are *live*. The auth surface is *working*. Discover is *live
-and real-time*. From here: close the privacy doc / code gap (items 1, 3),
-add trust-and-safety (items 5-7), fix the price ingestion bug (item 12), then
-polish and deferred features.
+Item 12 (price ingestion) is the only active bug remaining. All privacy/accuracy must-do items except item 3 (Sentry) are now closed.
+
+The legal docs are *live*. The auth surface is *working*. Discover is *live and real-time*. From here: wire Sentry (item 3), add trust-and-safety (items 5-7), fix the price ingestion bug (item 12), then UI polish (items 8, 10) and deferred features.
