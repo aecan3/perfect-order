@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Send } from "lucide-react";
@@ -59,8 +59,16 @@ export default function ThreadPage() {
   const inputRef = useRef(null);
   const channelRef = useRef(null);
   const initialScrollDone = useRef(false);
+  const initialScrollAtRef = useRef(0);
   const prevCountRef = useRef(0);
   const firstUnreadRef = useRef(null);
+
+  const handleAsyncContentLoaded = useCallback(() => {
+    if (!initialScrollDone.current) return;
+    if (Date.now() - initialScrollAtRef.current > 2000) return;
+    if (firstUnreadRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
+  }, []);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -134,12 +142,17 @@ export default function ThreadPage() {
   useEffect(() => {
     if (messages.length === 0) return;
     if (!initialScrollDone.current) {
-      if (firstUnreadRef.current) {
-        firstUnreadRef.current.scrollIntoView({ block: "start", behavior: "instant" });
-      } else {
-        bottomRef.current?.scrollIntoView({ behavior: "instant" });
-      }
-      initialScrollDone.current = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (firstUnreadRef.current) {
+            firstUnreadRef.current.scrollIntoView({ block: "start", behavior: "instant" });
+          } else {
+            bottomRef.current?.scrollIntoView({ behavior: "instant" });
+          }
+          initialScrollDone.current = true;
+          initialScrollAtRef.current = Date.now();
+        });
+      });
     } else if (messages.length > prevCountRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
@@ -246,7 +259,7 @@ export default function ThreadPage() {
                     {msg.message_type === "trade_verification_photo" && (
                       <div className="w-full max-w-[80%] rounded-2xl overflow-hidden border border-[var(--po-border)]" style={{ background: "var(--po-bg-soft)" }}>
                         {meta?.photoUrl ? (
-                          <img src={meta.photoUrl} alt={meta?.cardName || "Verified card"} className="w-full object-cover" style={{ maxHeight: 320 }} />
+                          <img src={meta.photoUrl} alt={meta?.cardName || "Verified card"} className="w-full object-cover" style={{ maxHeight: 320 }} onLoad={handleAsyncContentLoaded} />
                         ) : (
                           <div className="w-full flex items-center justify-center py-8 text-[var(--po-text-faint)] text-xs">Photo unavailable</div>
                         )}
@@ -307,7 +320,7 @@ export default function ThreadPage() {
                                 }}
                               >
                                 {c.imageUrl ? (
-                                  <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} />
+                                  <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} onLoad={handleAsyncContentLoaded} />
                                 ) : (
                                   <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
                                     {c.cardName}
