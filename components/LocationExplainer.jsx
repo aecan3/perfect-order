@@ -1,6 +1,14 @@
 "use client";
 
-export function LocationExplainer({ onEnable, onNotNow }) {
+const DEFAULT_TITLE = "Find a card shop nearby";
+const DEFAULT_PURPOSE = "search for card shops within 10km";
+
+export function LocationExplainer({
+  onEnable,
+  onNotNow,
+  title = DEFAULT_TITLE,
+  purpose = DEFAULT_PURPOSE,
+}) {
   return (
     <div
       style={{
@@ -36,7 +44,7 @@ export function LocationExplainer({ onEnable, onNotNow }) {
               fontFamily: '"IBM Plex Sans", sans-serif',
             }}
           >
-            Find a card shop nearby
+            {title}
           </h2>
         </div>
 
@@ -50,8 +58,8 @@ export function LocationExplainer({ onEnable, onNotNow }) {
           }}
         >
           Master Setter will ask for your{" "}
-          <strong style={{ color: "var(--po-text)" }}>precise location</strong> to
-          search for card shops within 10km.
+          <strong style={{ color: "var(--po-text)" }}>precise location</strong> to{" "}
+          {purpose}.
         </p>
 
         <ul

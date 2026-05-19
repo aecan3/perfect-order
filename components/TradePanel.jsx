@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle, Camera, Clock, ArrowLeftRight, MapPin, Users, Package, AlertTriangle } from "lucide-react";
 import { CameraCapture } from "@/components/CameraCapture";
-import { LocationExplainer } from "@/components/LocationExplainer";
 import { SuburbAutocomplete } from "@/components/SuburbAutocomplete";
+import { useLocation } from "@/lib/hooks/useLocation";
 
 const DISCLAIMER =
   "Photo confirmation indicates a card matching this description was photographed at the time of this trade. Master Setter does not authenticate, grade, or guarantee the condition or authenticity of any card. All trades are between users. Master Setter accepts no liability for trade disputes.";
@@ -23,8 +23,8 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   const [nearbyShops, setNearbyShops] = useState(null);
   const [shopsLoading, setShopsLoading] = useState(false);
   const [notesValue, setNotesValue] = useState("");
-  const [showLocationExplainer, setShowLocationExplainer] = useState(false);
   const [useSuburbFallback, setUseSuburbFallback] = useState(false);
+  const { requestLocation, locationModal } = useLocation();
   const [suburbSaved, setSuburbSaved] = useState(false);
   const channelRef = useRef(null);
 
@@ -138,25 +138,17 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
     setSuburbSaved(true);
   };
 
-  const handleFindShops = () => {
+  const handleFindShops = async (pos) => {
     setShopsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const res = await fetch(`/api/places?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
-          const data = await res.json();
-          setNearbyShops(data.shops || []);
-        } catch {
-          setNearbyShops([]);
-        } finally {
-          setShopsLoading(false);
-        }
-      },
-      () => {
-        setNearbyShops([]);
-        setShopsLoading(false);
-      }
-    );
+    try {
+      const res = await fetch(`/api/places?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
+      const data = await res.json();
+      setNearbyShops(data.shops || []);
+    } catch {
+      setNearbyShops([]);
+    } finally {
+      setShopsLoading(false);
+    }
   };
 
   return (
@@ -168,20 +160,7 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
         />
       )}
 
-      {showLocationExplainer && (
-        <LocationExplainer
-          onEnable={() => {
-            localStorage.setItem("ms_location_explained", "1");
-            setShowLocationExplainer(false);
-            handleFindShops();
-          }}
-          onNotNow={() => {
-            localStorage.setItem("ms_location_explained", "1");
-            setShowLocationExplainer(false);
-            setUseSuburbFallback(true);
-          }}
-        />
-      )}
+      {locationModal}
 
       <div className="mt-2 rounded-2xl border border-[var(--po-border)] overflow-hidden" style={{ background: "var(--po-bg-soft)" }}>
         <div className="px-4 py-3 border-b border-[var(--po-border)]">
@@ -338,12 +317,10 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
                         setLogisticsChoice("card_shop");
                         setUseSuburbFallback(false);
                         setSuburbSaved(false);
-                        const explained = typeof localStorage !== "undefined" && localStorage.getItem("ms_location_explained");
-                        if (!explained) {
-                          setShowLocationExplainer(true);
-                        } else {
-                          handleFindShops();
-                        }
+                        requestLocation({
+                          onGranted: (pos) => handleFindShops(pos),
+                          onDenied: () => setUseSuburbFallback(true),
+                        });
                       }}
                     />
                   </div>
