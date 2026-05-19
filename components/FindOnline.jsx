@@ -124,7 +124,7 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
 
         <p style={{
           fontSize: 11,
-          color: "rgba(244,244,246,0.38)",
+          color: "rgba(244,244,246,0.55)",
           fontFamily: '"IBM Plex Mono", monospace',
           letterSpacing: "0.04em",
           marginBottom: 16,
