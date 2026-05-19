@@ -812,6 +812,9 @@ export default function SetTrackerPage() {
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        // EXIF strip: canvas.toBlob() produces a fresh JPEG from pixel data only.
+        // The original file (which may contain GPS coordinates) is not propagated.
+        // Resize and strip happen together in this single canvas pass.
         canvas.toBlob(
           async (blob) => {
             if (!blob) return;

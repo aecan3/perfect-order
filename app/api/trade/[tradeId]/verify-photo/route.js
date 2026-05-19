@@ -119,7 +119,9 @@ Respond in JSON only:
     return NextResponse.json({ confirmed: false, aiResult });
   }
 
-  // Upload verification photo to storage
+  // Upload verification photo to storage.
+  // The bytes here originated from canvas.toBlob() in CameraCapture.jsx —
+  // they contain no EXIF. Server-side strip not required.
   let photoUrl = null;
   try {
     const fileName = `verification/${tradeId}/${user.id}-${Date.now()}.jpg`;

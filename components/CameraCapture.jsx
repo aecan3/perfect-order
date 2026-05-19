@@ -107,6 +107,9 @@ export function CameraCapture({ onCapture, onClose }) {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext("2d").drawImage(video, 0, 0);
+    // EXIF strip: canvas.toBlob() emits raw pixel data with no metadata.
+    // Any EXIF (including GPS) in the source frame is discarded here.
+    // Do not bypass this by reading the video frame any other way.
     canvas.toBlob((blob) => {
       const reader = new FileReader();
       reader.onloadend = () => {
