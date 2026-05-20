@@ -1,3 +1,6 @@
+// HIDDEN FOR LAUNCH: grand_master_completion notification type deliberately
+// disabled in this file. Any existing GM notification rows in the DB will
+// render with default styling. See handover for re-enable steps.
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -18,7 +21,7 @@ const TYPE_ICON = {
   trade_declined:           { Icon: XCircle,          color: "var(--ms-dim)" },
   trade_verification:       { Icon: Camera,           color: "var(--ms-dim)" },
   master_completion:        { Icon: Award,            color: "var(--ms-dim)" },
-  grand_master_completion:  { Icon: Crown,            color: "var(--ms-gold)" },
+  // HIDDEN FOR LAUNCH: grand_master_completion: { Icon: Crown, color: "var(--ms-gold)" },
 };
 
 function formatTs(iso) {

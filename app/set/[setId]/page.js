@@ -1,4 +1,8 @@
-﻿"use client";
+﻿// HIDDEN FOR LAUNCH: Grand Master feature deliberately disabled in this file.
+// Affected blocks: GM section render, GM completion detection, GM value aggregation.
+// See handover for re-enable steps. The data layer (gmPrintings state, GM fetch,
+// gmCardIds filter) is intentionally preserved — do not remove it.
+"use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -746,17 +750,17 @@ export default function SetTrackerPage() {
           }
         }
 
-        // Check Grand Master completion (master must also be complete)
-        if (gmPrintings.length > 0) {
-          const updatedOwned = { ...ownedPrintings, [printing.id]: { checked: true } };
-          const allMasterPrints = Object.values(printingsByCard).flat();
-          const isMasterComplete = allMasterPrints.length > 0 && allMasterPrints.every((p) => updatedOwned[p.id]?.checked);
-          if (isMasterComplete && gmPrintings.every((p) => updatedOwned[p.id]?.checked)) {
-            supabase.from("grand_master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
-            const gmItem = { type: "grand_master", setName: setRow?.name || "", setLogoUrl: setRow?.logo_url || "" };
-            setCelebration((cur) => { if (!cur) return gmItem; celebrationQueueRef.current.push(gmItem); return cur; });
-          }
-        }
+        // HIDDEN FOR LAUNCH: GM completion detection disabled. Uncomment to re-enable.
+        // if (gmPrintings.length > 0) {
+        //   const updatedOwned = { ...ownedPrintings, [printing.id]: { checked: true } };
+        //   const allMasterPrints = Object.values(printingsByCard).flat();
+        //   const isMasterComplete = allMasterPrints.length > 0 && allMasterPrints.every((p) => updatedOwned[p.id]?.checked);
+        //   if (isMasterComplete && gmPrintings.every((p) => updatedOwned[p.id]?.checked)) {
+        //     supabase.from("grand_master_completions").upsert({ user_id: user.id, set_id: setId }, { onConflict: "user_id,set_id" }).then(() => {});
+        //     const gmItem = { type: "grand_master", setName: setRow?.name || "", setLogoUrl: setRow?.logo_url || "" };
+        //     setCelebration((cur) => { if (!cur) return gmItem; celebrationQueueRef.current.push(gmItem); return cur; });
+        //   }
+        // }
 
         await supabase.from("collection_entries").upsert(
           {
@@ -927,8 +931,9 @@ export default function SetTrackerPage() {
   const checkedDisplay = ownedPrintingCount;
   const totalDisplay = totalPrintings;
   const remainingDisplay = totalDisplay - checkedDisplay;
-  const ownedValueDisplay = ownedPrintingValue + gmOwnedValue;
-  const totalValueDisplay = totalPrintingValue + gmTotalValue;
+  // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
+  const ownedValueDisplay = ownedPrintingValue;
+  const totalValueDisplay = totalPrintingValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
@@ -1348,8 +1353,8 @@ export default function SetTrackerPage() {
               );
             })}
 
-            {/* Grand Master section */}
-            {gmTotalCount > 0 && (
+            {/* Grand Master section — HIDDEN FOR LAUNCH: change `false &&` to remove when re-enabling */}
+            {false && gmTotalCount > 0 && (
               <div style={{ marginTop: 24, borderTop: "1px solid rgba(244,244,246,0.08)", paddingTop: 16 }}>
                 <button
                   onClick={() => setGrandMasterExpanded((v) => !v)}

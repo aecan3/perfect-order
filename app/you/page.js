@@ -1,3 +1,7 @@
+// HIDDEN FOR LAUNCH: Grand Master stat cell deliberately disabled in this file.
+// Stats sub-line restructured from 3 stats to 2 while GM is hidden.
+// To re-enable: restore · {stats.grandMasters} ... between SETS and CARDS.
+// See handover for re-enable steps.
 "use client";
 
 import { useState, useEffect } from "react";
@@ -157,7 +161,7 @@ export default function YouPage() {
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
               }}>
-                {stats.sets} {stats.sets === 1 ? "SET" : "SETS"} · {stats.grandMasters} {stats.grandMasters === 1 ? "GRAND MASTER" : "GRAND MASTERS"} · {stats.cards} {stats.cards === 1 ? "CARD" : "CARDS"}
+                {stats.sets} {stats.sets === 1 ? "SET" : "SETS"} · {stats.cards} {stats.cards === 1 ? "CARD" : "CARDS"}
               </div>
             </div>
           </div>
