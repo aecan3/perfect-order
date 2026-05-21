@@ -141,6 +141,22 @@ favourites. User works primarily on iPhone PWA.
   Files: `app/page.js`, `components/home/SortableSetCard.jsx`,
   `supabase/migrations/20260519000000_add_sort_order_to_user_set_preferences.sql`.
   Commit: `af71bc8`.
+- **Card error reporting (`card_reports`)** — Users can flag data issues
+  (wrong image, wrong name/number, wrong rarity, wrong price, missing card or
+  variant, other) via a floating flag FAB on the set page. This is the
+  **data-corrections funnel** and is entirely separate from the upcoming
+  `user_reports` trust-and-safety funnel (items 5–7). The two funnels have
+  different tables, different categories, and will have different admin queues.
+  Mount site: `app/set/[setId]/page.js` — FAB is visible across all three view
+  modes (rarity, binder, missing) from a single mount. The "four surfaces"
+  phrasing in the original brief was based on a mistaken assumption that
+  rarity/binder/missing were separate routes — they are not.
+  Components: `components/ReportCardFAB.jsx` (flag button + toast),
+  `components/ReportCardForm.jsx` (bottom-sheet form, `createPortal` to body,
+  `zIndex: 9999`). Migration:
+  `supabase/migrations/20260521000000_create_card_reports_table.sql`.
+  RLS: authenticated insert (`reporter_id = auth.uid()`) + select-own only —
+  no client-side update/delete. **Admin queue is not yet built** — see item 38.
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
@@ -498,6 +514,17 @@ NOT next-session priorities. Captured to not lose them.
 22. **Push notifications** — friend gets a duplicate of your favourited
     card; PWA notification API.
 
+38. **Admin queue for `card_reports`.** The `card_reports` table is live and
+    collecting submissions. An admin-only view is not yet built. Needs: a
+    protected admin route, a table view of open reports (category, details,
+    reporter handle, created_at, status), and action buttons (mark
+    in_progress, resolved, dismissed) that update `status` and optionally
+    `resolution_note` + `resolved_at` via the service role. Access control:
+    check `profiles.is_admin` or similar flag, or use a hard-coded admin
+    uid list for the first version. Keep this separate from the `user_reports`
+    T&S admin queue (item 7) — they serve different purposes and will have
+    different workflows.
+
 ---
 
 ## 8. DATA — DEFERRED
@@ -776,13 +803,17 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (21 May 2026, session 5):** Data correctness sprint
+**Done since last handover (21 May 2026, sessions 5–6):** Data correctness sprint
 (see section 3a) — Victini rarity fixes (rsv10pt5-172, zsv10pt5-171), Archen
 rarity fix (rsv10pt5-131), PRE80 Dudunsparce subtypes + Master Ball insert,
 Black Bolt Master Ball coverage audit, Common/Uncommon phantom holofoil cleanup
 (22 rows deleted, 8 kept as legitimate det1, 1 resolved via rarity fix), ID/number
 mismatch audit (1 isolated artefact deferred). Pattern variant pricing for sv8pt5
-+ sv10 shipped (commit `924738e`); zsv10pt5 + rsv10pt5 pending PPT limit reset.
++ sv10 shipped (commit `924738e`); zsv10pt5 + rsv10pt5 pending PPT limit reset
+(PPT free-tier exhausted same UTC day — retry after 00:00 UTC next day).
+Card error reporting shipped (commits `a5e9318`, `c74eee5`): `card_reports` table,
+`ReportCardFAB`, `ReportCardForm` — data-corrections funnel live on set page.
+Admin queue for `card_reports` deferred (item 38).
 
 Item 12 now has three distinct sub-problems. Problem 2 (pattern variants) is 50%
 shipped. Problems 1 and 3 are diagnosed and decided, not yet implemented. The
@@ -790,6 +821,6 @@ phantom-row audit across all five categories is fully closed. All privacy/accura
 must-do items except item 3 (Sentry) are closed.
 
 The legal docs are *live*. The auth surface is *working*. Discover is *live and
-real-time*. From here: finish pattern variant pricing, wire Sentry, add
-trust-and-safety (items 5-7), address remaining price pipeline problems, then UI
-polish and deferred features.
+real-time*. From here: complete pattern variant pricing (PPT probe after UTC reset),
+wire Sentry, add trust-and-safety (items 5-7), address remaining price pipeline
+problems, then UI polish and deferred features.
