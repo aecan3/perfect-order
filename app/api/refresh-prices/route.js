@@ -12,6 +12,23 @@ const POKESCOPE_BASE  = "https://pokescope.app/card";
 // ME sets have no PokeTrace individual card data - skip source 1 for these
 const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
 
+// PPT numeric set IDs for sets with pokeball/masterball pattern variant products.
+// Pattern variants are separate TCGPlayer products (separate product IDs) from the
+// standard card listing; /api/v2/cards?setId= is the only way to enumerate them.
+//
+// To find the PPT setId for a new set:
+//   1. curl -sL https://prices.pokemontcg.io/tcgplayer/{dbSetId}-1 -o /dev/null -w "%{url_effective}"
+//      → extracts numeric TCGPlayer product ID from the redirect URL
+//   2. GET /api/v2/cards?tcgPlayerId={productId} → read data.setId from the response
+//
+// null = setId not yet confirmed; supplemental pass is skipped for that set.
+const PPT_PATTERN_SET_IDS = {
+  sv8pt5:   23821,  // Prismatic Evolutions — confirmed
+  sv10:     24269,  // Destined Rivals — confirmed
+  zsv10pt5: null,   // Black Bolt — probe TCGPlayer product 642450 when PPT daily limit resets
+  rsv10pt5: null,   // White Flare — probe TCGPlayer product 642118 when PPT daily limit resets
+};
+
 // Skip external API fetch if prices were refreshed within this window
 const PRICE_STALENESS_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -355,6 +372,82 @@ function pptVariantPrice(printingId, setId, cardNumber, prices) {
   }
 }
 
+// -- Source 3b: PPT pattern variants (set-level, supplemental) ---------------
+// Queries the PPT set endpoint to enumerate ALL products for a set, filters for
+// "(Poke Ball Pattern)" / "(Master Ball Pattern)" product names, and maps them to
+// existing pokeball_reverse_holofoil / masterball_reverse_holofoil printing rows.
+//
+// Runs as a supplemental pass independently of the main waterfall — does NOT
+// consume the `result` variable and is never gated by whether ptcgio succeeded.
+// ME sets are excluded (their pokeball rows are handled by PokeScope's default case).
+async function tryPptPatterns(setId, pptSetId, allPrintings) {
+  if (!process.env.POKEMON_PRICE_TRACKER_KEY) return null;
+
+  const existingIds = new Set(allPrintings.map((p) => p.id));
+  const priceMap = new Map();
+  let offset = 0, requestsUsed = 0;
+
+  while (true) {
+    let res;
+    try {
+      res = await fetch(
+        `${PPT_BASE}/cards?setId=${pptSetId}&limit=50&offset=${offset}&includeHistory=false`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.POKEMON_PRICE_TRACKER_KEY}`,
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(FETCH_MS),
+        }
+      );
+      requestsUsed++;
+    } catch (err) {
+      console.warn(`[PPT Patterns] fetch error for ${setId} offset ${offset}: ${err.message}`);
+      break;
+    }
+
+    if (res.status === 429) {
+      console.warn(`[PPT Patterns] rate limited for ${setId} at offset ${offset} - stopping`);
+      break;
+    }
+    if (!res.ok) {
+      console.warn(`[PPT Patterns] ${res.status} for ${setId} at offset ${offset} - stopping`);
+      break;
+    }
+
+    const json = await res.json();
+    const products = json.data ?? [];
+
+    for (const product of products) {
+      const name = product.name ?? "";
+      let printingType;
+      if (name.includes("(Poke Ball Pattern)")) {
+        printingType = "pokeball_reverse_holofoil";
+      } else if (name.includes("(Master Ball Pattern)")) {
+        printingType = "masterball_reverse_holofoil";
+      } else {
+        continue;
+      }
+
+      const cardNum = parseInt(String(product.cardNumber ?? "").split("/")[0], 10);
+      if (isNaN(cardNum)) continue;
+
+      const pid = `${setId}-${cardNum}-${printingType}`;
+      if (!existingIds.has(pid)) continue;
+
+      const market = product.prices?.market;
+      if (market == null || market <= 0) continue;
+
+      priceMap.set(pid, { price_usd: market });
+    }
+
+    if (!json.metadata?.hasMore) break;
+    offset += 50;
+  }
+
+  return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
+}
+
 // -- DB write helper ----------------------------------------------------------
 // UPDATE only - never INSERT. Printing rows are seeded separately; this route
 // only writes price columns on existing rows. Upsert would fail with NOT NULL
@@ -647,23 +740,60 @@ async function processSet(admin, userId, setId, slugMap) {
     }
   }
 
+  // -- Pattern variants (PPT set-level, non-ME sets only) ----------------------
+  // Supplemental pass — runs regardless of waterfall outcome above.
+  // Targets only pokeball_reverse_holofoil and masterball_reverse_holofoil rows.
+  // These are separate TCGPlayer products not discoverable via ptcgio or PokeTrace.
+  let patternResult = null;
+  let patternRequestsUsed = 0;
+  if (!ME_SETS.has(setId)) {
+    const pptSetId = PPT_PATTERN_SET_IDS[setId];
+    if (pptSetId) {
+      const patternStatus = sourceStatus(setId, "ppt_patterns");
+      if (patternStatus === "skip") {
+        console.log(`${L} PPT Patterns: skipped (returned null within last 24h)`);
+      } else {
+        const t = Date.now();
+        console.log(`${L} PPT Patterns: trying pptSetId=${pptSetId}`);
+        try {
+          patternResult = await tryPptPatterns(setId, pptSetId, printings);
+        } catch (err) {
+          console.warn(`${L} PPT Patterns threw: ${err.message}`);
+        }
+        recordSource(setId, "ppt_patterns", patternResult !== null);
+        console.log(
+          `${L} PPT Patterns: ${patternResult ? `${patternResult.map.size} prices` : "null"} in ${Date.now() - t}ms`
+        );
+        if (patternResult) patternRequestsUsed = patternResult.requestsUsed;
+      }
+    }
+  }
+
   console.log(
     `[Pricing] ${setId}: source=${priceSource}, ` +
-    `priced=${result?.map.size ?? 0}/${printings.length} printings, ` +
-    `${requestsUsed} API requests`
+    `priced=${result?.map.size ?? 0}/${printings.length} printings` +
+    (patternResult ? `, patterns=${patternResult.map.size}` : "") +
+    `, ${requestsUsed + patternRequestsUsed} API requests`
   );
 
-  if (!result) {
+  if (!result && !patternResult) {
     return {
       setId, cardsUpdated: 0, previousValue,
-      newValue: previousValue, requestsUsed, priceSource,
+      newValue: previousValue,
+      requestsUsed: requestsUsed + patternRequestsUsed,
+      priceSource,
     };
   }
 
-  // 3. Build upsert rows from the winning source's price map
+  // 3. Build update rows from the winning source + any pattern prices
+  const ts = new Date().toISOString();
   const updates = [];
-  for (const [pid, prices] of result.map) {
-    updates.push({ id: pid, ...prices, updated_at: new Date().toISOString() });
+  for (const [pid, prices] of result?.map ?? []) {
+    updates.push({ id: pid, ...prices, updated_at: ts });
+  }
+  // Pattern prices are additive — pokeball/masterball IDs never overlap standard printings
+  for (const [pid, prices] of patternResult?.map ?? []) {
+    updates.push({ id: pid, ...prices, updated_at: ts });
   }
 
   // Log first 5 for monitoring
@@ -697,6 +827,10 @@ async function processSet(admin, userId, setId, slugMap) {
     .eq("user_id", userId)
     .eq("set_id", setId);
 
-  return { setId, cardsUpdated: updates.length, previousValue, newValue, requestsUsed, priceSource };
+  return {
+    setId, cardsUpdated: updates.length, previousValue, newValue,
+    requestsUsed: requestsUsed + patternRequestsUsed,
+    priceSource,
+  };
 }
 
