@@ -19,8 +19,6 @@ const CATEGORY_LABELS = {
 };
 
 export async function POST(request) {
-  // TEMPORARY
-  console.log("[card-report-notify] ALIVE", { url: request.url });
   // 1. Shared-secret auth — Supabase sends this in the Authorization header.
   const authHeader = request.headers.get("authorization");
   if (!WEBHOOK_SECRET || authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
@@ -34,9 +32,6 @@ export async function POST(request) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-
-  // TEMPORARY — remove once payload shape is confirmed
-  console.log("[card-report-notify] received payload:", JSON.stringify(payload));
 
   if (payload.type !== "INSERT" || payload.table !== "card_reports") {
     return NextResponse.json({ ok: true, ignored: true });
