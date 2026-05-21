@@ -56,6 +56,10 @@ const PUBLIC_PATHS = new Set([
   "/icon-512.png",
   "/apple-touch-icon.png",
   "/favicon.ico",
+  // Supabase webhook endpoint — receives INSERT events from card_reports table.
+  // Authenticated via shared-secret Authorization header (CARD_REPORT_WEBHOOK_SECRET),
+  // NOT via user session. Must be public to receive POSTs from Supabase infrastructure.
+  "/api/admin/card-report-notify",
 ]);
 
 export async function proxy(request) {
