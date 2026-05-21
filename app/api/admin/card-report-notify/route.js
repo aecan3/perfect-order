@@ -33,6 +33,9 @@ export async function POST(request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  // TEMPORARY — remove once payload shape is confirmed
+  console.log("[card-report-notify] received payload:", JSON.stringify(payload));
+
   if (payload.type !== "INSERT" || payload.table !== "card_reports") {
     return NextResponse.json({ ok: true, ignored: true });
   }
