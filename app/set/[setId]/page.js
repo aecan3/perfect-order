@@ -1707,7 +1707,7 @@ export default function SetTrackerPage() {
           </div>
         </div>
       )}
-      <ReportCardFAB />
+      <ReportCardFAB setId={setId} />
     </MSShell>
   );
 }

@@ -11,7 +11,7 @@ const FAB_BOTTOM = "calc(64px + env(safe-area-inset-bottom, 0px) + 16px)";
 // Toast sits above the FAB.
 const TOAST_BOTTOM = "calc(64px + env(safe-area-inset-bottom, 0px) + 80px)";
 
-export function ReportCardFAB() {
+export function ReportCardFAB({ setId }) {
   const [mounted, setMounted]       = useState(false);
   const [isOpen, setIsOpen]         = useState(false);
   const [showToast, setShowToast]   = useState(false);
@@ -84,6 +84,7 @@ export function ReportCardFAB() {
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         onSuccess={handleSuccess}
+        setId={setId}
       />
       {toast}
     </>

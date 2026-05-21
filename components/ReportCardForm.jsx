@@ -16,7 +16,7 @@ const CATEGORIES = [
 const DETAILS_WARN = 1000;
 const DETAILS_MAX  = 2000;
 
-export function ReportCardForm({ isOpen, onClose, onSuccess }) {
+export function ReportCardForm({ isOpen, onClose, onSuccess, setId }) {
   const [mounted, setMounted]       = useState(false);
   const [category, setCategory]     = useState("");
   const [details, setDetails]       = useState("");
@@ -87,6 +87,7 @@ export function ReportCardForm({ isOpen, onClose, onSuccess }) {
         reporter_id: user.id,
         category,
         details: details.trim(),
+        set_id: setId ?? null,
       });
       if (insertErr) throw insertErr;
       onSuccess();
