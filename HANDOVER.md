@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 19 May 2026 (session 4). Single source of truth for the next session.*
-*Supersedes the previous handover note from session 3.*
+*Updated end of session, 21 May 2026 (session 5). Single source of truth for the next session.*
+*Supersedes the previous handover note from session 4.*
 
 ---
 
@@ -223,6 +223,15 @@ require some of these to be true.
    inline reminder ("only share your address with someone you trust... etc").
    Optional polish but explicitly flagged by AI reviewers.
 
+### Pricing infrastructure (required before soft launch)
+
+10a. **Upgrade PPT API plan to $9.99/mo (20,000 credits/day).** Free tier
+    (100 credits/day) will be exhausted immediately under multi-user load.
+    Worst-case pattern-variant pricing costs ~24 PPT credits per full 4-set
+    refresh cycle — fine for single-user dev, catastrophic at launch.
+    Account: PokemonPriceTracker.com → Settings → Plans / Billing.
+    **Do this before soft launch — soft launch is not single-user.**
+
 ### Legal / UI compliance
 
 9. ~~**Affiliate disclosure visible near eBay links.**~~ **DONE 19 May 2026 (commit `c96268e`).** Audit confirmed `FindOnline.jsx` already contained the disclosure text ("Master Setter may earn a commission from purchases made through links on this page. This does not affect the price you pay."). Fix: bumped opacity of that paragraph from 0.38 → 0.55 so it reads clearly. Also deleted two dead components (`FindOnEbay.jsx`, `FindCard.jsx`) that were never imported anywhere — found during audit.
@@ -241,76 +250,75 @@ require some of these to be true.
     (a) No subscription: viewer's own collection changes weren't triggering a Discover refetch. Fixed by adding `useTableRefetch` on `collection_entries` in the Discover page and home page.
     (b) 1000-row truncation: `getDiscoverMatches` myHave query was silently capped by PostgREST default — raff had 2,618 checked entries, so the query only returned 1,000 and matched wrong cards as still-missing. Fixed with the standard paginated loop (PAGE=1000, `.range()`) in `lib/queries/discover.js`.
 
-12. **Inflated set values across the app — price ingestion bug (DIAGNOSED
-    16 May 2026, not fixed).** Originally logged as "Perfect Order showing
-    close to A$1000, suspected too high." The original three hypotheses
-    (GM filter, duplicate multi-counting, unticked summing) were all
-    **wrong**. Real bug, diagnosed via SQL + external price-source check:
+12. **Price pipeline — three independent problems (fully diagnosed 21 May
+    2026, partially fixed).** Originally logged as inflated set values
+    (~A$878 for Perfect Order vs gut-check ~A$200). The pipeline is
+    `PokeTrace → ptcgio → PPT → PokeScope` in a waterfall; once any source
+    sets `result`, subsequent sources are skipped.
 
-    **The price-refresh job is writing wrong prices to `printings.price_usd`.**
-    Specifically, when a card has a high-value promo variant alongside
-    regular pack-pulled printings, the promo's price is being written to
-    the regular Holo and Reverse Holo printings.
+    **Problem 1 — ME-set promo bleed (Gengar me3-50 example)**
+    PokeScope scrapes one HTML market price per card and applies a 0.85×
+    reverse-holo multiplier with no cross-check against any second source.
+    The $221 Gengar price on the regular holofoil is PokeScope reading the
+    GameStop/EB Games promo's market value rather than the pack-pulled card.
+    Magnitude: removing just the Gengar mis-pricing drops Perfect Order from
+    US$570 (~A$878) to ~US$162 (~A$250).
+    *Fix decided:* Use ptcgio as a secondary verification pass for ME sets;
+    log and skip prices that diverge >20% from ptcgio's value. ~1–2 hours.
+    **Not yet implemented.** Defer to next pricing session.
 
-    **Worked example — Gengar #50 (`me3-50`), Perfect Order:**
-    - `me3-50-holofoil` price in DB: **$220.73 USD** (updated 16 May)
-    - `me3-50-reverse_holofoil` price in DB: **$187.62 USD** (updated 16 May)
-    - Actual market price (per packmagik/PriceCharting, May 2026):
-      regular Holo and Reverse Holo are ~$2–3 USD each
-    - The GameStop/EB Games Exclusive promo variant of Gengar #50 is the
-      $270 USD card — that's a separate printing not currently in our DB.
-    - The promo's price is being mapped onto the regular printings.
+    **Problem 2 — Pattern variants stuck at $0.00 (sv8pt5, sv10, zsv10pt5,
+    rsv10pt5 pokeball/masterball printings)**
+    ptcgio runs first and succeeds for SV sets → `result` is set → PPT branch
+    never runs. Even if PPT ran, its per-card product-ID discovery resolves
+    only the standard TCGPlayer product — pokeball/masterball variants are
+    **separate TCGPlayer products** (IDs 610541+ for sv8pt5) not discoverable
+    via ptcgio. PPT's set endpoint (`/api/v2/cards?setId=N`) is the only way
+    to enumerate them; products are identified by `"(Poke Ball Pattern)"` /
+    `"(Master Ball Pattern)"` in the product name.
+    *Fix shipped (21 May 2026, commit `924738e`):* New `PPT_PATTERN_SET_IDS`
+    constant + `tryPptPatterns()` supplemental pass added to
+    `app/api/refresh-prices/route.js`. Runs after the waterfall, independent
+    of whether ptcgio succeeded. sv8pt5 (PPT setId 23821) and sv10 (PPT setId
+    24269) are wired. zsv10pt5 and rsv10pt5 have `null` placeholders pending
+    a PPT probe.
+    **Pending — PPT free-tier daily limit resets at 00:00 UTC. Run these
+    probes next time at the computer:**
+    ```powershell
+    $key = "pokeprice_free_084011e9d0f4f2a5eb86b0b27cb5d33adcc42e680af21da0"
+    # zsv10pt5 (Black Bolt) — TCGPlayer product 642450
+    $r = Invoke-RestMethod -Uri "https://www.pokemonpricetracker.com/api/v2/cards?tcgPlayerId=642450" `
+         -Headers @{ Authorization = "Bearer $key"; Accept = "application/json" }
+    Write-Host "zsv10pt5 setId: $($r.data.setId)"
+    Start-Sleep -Seconds 3
+    # rsv10pt5 (White Flare) — TCGPlayer product 642118
+    $r = Invoke-RestMethod -Uri "https://www.pokemonpricetracker.com/api/v2/cards?tcgPlayerId=642118" `
+         -Headers @{ Authorization = "Bearer $key"; Accept = "application/json" }
+    Write-Host "rsv10pt5 setId: $($r.data.setId)"
+    ```
+    Hardcode both values in `PPT_PATTERN_SET_IDS` (lines 28–29 of
+    `app/api/refresh-prices/route.js`), commit, push, trigger one refresh per
+    set, verify pattern rows populate. me2pt5 is untouched — still PokeScope.
 
-    **Magnitude:** Removing just the Gengar over-pricing from @alex's
-    Perfect Order total drops it from US$570 (~A$878) to ~US$162 (~A$250) —
-    matches the user's gut-check estimate of A$200. So the bug is almost
-    entirely concentrated in a small number of mis-priced "chase" cards
-    per set, not a broad scaling error.
-
-    **Scope:** Likely app-wide. Any set with a promo variant of a card
-    (GameStop exclusives, EB Games exclusives, Build & Battle promos,
-    pre-release promos, etc.) is at risk. Note the related observation
-    under item 24: Prismatic Evolutions has been flagged at 181 vs 180
-    community-reported cards — same likely cause (promo printings
-    missing from our `printings` table, prices bleeding into existing
-    rows). Worth investigating these together.
-
-    **Next-session investigation plan:**
-    1. Find the price-refresh code. Likely a scheduled job, a script in
-       `scripts/`, or an API route. Source is `pokemontcg.io`.
-    2. Inspect the raw pokemontcg.io API response for `me3-50` (or
-       whatever their ID format is). The API returns a `tcgplayer.prices`
-       object with sub-keys (`holofoil`, `reverseHolofoil`, `normal`,
-       and likely variant entries for promos). Determine whether the
-       ingestion is picking the wrong sub-key, taking a max across all
-       variants, or matching by card-id rather than by printing-specific
-       key.
-    3. **Schema decision:** should promo variants get their own
-       `printings` row (e.g. `me3-50-promo-gamestop`)? Currently they
-       don't, and the price is leaking. If yes, the migration is small
-       but the ingestion logic needs to know how to create new rows from
-       API responses, not just update existing ones.
-    4. Once fixed, re-run the price refresh against ALL sets to correct
-       existing wrong prices. This is a data backfill, not just a code
-       fix.
+    **Problem 3 — ECard/Platinum holofoil stale prices**
+    ptcgio builds PID `ecard3-N-normal` but DB rows are typed `ecard3-N-holofoil`.
+    TCGPlayer prices these eras under the `normal` key, but our DB rows use
+    `holofoil` type (from `seed-manual-printings.mjs`). ptcgio writes to nowhere.
+    PokeTrace is also currently failing for ECard sets (last success 2026-05-08).
+    *Fix decided:* Auto-detect rule — if a set has zero non-holofoil printings in
+    the DB → use the API's `normal` key price for holofoil rows. ~1–2 hours.
+    **Not yet implemented.** Defer to next pricing session.
 
     **What this bug is NOT:**
-    - Not a calculator bug. The set-value math is faithfully summing
-      whatever prices it's given.
-    - Not a GM-tier filter bug. Perfect Order has zero GM-tier printings
-      (every printing in the set has `collection_tier = 'master'`).
-    - Not a duplicate-counting bug. Query confirmed zero hidden duplicate
-      rows for @alex's Perfect Order entries.
+    - Not a calculator bug. The set-value math faithfully sums whatever prices
+      it's given.
+    - Not a GM-tier filter bug. Perfect Order has zero GM-tier printings.
+    - Not a duplicate-counting bug. Query confirmed zero hidden duplicate rows.
     - Not a currency bug. Conversion rate is plausible (~0.65 AUD/USD).
 
-    **Related minor finding worth capturing:** `collection_entries.duplicate_count`
-    is almost entirely unused (3 across 193 rows for @alex's Perfect Order).
-    Vestigial column, like `mailing_address` was. Worth a future audit
-    pass — either start populating it via the UI or drop it. Not urgent.
-
-    **SQL diagnostic queries used to find this** are captured in this
-    session's chat — re-run them on other affected sets to confirm scope
-    before fixing.
+    **Related minor finding:** `collection_entries.duplicate_count` is almost
+    entirely unused (3 across 193 rows for @alex's Perfect Order). Vestigial
+    column like `mailing_address` was. Future audit: populate via UI or drop.
 
 13. ~~**Spewpa-style stale Discover issue.**~~ **DONE 19 May 2026 (same fix as item 11).** Same two-part root cause: no collection-changes subscription + myHave 1000-row truncation. Both resolved.
 
@@ -335,6 +343,72 @@ require some of these to be true.
     All three symptoms (opens in middle, yanks on new message, lands in middle after returning) are resolved.
 
 13f. **Prevent use of leaked passwords (Supabase Attack Protection — deferred).** Currently disabled. Dashboard → Authentication → Attack Protection → "Prevent use of leaked passwords" toggle — runs new and changed passwords against HaveIBeenPwned. Small defence-in-depth step. Not urgent.
+
+---
+
+## 3a. DATA CORRECTNESS SPRINT — 21 MAY 2026 (SESSION 5)
+
+All items below were completed in full this session.
+
+**S5-1. Victini rarity fixes (rsv10pt5-172, zsv10pt5-171).** Both Victinis were
+tagged `'Rare'` at ingestion. Community consensus verified across TCG Collector,
+Sports Card Investor, PSA, eBay, and Cash Cards Unlimited: correct rarity is
+`'Black White Rare'` (abbreviated BWR on card). Single transaction-wrapped
+`UPDATE` to both rows. Closes the secret-rare audit's 45-candidate list
+(43 API-confirmed correct, 2 manually fixed).
+
+**S5-2. Archen #131 rarity fix (rsv10pt5-131).** Tagged `'Uncommon'` at
+ingestion, actually an `'Illustration Rare'` per pokemon.com official listing,
+pkmncards.com, Pokellector, and Sports Card Investor. The card's solo holofoil
+printing was already correct for an Illustration Rare — only the rarity label
+was wrong. Single `UPDATE`. Same fix shape as the Victinis: special card
+mis-tagged at a base rarity, surfaced via phantom-row audit.
+(The rsv10pt5-131 phantom holofoil row that originally triggered the Cat 1-2
+audit was correctly the only printing for an Illustration Rare, not an artefact.
+Resolved by rarity fix, not row deletion.)
+
+**S5-3. PRE80 Dudunsparce data quality fixes (zsv10pt5).** zsv10pt5-PRE80
+is a legitimate Black Bolt Dudunsparce ingested from Limitless TCG pre-release
+data before final art shipped. Two fixes applied:
+- `subtypes` set to `['Stage 2']` (was `null`)
+- Missing `masterball_reverse_holofoil` printing inserted:
+  ID `zsv10pt5-PRE80-masterball_reverse_holofoil`, `display_order=2`,
+  `printing_type='masterball_reverse_holofoil'`, `card_number=80`
+Black Bolt Master Ball coverage is now complete per inclusion rule (see S5-4).
+*Known cosmetic inconsistency:* The existing pokeball printing uses
+`display_order=3` and `_pb` ID suffix — inherited from pre-release ingestion,
+diverges from the rest of the set's `display_order=2` convention. Variant
+picker still works. Future cleanup only (see item 36b below).
+
+**S5-4. Black Bolt Master Ball coverage audit.** Compared
+`pokeball_reverse_holofoil` vs `masterball_reverse_holofoil` counts across
+zsv10pt5. Found 9 cards with pokeball but no masterball. Triaged:
+- 8 correctly excluded: 7 Trainers + 1 Energy (pokeball-eligible but not
+  masterball-eligible per inclusion rule)
+- 1 genuine gap: PRE80 Dudunsparce — fixed above (S5-3)
+White Flare (rsv10pt5) verified clean, no gaps.
+**Inclusion rule confirmed:** Pokéball = non-ex Pokémon (C/U/R) + Trainers
+(C/U). Master Ball = non-ex Pokémon (C/U/R) only. Trainers do NOT get Master
+Ball variants.
+
+**S5-5. Common/Uncommon phantom holofoil cleanup.** New phantom pattern beyond
+Cat 1+2 scope: Common/Uncommon cards with `printing_type='holofoil'` where a
+`normal` counterpart also exists. Audit found 31 candidate rows across 14
+patterns. Triaged into three groups:
+- **Group A (22 rows, 9 sets) — deleted.** Sets: pop4-9, sv7, zsv10pt5 Common,
+  rsv10pt5 Common. Same artefact pattern as Cat 1+2. 3 user `collection_entries`
+  cascaded.
+- **Group B (8 rows, det1 Detective Pikachu) — kept.** API spot-check confirmed
+  det1 (2019 movie tie-in promo) is holofoil-only product structure. TCGPlayer
+  prices all det1 cards under the `holofoil` key. Legitimate.
+- **Group C (1 row, rsv10pt5-131 Archen) — handled separately.** Investigation
+  revealed mis-tagged Illustration Rare, not an artefact. Fixed via S5-2 above.
+
+**S5-6. ID/number mismatch audit.** zsv10pt5-80 (ID) has `number=173` in DB —
+Antique Cover Fossil, a Stellar Crown card inadvertently seeded into Black Bolt
+from the same pre-release ingestion event as PRE80. Audit confirmed exactly one
+such instance across the entire database. 2 user `collection_entries` reference
+it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 
 ---
 
@@ -446,6 +520,30 @@ NOT next-session priorities. Captured to not lose them.
 27. **Find Online search query** — Black Bolt 174/131 searched wrong;
     pass the exact collector-number string from the card object, don't
     reconstruct.
+
+36a. **zsv10pt5-80 ID/number mismatch (deferred).** Card ID `zsv10pt5-80` has
+    `number=173` in the DB — a Stellar Crown card (Antique Cover Fossil) seeded
+    into Black Bolt during the same pre-release ingestion event as PRE80. Single
+    isolated artefact. 2 user `collection_entries` reference printings on this
+    card. Low urgency, cosmetic mismatch only. Future cleanup brief.
+
+36b. **PRE80 Dudunsparce printing inconsistency (deferred).** The existing
+    pokeball printing (`zsv10pt5-PRE80-pokeball_reverse_holofoil_pb`) uses
+    `display_order=3` and a non-standard `_pb` ID suffix — inherited from
+    pre-release ingestion. The new masterball printing and all other zsv10pt5
+    printings use `display_order=2`. Variant picker still works. Cosmetic only.
+    Future cleanup: rename ID suffix and fix `display_order` to match set
+    convention.
+
+36c. **Class of bug: special cards mis-tagged at base rarities in custom sets.**
+    Both session 5 rarity fixes (Victinis → Black White Rare, Archen →
+    Illustration Rare) share the same shape: special card with non-standard
+    variant structure, surfaced via phantom-row audit, fixed by correcting rarity
+    not deleting rows. Future audit candidate: scan all custom sets (me1, me2,
+    me2pt5, me3, rsv10pt5, zsv10pt5) for cards whose printing structure suggests
+    a special rarity (holofoil-only with no normal counterpart at C/U) that has
+    been miscategorised as C/U/R. Could surface similar mis-tags. Defer until
+    post-launch.
 
 ---
 
@@ -589,32 +687,107 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Verifying public asset accessibility.** Don't test by opening a URL in a browser — your browser session masks auth issues. Use `curl -i` (or `curl.exe -i` on Windows) with no cookies to test as an anonymous client would.
 
+- **PPT's standard waterfall cannot reach pattern products.** ptcgio's product-ID
+  discovery (via `prices.pokemontcg.io/tcgplayer/{id}` redirect) resolves only the
+  standard TCGPlayer product for a card. Pokeball/masterball variants are *separate*
+  TCGPlayer products in a different ID range (610541+ for sv8pt5). Only PPT's set
+  endpoint (`/api/v2/cards?setId=N`) can enumerate them. There is no per-card route
+  to them via any other source.
+
+- **PPT product name convention for pattern variants.** PPT appends
+  `"(Poke Ball Pattern)"` or `"(Master Ball Pattern)"` to the product name —
+  e.g. `"Cottonee (Poke Ball Pattern)"`. This suffix is the matching key the new
+  code relies on. If PPT changes this naming convention, `tryPptPatterns` will
+  silently return 0 matches rather than erroring.
+
+- **pokemontcg.io has NO /products, /prices, or /variants endpoints.** Only
+  `/cards`, `/sets`, `/types`, `/subtypes`, `/supertypes`, `/rarities`. Verified
+  during session 5 audit. Do not chase these non-existent endpoints.
+
+- **PokeTrace is currently dead for modern English sets.** Returns `count: 0` for
+  all SV-era and SWSH-era English slugs tried during session 5. The `tryPokeTrace`
+  short-circuit handles this gracefully (`result` stays `null`), but the source
+  contributes nothing to English-set pricing. Last successful pull confirmed
+  2026-05-08.
+
+- **TCGPlayer price-key naming differs by era:**
+  - SV-era (most sets): `holofoil` + `reverseHolofoil` keys (no `normal` key for Rares)
+  - SWSH/XY/SM: `normal` + `reverseHolofoil` keys (no `holofoil` key — the
+    "holofoil-as-Rare" assumption in `seed-manual-printings.mjs` created phantom rows here)
+  - EX/e-Card/DP/Platinum: Rares holofoil-only but priced under TCGPlayer's `normal` key
+    (no `holofoil` key for these eras — causes Problem 3, see item 12)
+  Pattern products have a `Holofoil` entry in `printingsAvailable`, but their price
+  lives in `product.prices.market`, not in a TCGPlayer variant key.
+
+- **PPT free tier (100 credits/day) is adequate for single-user dev only.** Worst-case
+  pattern fix costs ~24 credits per full 4-set refresh cycle. Multi-user load will
+  exhaust it in hours. Must upgrade to $9.99/mo plan before soft launch (see item 10a).
+
+- **Pattern variant inclusion rule (sv8pt5 / sv10 / zsv10pt5 / rsv10pt5):**
+  Pokéball = non-ex Pokémon (C/U/R) + Trainers (C/U). Master Ball = non-ex Pokémon
+  (C/U/R) only. Trainers do NOT get Master Ball variants. Confirmed against Cardrake
+  community consensus and verified via Black Bolt coverage audit.
+
+- **me2pt5 (Ascended Heroes) uses a different pokeball pricing path.** PokeScope's
+  `default` case prices `pokeball_reverse_holofoil` as `marketPrice` directly (no
+  multiplier). 140/140 priced ($0.18–$3.50 range). No Master Ball variants exist in
+  me2pt5. ME-set logic must NOT be touched by future pricing fixes — `tryPptPatterns`
+  already guards this with `!ME_SETS.has(setId)`.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
 
 When picking this back up, suggested sequence:
 
-1. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
+1. **Complete pattern variant pricing (item 12, Problem 2).**
+   PPT free-tier daily limit resets at 00:00 UTC. Run the two setId probes
+   (PowerShell commands in item 12), hardcode `zsv10pt5` and `rsv10pt5` values
+   in `PPT_PATTERN_SET_IDS` (lines 28–29 of `app/api/refresh-prices/route.js`),
+   commit, push, and trigger one refresh per set to verify pokeball/masterball
+   rows get prices. This is a 15-minute task once the limit resets — do it
+   before anything else. (sv8pt5 and sv10 are already wired and shipping.)
+
+2. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
    visibility in place before adding new T&S surface area — the ordering is
-   deliberate. **Do this first at the start of a session:** create the Sentry
+   deliberate. **Do this first at the start of a full session:** create the Sentry
    account/project and grab the DSN before opening Claude Code. That's
    account-creation work, not coding. Once you have the DSN, Claude Code can
    do the install-and-wire-up in one focused pass.
-2. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
+
+3. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
    Required before opening to strangers. Budget a full session per piece —
-   Report, Block, and Admin queue are each substantial. Treat the admin queue
-   as a fourth item even though the list groups it with items 5-7. Build data
-   model first (`user_reports`, `user_blocks`), then UI, then admin queue.
-3. **Price ingestion bug (item 12).** Promo-variant prices bleeding into
-   regular printings inflating set values significantly. Launch-able-without
-   (users frustrated but not blocked), so correctly deferred behind T&S.
-4. **UI polish items** — suggested-match language (item 10), address-reveal
+   Report, Block, and Admin queue are each substantial. Build data model first
+   (`user_reports`, `user_blocks`), then UI, then admin queue.
+
+4. **PPT API plan upgrade (item 10a) — already captured as a launch blocker
+   in §2. Repeated here for sequencing only.**
+
+5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
+   auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
+   ME sets, log and skip prices diverging >20%. Problem 3: auto-detect rule for
+   sets with zero non-holofoil printings → use `normal` key for holofoil rows.
+   See item 12 for decision details.
+
+6. **UI polish items** — suggested-match language (item 10), address-reveal
    nudge (item 8). Quick wins.
-5. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (19 May 2026, session 4):** items 1 (EXIF stripping — already happening, made explicit), 9 (affiliate disclosure opacity + dead file cleanup), 14 (useLocation hook extracted), 16 (800ms timer audited and commented), 28 (README rewritten). Session 3 items already recorded: 11, 13 (Discover stale), 13e (thread scroll), drag-to-reorder sets (new feature).
+7. Then deferred items — 2FA, help system, browse feed, etc.
 
-Item 12 (price ingestion) is the only active bug remaining. All privacy/accuracy must-do items except item 3 (Sentry) are now closed.
+**Done since last handover (21 May 2026, session 5):** Data correctness sprint
+(see section 3a) — Victini rarity fixes (rsv10pt5-172, zsv10pt5-171), Archen
+rarity fix (rsv10pt5-131), PRE80 Dudunsparce subtypes + Master Ball insert,
+Black Bolt Master Ball coverage audit, Common/Uncommon phantom holofoil cleanup
+(22 rows deleted, 8 kept as legitimate det1, 1 resolved via rarity fix), ID/number
+mismatch audit (1 isolated artefact deferred). Pattern variant pricing for sv8pt5
++ sv10 shipped (commit `924738e`); zsv10pt5 + rsv10pt5 pending PPT limit reset.
 
-The legal docs are *live*. The auth surface is *working*. Discover is *live and real-time*. From here: wire Sentry (item 3), add trust-and-safety (items 5-7), fix the price ingestion bug (item 12), then UI polish (items 8, 10) and deferred features.
+Item 12 now has three distinct sub-problems. Problem 2 (pattern variants) is 50%
+shipped. Problems 1 and 3 are diagnosed and decided, not yet implemented. The
+phantom-row audit across all five categories is fully closed. All privacy/accuracy
+must-do items except item 3 (Sentry) are closed.
+
+The legal docs are *live*. The auth surface is *working*. Discover is *live and
+real-time*. From here: finish pattern variant pricing, wire Sentry, add
+trust-and-safety (items 5-7), address remaining price pipeline problems, then UI
+polish and deferred features.
