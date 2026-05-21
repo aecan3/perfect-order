@@ -14,6 +14,7 @@ import { AchievementCelebration } from "@/components/AchievementCelebration";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { ReportCardFAB } from "@/components/ReportCardFAB";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -1706,6 +1707,7 @@ export default function SetTrackerPage() {
           </div>
         </div>
       )}
+      <ReportCardFAB />
     </MSShell>
   );
 }

@@ -577,6 +577,8 @@ All safe at current scale; flagged so they're not forgotten.
 
 32. ~~**`/manifest.json` 401 on Vercel**~~ **DONE 17 May 2026 (no commit — verification only).** Returns 200 with `application/json` content type to anonymous curl against `mastersettertcg.com`. Resolved when custom domain went live.
 
+37. **Z-index scale inconsistency.** Two bottom-sheet overlays use different values: `LocationExplainer` at 300, `FindOnline` at 9999. `ReportCardFAB` (new) sits at 400; `ReportCardForm` overlay (new) uses 9999 to match `FindOnline` and correctly cover the FAB. The inconsistency is harmless now but will become confusing as more layered UI is added. Future cleanup: document a named z-index scale (e.g. page content 1–99, sticky UI 100–199, page overlays 200–399, floating buttons 400–499, modals/sheets 9000+) and standardise all existing usages against it.
+
 ---
 
 ## 11. EMAIL — POST-LAUNCH POLISH
