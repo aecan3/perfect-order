@@ -63,10 +63,15 @@ export async function POST(request) {
 
   const categoryLabel = CATEGORY_LABELS[report.category] ?? report.category;
 
+  const setLine = report.set_id
+    ? `Set:       ${report.set_id}`
+    : `Set:       (not captured)`;
+
   const body = [
     "A new card report has been submitted.",
     "",
     `Category:  ${categoryLabel}`,
+    setLine,
     `Submitted: ${new Date(report.created_at).toISOString()}`,
     `Reporter:  @${reporterHandle} (id: ${report.reporter_id})`,
     "",
@@ -83,7 +88,7 @@ export async function POST(request) {
   const { error: emailError } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: NOTIFICATION_EMAIL,
-    subject: `New card report — ${categoryLabel}`,
+    subject: `New card report — ${categoryLabel} [${report.set_id ?? "no set"}]`,
     text: body,
   });
 
