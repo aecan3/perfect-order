@@ -9,15 +9,6 @@ const RESEND_API_KEY    = process.env.RESEND_API_KEY;
 const NOTIFICATION_EMAIL = "hello@mastersettertcg.com";
 const FROM_ADDRESS      = "Master Setter <noreply@send.mastersettertcg.com>";
 
-// TEMPORARY — remove once env var issue is resolved
-console.log("[card-report-notify] module load env:", {
-  has_secret: !!WEBHOOK_SECRET,
-  secret_len: WEBHOOK_SECRET?.length ?? 0,
-  has_resend: !!RESEND_API_KEY,
-  has_service_key: !!SUPABASE_SERVICE_KEY,
-  has_supabase_url: !!SUPABASE_URL,
-});
-
 const CATEGORY_LABELS = {
   wrong_image:            "Wrong image",
   wrong_name_or_number:   "Wrong name or number",
@@ -30,13 +21,6 @@ const CATEGORY_LABELS = {
 export async function POST(request) {
   // 1. Shared-secret auth — Supabase sends this in the Authorization header.
   const authHeader = request.headers.get("authorization");
-  // TEMPORARY — remove once env var issue is resolved
-  console.log("[card-report-notify] request auth check:", {
-    header_present: !!authHeader,
-    header_starts_with_bearer: authHeader?.startsWith("Bearer ") ?? false,
-    env_secret_present_at_request_time: !!WEBHOOK_SECRET,
-    match: authHeader === `Bearer ${WEBHOOK_SECRET}`,
-  });
   if (!WEBHOOK_SECRET || authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
