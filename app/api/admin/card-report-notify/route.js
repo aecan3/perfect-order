@@ -19,6 +19,8 @@ const CATEGORY_LABELS = {
 };
 
 export async function POST(request) {
+  // TEMPORARY
+  console.log("[card-report-notify] ALIVE", { url: request.url });
   // 1. Shared-secret auth — Supabase sends this in the Authorization header.
   const authHeader = request.headers.get("authorization");
   if (!WEBHOOK_SECRET || authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
