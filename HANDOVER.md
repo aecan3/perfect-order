@@ -570,6 +570,20 @@ NOT next-session priorities. Captured to not lose them.
     Future cleanup: rename ID suffix and fix `display_order` to match set
     convention.
 
+41. **me2pt5 ball type granularity (Ascended Heroes).** The set has 140
+    `pokeball_reverse_holofoil` rows in the DB — all 140 priced via PokeScope.
+    But the physical set has multiple distinct ball types per Pokémon (Poké Ball,
+    Love Ball, Friend Ball, Quick Ball, Dusk Ball) plus Energy reverse and "R"
+    for Team Rocket cards. The current data model conflates all ball types into
+    a single `pokeball_reverse_holofoil` type. Pricing still works (PokeScope
+    returns one market price per card regardless of ball type), but collectors
+    who care about which specific ball type they own can't record that distinction.
+    Per PokeBeach: these ball variants act as regular reverse-holo slots in
+    Ascended Heroes — they are not chase-rarity "hits" the way Prismatic
+    Evolutions / Black Bolt / White Flare pokeball/masterball variants are.
+    Audit and potentially remodel if collector demand warrants distinguishing
+    ball types. Low priority until post-launch.
+
 36c. **Class of bug: special cards mis-tagged at base rarities in custom sets.**
     Both session 5 rarity fixes (Victinis → Black White Rare, Archen →
     Illustration Rare) share the same shape: special card with non-standard
@@ -714,6 +728,26 @@ All safe at current scale; flagged so they're not forgotten.
   (most notably the legal-integration build that did Part 5 and skipped
   Parts 1-4).
 
+- **Pattern variant rows must only be created for confirmed sets.** Before
+  creating `pokeball_reverse_holofoil` or `masterball_reverse_holofoil`
+  printings for any set, confirm via BOTH an authoritative source
+  (PokeCottage, PokeBeach) AND an empirical PPT probe
+  (`GET /api/v2/cards?setId=N`, count "(Poke Ball Pattern)" / "(Master
+  Ball Pattern)" products). The canonical confirmed list lives in
+  `PPT_PATTERN_SET_IDS` in `app/api/refresh-prices/route.js`. Sets with
+  `null` entries have been deliberately confirmed as having no patterns —
+  do not re-add. The sv10 phantom row incident (286 rows seeded for
+  Destined Rivals which has zero pattern products) cost a full session to
+  diagnose and clean up (migration `20260522130000`).
+
+- **Schema and data changes go through tracked migrations only — no direct
+  SQL in the Supabase dashboard.** The sv10 phantom rows were created via
+  untracked dashboard SQL months before they were discovered. Finding and
+  deleting them took a full diagnostic session. Migrations leave a trail;
+  dashboard SQL doesn't. Every `INSERT`, `UPDATE`, or `DELETE` that changes
+  the shape or content of the data model goes in `supabase/migrations/` with
+  a descriptive name and a header comment explaining why.
+
 ### Gotchas — 30-second fixes that took 20 minutes to find
 
 - **Windows PowerShell glob expansion.** `[` and `]` in file paths (Next.js dynamic routes like `[tradeId]`) are treated as wildcards by PowerShell's `Remove-Item`. Use `Remove-Item -LiteralPath ...` to actually delete dynamic-route files.
@@ -760,10 +794,14 @@ All safe at current scale; flagged so they're not forgotten.
   pattern fix costs ~24 credits per full 4-set refresh cycle. Multi-user load will
   exhaust it in hours. Must upgrade to $9.99/mo plan before soft launch (see item 10a).
 
-- **Pattern variant inclusion rule (sv8pt5 / sv10 / zsv10pt5 / rsv10pt5):**
+- **Pattern variant inclusion rule (sv8pt5 / zsv10pt5 / rsv10pt5 only):**
   Pokéball = non-ex Pokémon (C/U/R) + Trainers (C/U). Master Ball = non-ex Pokémon
   (C/U/R) only. Trainers do NOT get Master Ball variants. Confirmed against Cardrake
   community consensus and verified via Black Bolt coverage audit.
+  sv10 (Destined Rivals) was incorrectly included in this list — it has zero
+  pattern variants per PokeCottage + PPT empirical probe. Phantom rows deleted
+  via migration `20260522130000`. Only three sets have Prismatic-style
+  pokeball+masterball patterns: sv8pt5, zsv10pt5, rsv10pt5.
 
 - **me2pt5 (Ascended Heroes) uses a different pokeball pricing path.** PokeScope's
   `default` case prices `pokeball_reverse_holofoil` as `marketPrice` directly (no
@@ -777,12 +815,13 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **Complete pattern variant pricing (item 12, Problem 2) — trigger remaining refreshes.**
-   All four sets are now wired in `PPT_PATTERN_SET_IDS`. sv8pt5 is fully
-   verified. Still needed: trigger one refresh each for sv10, zsv10pt5,
-   rsv10pt5, then confirm pokeball/masterball rows show non-zero prices.
-   If the staleness gate blocks (6h window), NULL out `prices_updated_at`
-   in `user_sets` for those three sets directly in SQL. 15-minute task.
+1. **Complete pattern variant pricing (item 12, Problem 2) — zsv10pt5 re-refresh.**
+   sv8pt5 fully verified. rsv10pt5 fully priced. sv10 cleaned up (no patterns).
+   Only zsv10pt5 remains: 31/82 pokeball + 31/74 masterball priced from a
+   partial run that hit the rate limit. NULL out `prices_updated_at` in
+   `user_sets` for zsv10pt5 to bypass the staleness gate, then trigger one
+   refresh. Expect 82/82 + 74/74 (minus 3–4 confirmed phantom rows: card 171
+   both types, card 173 pokeball, card 80 masterball not in PPT).
 
 2. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
    visibility in place before adding new T&S surface area — the ordering is
@@ -812,15 +851,21 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (22 May 2026, session 8):** sv8pt5 pattern variant
-pricing fully verified. Three diagnostics confirmed: (1) PPT has exactly 100
-Poke Ball Pattern + 67 Master Ball Pattern products for setId 23821 — exact
-1:1 match with DB row counts; (2) zero pattern rows exist for ineligible
-high-rarity cards; (3) spot-check prices realistic. The seeding and the
-refresh are both correct. zsv10pt5 (24325) and rsv10pt5 (24326) PPT setIds
-already hardcoded last session (commit `c6be1ca`) — refreshes for sv10,
-zsv10pt5, rsv10pt5 still pending. Staleness gate bug documented (loose
-thread 40). HANDOVER.md updated.
+**Done since last handover (22 May 2026, session 8):** sv8pt5 pattern pricing
+verified clean (PPT 100/67 product counts match DB row counts exactly; all
+rows priced). Full SV-era pattern landscape audited: sv9 (Journey Together)
+confirmed zero patterns on PPT; sv10 (Destined Rivals) confirmed zero patterns
+(PokeCottage + PPT probe — 0 of 256 products). Diagnosed why sv10 refresh
+returned 0 prices: PPT setId 24269 is correct for Destined Rivals but the set
+genuinely has no pattern products. Traced phantom row origin to untracked
+direct dashboard SQL. Deleted 286 phantom `printings` rows + 2
+`collection_entries` via migration `20260522130000`. Removed sv10 from
+`PPT_PATTERN_SET_IDS` (set to null with "Do not re-add" comment). Also
+confirmed zsv10pt5 partial pricing (31/82 + 31/74) is a rate-limit artifact
+— PPT does have all 82/74 products; the previous refresh stopped before fetching
+the pages where cards 1–45 appear. zsv10pt5 re-refresh still pending. Two new
+discipline rules added to §17 (pattern variant confirmation gate; migrations-only
+rule). me2pt5 ball type audit deferred (item 41). Commits: `4215be5`.
 
 **Done since last handover (22 May 2026, session 7):** User reports feature
 (item 5) shipped end-to-end. `user_reports` table + RLS + CHECK constraints
