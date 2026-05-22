@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Flag } from "lucide-react";
 import { TradePanel } from "@/components/TradePanel";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
+import { OverflowMenu } from "@/components/OverflowMenu";
 
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -227,6 +228,16 @@ export default function ThreadPage() {
             <Link href={`/friend/${handle}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
               <p style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2, color: "var(--po-text)", margin: 0 }}>@{handle}</p>
             </Link>
+            {otherProfile && (
+              <OverflowMenu
+                targetHandle={handle}
+                items={[{
+                  icon: Flag,
+                  label: "Report user",
+                  onClick: () => console.log("[ReportUser] reported_user_id:", otherProfile.id, "context: thread"),
+                }]}
+              />
+            )}
           </div>
         </div>
 

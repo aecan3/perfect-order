@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { Flag } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { OverflowMenu } from "@/components/OverflowMenu";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -30,6 +32,7 @@ export default function FriendOverviewPage() {
   const [friendSets, setFriendSets] = useState([]);
   const [currency, setCurrency] = useState("AUD");
   const [status, setStatus] = useState("loading");
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -43,6 +46,7 @@ export default function FriendOverviewPage() {
         router.replace("/welcome");
         return;
       }
+      setCurrentUserId(user.id);
 
       const { data: friendProfile } = await supabase
         .from("profiles")
@@ -167,9 +171,24 @@ export default function FriendOverviewPage() {
     );
   }
 
+  const overflowItems = [
+    {
+      icon: Flag,
+      label: "Report user",
+      onClick: () => console.log("[ReportUser] reported_user_id:", friend.id, "context: profile"),
+    },
+  ];
+
   return (
     <MSShell>
-      <MSPageTitle sub={`@${friend.handle}`}>{friend.display_name || friend.handle}</MSPageTitle>
+      <div style={{ position: "relative" }}>
+        <MSPageTitle sub={`@${friend.handle}`}>{friend.display_name || friend.handle}</MSPageTitle>
+        {currentUserId && currentUserId !== friend.id && (
+          <div style={{ position: "absolute", top: 10, right: 12 }}>
+            <OverflowMenu targetHandle={friend.handle} items={overflowItems} />
+          </div>
+        )}
+      </div>
 
       <div className="px-4 py-4 space-y-3 max-w-md mx-auto">
         {friendSets.length === 0 ? (
