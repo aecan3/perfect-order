@@ -47,11 +47,12 @@ export async function POST(request) {
     auth: { persistSession: false },
   });
 
-  const { data: reporter } = await supabase
-    .from("profiles")
-    .select("handle")
-    .eq("id", report.reporter_id)
-    .single();
+  const [{ data: reporter }, { data: setRow }] = await Promise.all([
+    supabase.from("profiles").select("handle").eq("id", report.reporter_id).single(),
+    report.set_id
+      ? supabase.from("sets").select("name").eq("id", report.set_id).single()
+      : Promise.resolve({ data: null }),
+  ]);
 
   const reporterHandle = reporter?.handle ?? "(unknown)";
 
@@ -63,8 +64,9 @@ export async function POST(request) {
 
   const categoryLabel = CATEGORY_LABELS[report.category] ?? report.category;
 
+  const setName = setRow?.name ?? null;
   const setLine = report.set_id
-    ? `Set:       ${report.set_id}`
+    ? `Set:       ${setName ?? report.set_id} (${report.set_id})`
     : `Set:       (not captured)`;
 
   const body = [
@@ -88,7 +90,7 @@ export async function POST(request) {
   const { error: emailError } = await resend.emails.send({
     from: FROM_ADDRESS,
     to: NOTIFICATION_EMAIL,
-    subject: `New card report — ${categoryLabel} [${report.set_id ?? "no set"}]`,
+    subject: `New card report — ${categoryLabel} [${setName ?? report.set_id ?? "no set"}]`,
     text: body,
   });
 
