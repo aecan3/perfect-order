@@ -905,3 +905,256 @@ The legal docs are *live*. The auth surface is *working*. Discover is *live and
 real-time*. From here: complete pattern variant pricing (PPT probe after UTC reset),
 wire Sentry, add trust-and-safety (items 5-7), address remaining price pipeline
 problems, then UI polish and deferred features.
+
+---
+
+## 19. FEED ROADMAP
+
+**Status as of 22 May 2026:** Feed page exists as a coming-soon surface at
+`/feed` (commit `64d4fe1`). 5-cell tab bar live. No data layer, no events, no
+real feed content. Coming-soon page renders the Claude design mockup.
+
+**Strategic intent:** The Feed is the bridge from "collection tracker" to
+"social trading platform." Its killer mechanic is duplicate-aware activity —
+when a friend starts a set, the feed surfaces "you have N duplicates that
+could help them." This drives the trading economy the app is built around.
+
+### Scope decisions locked
+
+Do not revisit without explicit re-discussion.
+
+1. **Feed is NOT the default home tab at launch.** Promote only after weeks
+   of real usage proves value AND empty state is excellent. Existing users
+   have Sets muscle memory; brand new users would see an empty Feed.
+2. **Friends-only feed scope at launch.** No public feed, no proximity scope.
+   Privacy default is conservative.
+3. **Block prompt UI (item 39) ships with the Block brief, not with any Feed
+   milestone.** Decoupled.
+4. **No ML personalisation. Rules-based ranking only.** Heuristic ranking
+   captures 80% of the benefit at 5% of the work at current scale.
+5. **AI/LLMs are for content (descriptions, summaries, trade suggestions),
+   not ranking.** Ranking stays transparent and debuggable.
+
+### Milestone sequence
+
+Nine milestones, roughly one Claude Code session each. Audit-first / stop-gate
+discipline applies to every brief (§17 rules). Listed in suggested execution
+order (not milestone number order).
+
+**Execution order — optimised for value delivery:**
+
+| # | Milestone | Why this order |
+|---|---|---|
+| 1 | Event capture infrastructure | Foundation; can't backfill |
+| 6 | Privacy controls | Ship before broadcast goes live |
+| 2 | Basic feed + heuristic ranking | Highest visible value |
+| 3 | Duplicate-match decoration | The killer mechanic |
+| 4 | Real-time updates | Makes the feed feel alive |
+| 5 | Activity batching | Matters once usage grows |
+| 7 | More event types | Iterate on real data |
+| 8 | Promote to default tab | Only after value is proven |
+| 9 | Push notifications | Late-stage, own complexity |
+
+**Total estimate:** 8–12 Claude Code sessions, 4–8 weeks of part-time solo dev.
+
+---
+
+#### Milestone 1 — Event capture infrastructure *(data foundation)*
+
+**Goal:** Every meaningful user action writes a row to a new `feed_events`
+table. No UI changes. Invisible plumbing.
+
+**Why first:** Events are cheap to add now, expensive to backfill. Start
+logging before displaying.
+
+**New tables:**
+
+`feed_events`
+- `id` uuid pk
+- `actor_user_id` uuid → profiles
+- `event_type` text enum (see below)
+- `related_set_id` text nullable
+- `related_card_id` text nullable
+- `related_user_id` uuid nullable → profiles
+- `metadata` jsonb (per-event-type extras)
+- `created_at` timestamptz default now()
+- Indexes: `actor_user_id`, `created_at desc`, `(actor_user_id, created_at desc)`
+
+`user_interactions` *(sibling — added in same milestone)*
+- Captures behavioural signals for Layer 2 ranking later (can't be backfilled)
+- `id`, `user_id`, `target_type` (profile/set/card), `target_id`,
+  `interaction_type` (view/message/etc), `created_at`
+
+**Initial event types:** `set_started`, `set_completed`, `set_milestone`
+(50/75/90% in metadata), `card_favourited`, `friend_added`
+
+**RLS:**
+- Insert: service role only (events written server-side)
+- Select: own events OR events where actor is an accepted friend
+
+**Insert hooks:**
+- `user_sets` insert → `set_started`
+- `user_sets` hits 100% → `set_completed`
+- `user_sets` crosses 50/75/90% → `set_milestone`
+- `favourites` insert → `card_favourited`
+- `friendships` accepted → `friend_added` for both users
+
+**Verification:** Use the app for a day; watch `feed_events` and
+`user_interactions` populate in Table Editor.
+
+---
+
+#### Milestone 2 — Basic feed + heuristic ranking *(first real feed)*
+
+**Goal:** Replace coming-soon content with a real, ranked feed.
+
+**Scope:**
+- Query: events where `actor_user_id IN (accepted friends)`, joined with
+  profiles, scored, paginated (~20 per page, cursor-based)
+- **Layer 1 heuristic ranking:**
+  - Base: recency-weighted with exponential decay
+  - +bonus if event involves a set you also collect
+  - +bigger bonus if you have duplicates (foreshadows Milestone 3)
+  - +bonus by event type (set_completed > set_started > card_favourited)
+  - Ranking weights live as named constants — pure function, unit-testable
+- Empty state: brand-aligned, "find friends" CTA + "add a set" CTA (most
+  important screen for new users — do not phone this in)
+- Loading, error + retry states
+- Pagination: cursor-based
+
+---
+
+#### Milestone 3 — Duplicate-match decoration *(the killer mechanic)*
+
+**Goal:** Friend starts a set → feed card shows "You have N duplicates that
+could help" with a tap-to-act CTA.
+
+**Pre-milestone decision needed before the brief is written:**
+CTA target — four options:
+- **A.** Filtered own-collection view (passive)
+- **B.** Pre-filled message thread — *current push: B for v1* (friction-light,
+  messaging surface already built)
+- **C.** Pre-filtered `/trade/new` flow (pushes toward transaction)
+- **D.** New mini-screen: duplicate list + Message/Propose Trade/View
+  Collection actions (most useful, most work — post-v1)
+
+Confirm B or choose another before writing the Milestone 3 brief.
+
+**Scope:**
+- For each `set_started` event, also fetch count of MY printings where
+  `duplicate_count > 0` in that set
+- If count > 0: render inline CTA on the event card
+- Layer 1 ranking update: events with duplicate-match > 0 get significant
+  score boost
+
+---
+
+#### Milestone 4 — Real-time feed updates
+
+**Goal:** New events appear without manual refresh.
+
+**Scope:**
+- Supabase realtime subscription on `feed_events` filtered to friends
+- Pattern: same as MSTabBar unread-badge subscription (§1)
+- New events insert at top with subtle lime-dot "new" treatment
+- "N new" indicator if user is scrolled down
+
+---
+
+#### Milestone 5 — Activity batching
+
+**Goal:** Friend adds 47 cards → one summary card, not 47 events.
+
+**Scope:**
+- Events of same type + same actor + same target within 1-hour window collapse
+- Probably client-side (post-query) for v1
+- Summary cards: "Sarah added 47 cards to Black Bolt"; tap to expand
+
+---
+
+#### Milestone 6 — Privacy controls *(ship before broadcast goes live)*
+
+**Goal:** Settings toggles for per-event-type broadcast opt-out.
+
+**Pre-milestone decision needed:**
+Default state per type — current push:
+- `set_started`, `set_completed`, `set_milestone` → default ON (low intimacy)
+- `card_favourited`, `friend_added` → default ON but easy to toggle off
+Confirm before writing the brief.
+
+**Scope:**
+- New `user_feed_preferences` table (or extend existing prefs table)
+- "Feed visibility" section in `/settings`
+- Hard rule: `feed_events` insert checks actor's preferences first — if
+  broadcast is off for that event type, skip the insert entirely
+
+---
+
+#### Milestone 7 — More event types *(post-launch, iterate on data)*
+
+**Candidates after seeing real usage:**
+- Social-proof aggregates: "3 of your friends are collecting Destined Rivals"
+- Trade events: "Alex traded Mega Starmie ex with Sarah" (privacy question)
+- App announcements (admin-authored)
+- Wants-list events (if wants list ships)
+- Collection anniversaries
+
+Half a session per type. Don't plan specifics until you have engagement data.
+
+---
+
+#### Milestone 8 — Promote Feed to default home tab
+
+**Pre-conditions:**
+- Empty state excellent
+- Real users have used Feed for weeks
+- Data shows Feed is delivering value
+
+**Strategy:** New users get Feed by default; existing users opt in via
+settings. Confirm A/B approach vs hard switch closer to the time.
+
+Trivial engineering, significant UX decision. Don't rush.
+
+---
+
+#### Milestone 9 — Push notifications *(late-stage)*
+
+"Sarah started Black Bolt and you have 12 duplicates" as a push notification.
+
+Own complexity — Web Push API, per-category opt-in, mute controls, quiet
+hours, iOS PWA push restrictions. Budget 2–3 sessions.
+
+---
+
+### AI/LLM integration (separate from ranking, post-launch experiments)
+
+ML personalisation is out of scope (decision 4 above). LLMs add value here
+without needing user-base scale:
+
+1. **Smart card descriptions.** One-liner per card featured in the feed.
+   Cache per `card_id`.
+2. **Trade suggestion copy.** LLM-generated duplicate-match CTA text for
+   personality. Cache after first render.
+3. **Friend recommendations.** Set-overlap-based "you might know" for new
+   users with no friends.
+
+Post-launch experiments. No Feed milestone depends on them.
+
+---
+
+### Rules for every Feed milestone brief
+
+1. Audit-first — Part 1 audit before any code changes (§17).
+2. Stop-gates between parts — no chaining migration → code → device-test.
+3. Tracked migrations only — no direct dashboard SQL (§17).
+4. Privacy checks first — check actor preferences before inserting to
+   `feed_events`. Default opt-in for low-risk types only after Milestone 6.
+5. RLS confidentiality — `feed_events` select must be scoped to own events
+   + accepted friends only.
+
+### Open questions (resolve before their respective briefs)
+
+- **M3:** CTA target — confirm B (pre-filled message) or choose A/C/D.
+- **M6:** Default state per event type — confirm push above or revise.
+- **M8:** Default-tab promotion strategy — A/B by cohort, hard switch, or
+  per-user toggle.
