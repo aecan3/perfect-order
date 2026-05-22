@@ -25,8 +25,8 @@ const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
 const PPT_PATTERN_SET_IDS = {
   sv8pt5:   23821,  // Prismatic Evolutions — confirmed
   sv10:     24269,  // Destined Rivals — confirmed
-  zsv10pt5: null,   // Black Bolt — probe TCGPlayer product 642450 when PPT daily limit resets
-  rsv10pt5: null,   // White Flare — probe TCGPlayer product 642118 when PPT daily limit resets
+  zsv10pt5: 24325,  // Black Bolt — confirmed via TCGPlayer product 642450
+  rsv10pt5: 24326,  // White Flare — confirmed via TCGPlayer product 642118
 };
 
 // Skip external API fetch if prices were refreshed within this window
