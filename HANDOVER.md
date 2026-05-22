@@ -315,10 +315,10 @@ require some of these to be true.
     cards ($0.27–$10.87 range) are realistic. The inclusion-rule concern was
     unfounded — seeding and pricing are both correct.
 
-    **Pending — trigger refreshes for sv10, zsv10pt5, rsv10pt5.** Open the
-    set page for each in the app and let staleness gate expire (or NULL out
-    `prices_updated_at` in `user_sets` for those three sets if you want to
-    force it now). Then check DB pattern rows have non-zero prices.
+    **Current state (22 May 2026, session 8):**
+    - sv10: cleaned up — null entry in `PPT_PATTERN_SET_IDS`, 286 phantom rows deleted via migration `20260522130000`.
+    - rsv10pt5: fully priced.
+    - zsv10pt5: 72/82 pokeball + 72/74 masterball priced after re-refresh. 10 null-priced rows remain: 9 pokeball + 1 masterball. All are `_pb`-suffix IDs from pre-release ingestion — see item 36d.
 
     **Problem 3 — ECard/Platinum holofoil stale prices**
     ptcgio builds PID `ecard3-N-normal` but DB rows are typed `ecard3-N-holofoil`.
@@ -584,6 +584,8 @@ NOT next-session priorities. Captured to not lose them.
     Audit and potentially remodel if collector demand warrants distinguishing
     ball types. Low priority until post-launch.
 
+36d. **zsv10pt5 `_pb`-suffix pokeball printings — null-priced, zero ticks, low impact.** Black Bolt has 9 pokeball printings with legacy `_pb` ID suffixes from pre-release ingestion (cards 79, 81–86, 171, 173, PRE80). 7 are real PPT products that stay null-priced because `tryPptPatterns` constructs the lookup key as `zsv10pt5-79-pokeball_reverse_holofoil` but `existingIds` contains `zsv10pt5-79-reverse_holofoil_pb` — no match, silently skipped. Card 173 is a phantom (stays null correctly). PRE80 pokeball is a known `display_order` anomaly (see 36b). Checked zero collection ticks across all 9 IDs. If a user eventually ticks one and queries why no price shows, run a small ID-rename migration to bring the suffix in line with the standard format; `tryPptPatterns` will then price them on the next refresh.
+
 36c. **Class of bug: special cards mis-tagged at base rarities in custom sets.**
     Both session 5 rarity fixes (Victinis → Black White Rare, Archen →
     Illustration Rare) share the same shape: special card with non-standard
@@ -815,13 +817,11 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **Complete pattern variant pricing (item 12, Problem 2) — zsv10pt5 re-refresh.**
-   sv8pt5 fully verified. rsv10pt5 fully priced. sv10 cleaned up (no patterns).
-   Only zsv10pt5 remains: 31/82 pokeball + 31/74 masterball priced from a
-   partial run that hit the rate limit. NULL out `prices_updated_at` in
-   `user_sets` for zsv10pt5 to bypass the staleness gate, then trigger one
-   refresh. Expect 82/82 + 74/74 (minus 3–4 confirmed phantom rows: card 171
-   both types, card 173 pokeball, card 80 masterball not in PPT).
+1. ~~**Complete pattern variant pricing (item 12, Problem 2) — zsv10pt5 re-refresh.**~~
+   **DONE 22 May 2026 (session 8).** sv8pt5 verified, rsv10pt5 fully priced, sv10
+   cleaned up. zsv10pt5 re-refresh complete: 72/82 pokeball + 72/74 masterball.
+   Remaining 10 null-priced rows are `_pb`-suffix IDs — known limitation, zero ticks,
+   no action needed unless a user complains (see item 36d).
 
 2. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
    visibility in place before adding new T&S surface area — the ordering is
@@ -860,12 +860,14 @@ returned 0 prices: PPT setId 24269 is correct for Destined Rivals but the set
 genuinely has no pattern products. Traced phantom row origin to untracked
 direct dashboard SQL. Deleted 286 phantom `printings` rows + 2
 `collection_entries` via migration `20260522130000`. Removed sv10 from
-`PPT_PATTERN_SET_IDS` (set to null with "Do not re-add" comment). Also
-confirmed zsv10pt5 partial pricing (31/82 + 31/74) is a rate-limit artifact
-— PPT does have all 82/74 products; the previous refresh stopped before fetching
-the pages where cards 1–45 appear. zsv10pt5 re-refresh still pending. Two new
-discipline rules added to §17 (pattern variant confirmation gate; migrations-only
-rule). me2pt5 ball type audit deferred (item 41). Commits: `4215be5`.
+`PPT_PATTERN_SET_IDS` (set to null with "Do not re-add" comment). zsv10pt5
+re-refresh complete: 72/82 pokeball + 72/74 masterball. Remaining 10 null-priced
+rows are `_pb`-suffix IDs from pre-release ingestion — 7 real PPT products
+silently skipped due to ID mismatch, zero collection ticks, accepted as known
+limitation (item 36d). rsv10pt5 fully priced. Pattern variant pricing (item 12,
+Problem 2) fully resolved. Two new discipline rules added to §17 (pattern
+variant confirmation gate; migrations-only rule). me2pt5 ball type audit
+deferred (item 41). Commits: `4215be5`.
 
 **Done since last handover (22 May 2026, session 7):** User reports feature
 (item 5) shipped end-to-end. `user_reports` table + RLS + CHECK constraints
