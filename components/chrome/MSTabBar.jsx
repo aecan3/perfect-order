@@ -3,11 +3,26 @@
 import Link from "next/link";
 import { Layers, Radar, MessageCircle, User } from "lucide-react";
 
+function IconFeedPulse({ color = "currentColor" }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path
+        d="M2 11 H6 L8 5 L11 17 L13 9 L15 11 H20"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const TABS = [
-  { id: "sets",     label: "Sets",     href: "/",          Icon: Layers        },
-  { id: "discover", label: "Discover", href: "/discover",  Icon: Radar         },
-  { id: "messages", label: "Messages", href: "/messages",  Icon: MessageCircle },
-  { id: "you",      label: "You",      href: "/you",       Icon: User          },
+  { id: "sets",     label: "Sets",     href: "/",         Icon: Layers,        lucide: true  },
+  { id: "discover", label: "Discover", href: "/discover", Icon: Radar,         lucide: true  },
+  { id: "feed",     label: "Feed",     href: "/feed",     Icon: IconFeedPulse, lucide: false },
+  { id: "messages", label: "Messages", href: "/messages", Icon: MessageCircle, lucide: true  },
+  { id: "you",      label: "You",      href: "/you",      Icon: User,          lucide: true  },
 ];
 
 function ActiveIndicator() {
@@ -69,7 +84,7 @@ export function MSTabBar({ active, unreadMessages = 0 }) {
         display: "flex",
       }}
     >
-      {TABS.map(({ id, label, href, Icon }) => {
+      {TABS.map(({ id, label, href, Icon, lucide }) => {
         const isActive = id === active;
         const color = isActive ? "var(--ms-accent)" : "var(--ms-dim)";
         return (
@@ -108,8 +123,10 @@ export function MSTabBar({ active, unreadMessages = 0 }) {
                   }} />
                 )}
               </span>
-            ) : (
+            ) : lucide ? (
               <Icon size={22} strokeWidth={2} />
+            ) : (
+              <Icon color={color} />
             )}
             <span
               style={{
