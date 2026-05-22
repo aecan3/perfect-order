@@ -219,6 +219,7 @@ export default function ThreadPage() {
   }, []);
 
   return (
+    <>
     <MSShell hideTabBar>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Thread header with back arrow */}
@@ -474,5 +475,6 @@ export default function ThreadPage() {
         context="thread"
       />
     )}
+    </>
   );
 }

@@ -182,6 +182,7 @@ export default function FriendOverviewPage() {
   ];
 
   return (
+    <>
     <MSShell>
       <div style={{ position: "relative" }}>
         <MSPageTitle sub={`@${friend.handle}`}>{friend.display_name || friend.handle}</MSPageTitle>
@@ -264,5 +265,6 @@ export default function FriendOverviewPage() {
       reportedUserHandle={friend.handle}
       context="profile"
     />
+    </>
   );
 }
