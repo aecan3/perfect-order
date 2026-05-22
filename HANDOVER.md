@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 22 May 2026 (session 7). Single source of truth for the next session.*
-*Supersedes the previous handover note from session 6.*
+*Updated end of session, 22 May 2026 (session 8). Single source of truth for the next session.*
+*Supersedes the previous handover note from session 7.*
 
 ---
 
@@ -299,26 +299,26 @@ require some of these to be true.
     *Fix shipped (21 May 2026, commit `924738e`):* New `PPT_PATTERN_SET_IDS`
     constant + `tryPptPatterns()` supplemental pass added to
     `app/api/refresh-prices/route.js`. Runs after the waterfall, independent
-    of whether ptcgio succeeded. sv8pt5 (PPT setId 23821) and sv10 (PPT setId
-    24269) are wired. zsv10pt5 and rsv10pt5 have `null` placeholders pending
-    a PPT probe.
-    **Pending — PPT free-tier daily limit resets at 00:00 UTC. Run these
-    probes next time at the computer:**
-    ```powershell
-    $key = "pokeprice_free_084011e9d0f4f2a5eb86b0b27cb5d33adcc42e680af21da0"
-    # zsv10pt5 (Black Bolt) — TCGPlayer product 642450
-    $r = Invoke-RestMethod -Uri "https://www.pokemonpricetracker.com/api/v2/cards?tcgPlayerId=642450" `
-         -Headers @{ Authorization = "Bearer $key"; Accept = "application/json" }
-    Write-Host "zsv10pt5 setId: $($r.data.setId)"
-    Start-Sleep -Seconds 3
-    # rsv10pt5 (White Flare) — TCGPlayer product 642118
-    $r = Invoke-RestMethod -Uri "https://www.pokemonpricetracker.com/api/v2/cards?tcgPlayerId=642118" `
-         -Headers @{ Authorization = "Bearer $key"; Accept = "application/json" }
-    Write-Host "rsv10pt5 setId: $($r.data.setId)"
-    ```
-    Hardcode both values in `PPT_PATTERN_SET_IDS` (lines 28–29 of
-    `app/api/refresh-prices/route.js`), commit, push, trigger one refresh per
-    set, verify pattern rows populate. me2pt5 is untouched — still PokeScope.
+    of whether ptcgio succeeded. All four sets are now wired:
+    - sv8pt5 → PPT setId 23821 ✅ refreshed and verified (see below)
+    - sv10 → PPT setId 24269 ✅ wired, **refresh not yet triggered**
+    - zsv10pt5 → PPT setId 24325 ✅ wired (commit `c6be1ca`), **refresh not yet triggered**
+    - rsv10pt5 → PPT setId 24326 ✅ wired (commit `c6be1ca`), **refresh not yet triggered**
+    me2pt5 is untouched — still PokeScope.
+
+    **sv8pt5 refresh verified clean (22 May 2026, session 8).** After the
+    first successful refresh, three diagnostics confirmed data integrity:
+    (1) PPT product count for setId 23821 = exactly 100 Poke Ball Pattern +
+    67 Master Ball Pattern — matches DB row counts 1:1. (2) Zero pattern
+    rows exist for Double Rare / Special Illustration Rare / Hyper Rare /
+    ACE SPEC cards — no over-seeding. (3) Spot-check prices on eligible
+    cards ($0.27–$10.87 range) are realistic. The inclusion-rule concern was
+    unfounded — seeding and pricing are both correct.
+
+    **Pending — trigger refreshes for sv10, zsv10pt5, rsv10pt5.** Open the
+    set page for each in the app and let staleness gate expire (or NULL out
+    `prices_updated_at` in `user_sets` for those three sets if you want to
+    force it now). Then check DB pattern rows have non-zero prices.
 
     **Problem 3 — ECard/Platinum holofoil stale prices**
     ptcgio builds PID `ecard3-N-normal` but DB rows are typed `ecard3-N-holofoil`.
@@ -441,6 +441,8 @@ it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear. *(Item was originally item 15 in some earlier numbering — don't be confused by this. In the current handover item 15 is "Password minimum length consistency." The 800ms timer is correctly item 16.)*
 
 39. **Block prompt after report submit.** When item 6 (Block user) ships, the `ReportUserForm` success state should change from a plain toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. The toast-only path ships now so Report is clean and self-contained. The inline prompt is the right final UX but depends on Block existing first. UI flow decided 22 May 2026. File to modify: `components/ReportUserForm.jsx` — the `handleSubmit` success branch.
+
+40. **Staleness gate bug — refresh-prices route updates `user_sets.prices_updated_at` even when the refresh fails or has zero usable price data.** This means a failed/empty refresh silently locks out future refresh attempts for 6 hours (the `PRICE_STALENESS_MS` window). The gate should only advance `prices_updated_at` when at least one real price was written to `printings`. File: `app/api/refresh-prices/route.js` — the section that writes `prices_updated_at` back to `user_sets`. Not yet implemented; diagnosed during the sv8pt5 pattern refresh debugging where this bit us when PPT was down (had to manually NULL out `prices_updated_at` in the DB to force a retry).
 
 ---
 
@@ -775,13 +777,12 @@ All safe at current scale; flagged so they're not forgotten.
 
 When picking this back up, suggested sequence:
 
-1. **Complete pattern variant pricing (item 12, Problem 2).**
-   PPT free-tier daily limit resets at 00:00 UTC. Run the two setId probes
-   (PowerShell commands in item 12), hardcode `zsv10pt5` and `rsv10pt5` values
-   in `PPT_PATTERN_SET_IDS` (lines 28–29 of `app/api/refresh-prices/route.js`),
-   commit, push, and trigger one refresh per set to verify pokeball/masterball
-   rows get prices. This is a 15-minute task once the limit resets — do it
-   before anything else. (sv8pt5 and sv10 are already wired and shipping.)
+1. **Complete pattern variant pricing (item 12, Problem 2) — trigger remaining refreshes.**
+   All four sets are now wired in `PPT_PATTERN_SET_IDS`. sv8pt5 is fully
+   verified. Still needed: trigger one refresh each for sv10, zsv10pt5,
+   rsv10pt5, then confirm pokeball/masterball rows show non-zero prices.
+   If the staleness gate blocks (6h window), NULL out `prices_updated_at`
+   in `user_sets` for those three sets directly in SQL. 15-minute task.
 
 2. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
    visibility in place before adding new T&S surface area — the ordering is
@@ -810,6 +811,16 @@ When picking this back up, suggested sequence:
    nudge (item 8). Quick wins.
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
+
+**Done since last handover (22 May 2026, session 8):** sv8pt5 pattern variant
+pricing fully verified. Three diagnostics confirmed: (1) PPT has exactly 100
+Poke Ball Pattern + 67 Master Ball Pattern products for setId 23821 — exact
+1:1 match with DB row counts; (2) zero pattern rows exist for ineligible
+high-rarity cards; (3) spot-check prices realistic. The seeding and the
+refresh are both correct. zsv10pt5 (24325) and rsv10pt5 (24326) PPT setIds
+already hardcoded last session (commit `c6be1ca`) — refreshes for sv10,
+zsv10pt5, rsv10pt5 still pending. Staleness gate bug documented (loose
+thread 40). HANDOVER.md updated.
 
 **Done since last handover (22 May 2026, session 7):** User reports feature
 (item 5) shipped end-to-end. `user_reports` table + RLS + CHECK constraints
