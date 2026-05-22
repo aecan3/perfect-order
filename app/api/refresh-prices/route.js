@@ -24,7 +24,7 @@ const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
 // null = setId not yet confirmed; supplemental pass is skipped for that set.
 const PPT_PATTERN_SET_IDS = {
   sv8pt5:   23821,  // Prismatic Evolutions — confirmed
-  sv10:     24269,  // Destined Rivals — confirmed
+  sv10:     null,   // Destined Rivals has no pattern variants — confirmed via PokeCottage + empirical PPT probe (0 products across 256). Do not re-add.
   zsv10pt5: 24325,  // Black Bolt — confirmed via TCGPlayer product 642450
   rsv10pt5: 24326,  // White Flare — confirmed via TCGPlayer product 642118
 };
