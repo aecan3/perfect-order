@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 22 May 2026 (session 6). Single source of truth for the next session.*
-*Supersedes the previous handover note from session 5.*
+*Updated end of session, 22 May 2026 (session 7). Single source of truth for the next session.*
+*Supersedes the previous handover note from session 6.*
 
 ---
 
@@ -226,11 +226,8 @@ require some of these to be true.
 
 ### Trust & safety (required because messaging is on at launch)
 
-5. **Build "Report user" feature.** Accessible from another user's profile
-   AND from a message thread. Reason dropdown (harassment, scam/fraud, fake
-   cards, inappropriate content, other) + optional details field. Stores
-   into a `user_reports` table (needs creating: reporter_id,
-   reported_user_id, reason, details, created_at, status).
+5. ~~**Build "Report user" feature.**~~ **DONE 22 May 2026 (commits `930935e`, `245ccb5`, `223e156`).** `user_reports` table created with 10 columns, 4 indexes, 2 CHECK constraints (`no_self_report`, `details_required_when_other`), RLS insert + select-own policies. `OverflowMenu` component (`components/OverflowMenu.jsx`) — iOS-style bottom action sheet (portal, ESC, focus trap, return-focus-to-trigger). Takes `targetHandle` + `items` array; built for extensibility when Block adds a second row. `ReportUserForm` component (`components/ReportUserForm.jsx`) — portal bottom sheet matching `ReportCardForm` gold standard (ESC, focus trap, form reset, aria-modal). Reason as tappable radio rows; details always visible with dynamic optional/required label; submit gated on reason + details-when-other. On success: self-contained toast "Thanks — we'll review this report." On error: sheet stays open, inline message. Mounted on `app/friend/[handle]/page.js` (context='profile', hidden on own profile via `currentUserId !== friend.id`) and `app/messages/[handle]/page.js` (context='thread'). **This is the T&S data-corrections funnel — entirely separate from `card_reports` (data corrections).** Verified: row insertion correct on both surfaces, RLS blocks reported user from seeing the row, no notification sent to reported user. Admin queue (item 7) is unbuilt — separate future session.
+   **Follow-up (loose thread 39):** When Block ships (item 6), the report form success state should upgrade from a toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. UI flow decided 22 May 2026 but deliberately deferred so the Report brief ships clean.
 
 6. **Build "Block user" feature.** Same surfaces as Report. Effects: blocker
    and blocked can't see each other in Discover; blocker doesn't receive
@@ -442,6 +439,8 @@ it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 15. ~~**Password minimum length consistency.**~~ **DONE 17 May 2026 (commit `15a12f9`).** Bumped to 8 in both signup (`app/login/page.js`) and reset-password (`app/reset-password/page.js`). Supabase Auth dashboard also set to 8 (manual config). Both layers enforce.
 
 16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear. *(Item was originally item 15 in some earlier numbering — don't be confused by this. In the current handover item 15 is "Password minimum length consistency." The 800ms timer is correctly item 16.)*
+
+39. **Block prompt after report submit.** When item 6 (Block user) ships, the `ReportUserForm` success state should change from a plain toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. The toast-only path ships now so Report is clean and self-contained. The inline prompt is the right final UX but depends on Block existing first. UI flow decided 22 May 2026. File to modify: `components/ReportUserForm.jsx` — the `handleSubmit` success branch.
 
 ---
 
@@ -791,10 +790,12 @@ When picking this back up, suggested sequence:
    account-creation work, not coding. Once you have the DSN, Claude Code can
    do the install-and-wire-up in one focused pass.
 
-3. **The trust & safety block — Report / Block / Admin queue (items 5-7).**
-   Required before opening to strangers. Budget a full session per piece —
-   Report, Block, and Admin queue are each substantial. Build data model first
-   (`user_reports`, `user_blocks`), then UI, then admin queue.
+3. **The trust & safety block — Block + Admin queue (items 6-7).**
+   Report (item 5) is now done. Block and Admin queue are required before
+   opening to strangers. Budget a full session per piece. Block first
+   (`user_blocks` table, effects on Discover/messages/trades), then Admin
+   queue. When Block ships, also update `ReportUserForm` success state to
+   show the block prompt (loose thread 39).
 
 4. **PPT API plan upgrade (item 10a) — already captured as a launch blocker
    in §2. Repeated here for sequencing only.**
@@ -810,14 +811,23 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (22 May 2026, session 6):** Card error reporting
+**Done since last handover (22 May 2026, session 7):** User reports feature
+(item 5) shipped end-to-end. `user_reports` table + RLS + CHECK constraints
+applied (migration `20260522000000_create_user_reports_table.sql`).
+`OverflowMenu` bottom-action-sheet primitive built (`components/OverflowMenu.jsx`)
+and mounted on friend profile + message thread. `ReportUserForm` built
+(`components/ReportUserForm.jsx`) — reason radio rows, details textarea,
+submit gating, toast on success, inline error on failure. Verified on device:
+both surfaces correct, RLS blocks reported user's SELECT, no notification sent.
+Commits: `930935e`, `245ccb5`, `223e156`. Admin queue for `user_reports` deferred
+(item 7). Block-prompt follow-up captured as loose thread 39.
+
+**Previously done (22 May 2026, session 6):** Card error reporting
 feature completed end-to-end. `card_reports` table, RLS, FAB, and bottom-sheet
 form shipped (commits `a5e9318`, `c74eee5`). Email notification pipeline via
 Supabase webhook → Vercel route → Resend verified on device (commits `e1538c1`,
-`7dfb9f1`, `f41b163`). Set name resolution added: notification email now shows
-human-readable set name (e.g. "Perfect Order") resolved live from `sets.name`,
-with raw set_id in parens as triage aid — both subject and body updated (commit
-`a73ee67`). Admin queue for `card_reports` remains deferred (item 38).
+`7dfb9f1`, `f41b163`). Set name resolution added (commit `a73ee67`). Admin queue
+for `card_reports` remains deferred (item 38).
 
 **Previously done (21 May 2026, session 5):** Data correctness sprint (see
 section 3a) — Victini rarity fixes, Archen rarity fix, PRE80 Dudunsparce
