@@ -1,7 +1,7 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 21 May 2026 (session 5). Single source of truth for the next session.*
-*Supersedes the previous handover note from session 4.*
+*Updated end of session, 22 May 2026 (session 6). Single source of truth for the next session.*
+*Supersedes the previous handover note from session 5.*
 
 ---
 
@@ -156,7 +156,14 @@ favourites. User works primarily on iPhone PWA.
   `zIndex: 9999`). Migration:
   `supabase/migrations/20260521000000_create_card_reports_table.sql`.
   RLS: authenticated insert (`reporter_id = auth.uid()`) + select-own only —
-  no client-side update/delete. **Admin queue is not yet built** — see item 38.
+  no client-side update/delete.
+  Notification email: Supabase webhook → `app/api/admin/card-report-notify/route.js`
+  → Resend → `hello@mastersettertcg.com`. Email subject and body both show the
+  human-readable set name (e.g. "Perfect Order") resolved live from `sets.name`,
+  with the internal set_id in parentheses as a triage aid. Falls back to raw
+  set_id if the lookup fails. Commits: `a5e9318`, `c74eee5`, `e1538c1`,
+  `7dfb9f1`, `f41b163`, `a73ee67` — full pipeline verified end-to-end on device.
+  **Admin queue is not yet built** — see item 38.
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
@@ -803,17 +810,23 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (21 May 2026, sessions 5–6):** Data correctness sprint
-(see section 3a) — Victini rarity fixes (rsv10pt5-172, zsv10pt5-171), Archen
-rarity fix (rsv10pt5-131), PRE80 Dudunsparce subtypes + Master Ball insert,
-Black Bolt Master Ball coverage audit, Common/Uncommon phantom holofoil cleanup
-(22 rows deleted, 8 kept as legitimate det1, 1 resolved via rarity fix), ID/number
-mismatch audit (1 isolated artefact deferred). Pattern variant pricing for sv8pt5
-+ sv10 shipped (commit `924738e`); zsv10pt5 + rsv10pt5 pending PPT limit reset
-(PPT free-tier exhausted same UTC day — retry after 00:00 UTC next day).
-Card error reporting shipped (commits `a5e9318`, `c74eee5`): `card_reports` table,
-`ReportCardFAB`, `ReportCardForm` — data-corrections funnel live on set page.
-Admin queue for `card_reports` deferred (item 38).
+**Done since last handover (22 May 2026, session 6):** Card error reporting
+feature completed end-to-end. `card_reports` table, RLS, FAB, and bottom-sheet
+form shipped (commits `a5e9318`, `c74eee5`). Email notification pipeline via
+Supabase webhook → Vercel route → Resend verified on device (commits `e1538c1`,
+`7dfb9f1`, `f41b163`). Set name resolution added: notification email now shows
+human-readable set name (e.g. "Perfect Order") resolved live from `sets.name`,
+with raw set_id in parens as triage aid — both subject and body updated (commit
+`a73ee67`). Admin queue for `card_reports` remains deferred (item 38).
+
+**Previously done (21 May 2026, session 5):** Data correctness sprint (see
+section 3a) — Victini rarity fixes, Archen rarity fix, PRE80 Dudunsparce
+subtypes + Master Ball insert, Black Bolt Master Ball coverage audit,
+Common/Uncommon phantom holofoil cleanup (22 rows deleted, 8 kept as legitimate
+det1, 1 resolved via rarity fix), ID/number mismatch audit (1 isolated artefact
+deferred). Pattern variant pricing for sv8pt5 + sv10 shipped (commit `924738e`);
+zsv10pt5 + rsv10pt5 pending PPT limit reset (PPT free-tier exhausted — retry
+after 00:00 UTC).
 
 Item 12 now has three distinct sub-problems. Problem 2 (pattern variants) is 50%
 shipped. Problems 1 and 3 are diagnosed and decided, not yet implemented. The
