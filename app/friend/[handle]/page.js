@@ -9,6 +9,7 @@ import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { OverflowMenu } from "@/components/OverflowMenu";
+import { ReportUserForm } from "@/components/ReportUserForm";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -33,6 +34,7 @@ export default function FriendOverviewPage() {
   const [currency, setCurrency] = useState("AUD");
   const [status, setStatus] = useState("loading");
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [reportFormOpen, setReportFormOpen] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -175,7 +177,7 @@ export default function FriendOverviewPage() {
     {
       icon: Flag,
       label: "Report user",
-      onClick: () => console.log("[ReportUser] reported_user_id:", friend.id, "context: profile"),
+      onClick: () => setReportFormOpen(true),
     },
   ];
 
@@ -255,5 +257,12 @@ export default function FriendOverviewPage() {
         )}
       </div>
     </MSShell>
+    <ReportUserForm
+      isOpen={reportFormOpen}
+      onClose={() => setReportFormOpen(false)}
+      reportedUserId={friend.id}
+      reportedUserHandle={friend.handle}
+      context="profile"
+    />
   );
 }

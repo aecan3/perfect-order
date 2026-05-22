@@ -8,6 +8,7 @@ import { TradePanel } from "@/components/TradePanel";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { OverflowMenu } from "@/components/OverflowMenu";
+import { ReportUserForm } from "@/components/ReportUserForm";
 
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -36,6 +37,7 @@ export default function ThreadPage() {
 
   const [user, setUser] = useState(null);
   const [otherProfile, setOtherProfile] = useState(null);
+  const [reportFormOpen, setReportFormOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -234,7 +236,7 @@ export default function ThreadPage() {
                 items={[{
                   icon: Flag,
                   label: "Report user",
-                  onClick: () => console.log("[ReportUser] reported_user_id:", otherProfile.id, "context: thread"),
+                  onClick: () => setReportFormOpen(true),
                 }]}
               />
             )}
@@ -463,5 +465,14 @@ export default function ThreadPage() {
         </div>
       </div>
     </MSShell>
+    {otherProfile && (
+      <ReportUserForm
+        isOpen={reportFormOpen}
+        onClose={() => setReportFormOpen(false)}
+        reportedUserId={otherProfile.id}
+        reportedUserHandle={otherProfile.handle}
+        context="thread"
+      />
+    )}
   );
 }
