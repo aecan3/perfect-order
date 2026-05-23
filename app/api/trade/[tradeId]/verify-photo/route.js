@@ -27,11 +27,18 @@ export async function POST(req, { params }) {
   // Load trade to determine side and verify user is a party
   const { data: trade } = await supabase
     .from("trades")
-    .select("proposer_id, recipient_id, expires_at")
+    .select("proposer_id, recipient_id, expires_at, verification_skipped")
     .eq("id", tradeId)
     .maybeSingle();
 
   if (!trade) return NextResponse.json({ error: "Trade not found" }, { status: 404 });
+
+  if (trade.verification_skipped) {
+    return NextResponse.json(
+      { error: "This trade was accepted without verification — photo upload is not applicable." },
+      { status: 400 }
+    );
+  }
 
   if (new Date(trade.expires_at) < new Date()) {
     return NextResponse.json({ error: "This trade proposal has expired" }, { status: 410 });

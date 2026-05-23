@@ -18,9 +18,12 @@ export async function POST(req, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const body = await req.json().catch(() => ({}));
+  const acceptanceMode = body.acceptanceMode ?? "with_verification";
+
   const { data: trade } = await supabase
     .from("trades")
-    .select("proposer_id, recipient_id, status, expires_at")
+    .select("proposer_id, recipient_id, status, expires_at, proposer_offered_skip")
     .eq("id", tradeId)
     .maybeSingle();
 
@@ -34,12 +37,68 @@ export async function POST(req, { params }) {
   const isRecipient = trade.recipient_id === user.id;
   if (!isProposer && !isRecipient) return NextResponse.json({ error: "Not a party to this trade" }, { status: 403 });
 
-  // --- Stage 1: recipient accepting the proposal (pending → verification_required) ---
+  // --- Stage 1: recipient accepting the proposal ---
   if (trade.status === "pending") {
     if (!isRecipient) {
       return NextResponse.json({ error: "Only the recipient can accept a pending proposal" }, { status: 403 });
     }
+
+    // Validate: acceptanceMode 'no_verification' is only valid when proposer offered skip
+    if (acceptanceMode === "no_verification" && !trade.proposer_offered_skip) {
+      return NextResponse.json({ error: "Cannot skip verification — proposer did not offer skip" }, { status: 400 });
+    }
+
+    const { data: recipientProfile } = await supabase
+      .from("profiles")
+      .select("handle, display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    const recipientName = recipientProfile?.display_name || `@${recipientProfile?.handle}` || "Someone";
+
+    if (acceptanceMode === "no_verification") {
+      // Trust-based path: pending → agreed_pending_handover
+      await supabase.from("trades").update({
+        status: "agreed_pending_handover",
+        verification_skipped: true,
+      }).eq("id", tradeId);
+
+      await supabase.from("trade_events").insert({
+        trade_id: tradeId,
+        user_id: user.id,
+        event_type: "recipient_accepted_no_verification",
+        detail: {},
+      });
+
+      // Notify both parties
+      const { data: proposerProfile } = await supabase
+        .from("profiles")
+        .select("handle")
+        .eq("id", trade.proposer_id)
+        .maybeSingle();
+
+      await supabase.from("notifications").insert([
+        {
+          user_id: trade.proposer_id,
+          type: "trade_agreed_pending_handover",
+          title: "Trade agreed — no verification",
+          body: `${recipientName} accepted your trade without verification. Confirm when the physical exchange happens.`,
+          link: `/messages/${recipientProfile?.handle || ""}`,
+        },
+        {
+          user_id: trade.recipient_id,
+          type: "trade_agreed_pending_handover",
+          title: "Trade agreed — no verification",
+          body: `You accepted a trade with @${proposerProfile?.handle || ""}. Confirm when the physical exchange happens.`,
+          link: `/messages/${proposerProfile?.handle || ""}`,
+        },
+      ]);
+
+      return NextResponse.json({ stage: "agreed_pending_handover" });
+    }
+
+    // Standard path: pending → verification_required
     await supabase.from("trades").update({ status: "verification_required" }).eq("id", tradeId);
+
     await supabase.from("trade_events").insert({
       trade_id: tradeId,
       user_id: user.id,
@@ -47,20 +106,24 @@ export async function POST(req, { params }) {
       detail: {},
     });
 
-    const { data: recipientProfile } = await supabase
-      .from("profiles")
-      .select("handle, display_name")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const recipientName = recipientProfile?.display_name || `@${recipientProfile?.handle}` || "Someone";
-    await supabase.from("notifications").insert({
-      user_id: trade.proposer_id,
-      type: "trade_accepted",
-      title: "Trade accepted",
-      body: `${recipientName} accepted your trade proposal.`,
-      link: `/messages/${recipientProfile?.handle || ""}`,
-    });
+    // If proposer offered skip but acceptor chose verification, notify proposer they need to upload
+    if (trade.proposer_offered_skip) {
+      await supabase.from("notifications").insert({
+        user_id: trade.proposer_id,
+        type: "trade_verification_required_by_acceptor",
+        title: "Verification required",
+        body: `${recipientName} accepted your trade and chose to verify. Please upload your photo.`,
+        link: `/messages/${recipientProfile?.handle || ""}`,
+      });
+    } else {
+      await supabase.from("notifications").insert({
+        user_id: trade.proposer_id,
+        type: "trade_accepted",
+        title: "Trade accepted",
+        body: `${recipientName} accepted your trade proposal.`,
+        link: `/messages/${recipientProfile?.handle || ""}`,
+      });
+    }
 
     return NextResponse.json({ stage: "verification_required" });
   }

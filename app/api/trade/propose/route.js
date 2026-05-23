@@ -22,7 +22,7 @@ export async function POST(req) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { recipientHandle, offerItems, requestItems: rawRequestItems, requestItem } = body;
+  const { recipientHandle, offerItems, requestItems: rawRequestItems, requestItem, skipVerification } = body;
 
   // Accept either an array (new Discover flow) or a single item (legacy friend-set flow)
   const requestItems = rawRequestItems?.length ? rawRequestItems : (requestItem ? [requestItem] : []);
@@ -52,7 +52,7 @@ export async function POST(req) {
 
   const { data: trade, error: tradeErr } = await supabase
     .from("trades")
-    .insert({ proposer_id: user.id, recipient_id: recipient.id })
+    .insert({ proposer_id: user.id, recipient_id: recipient.id, proposer_offered_skip: skipVerification === true })
     .select("id")
     .single();
 
