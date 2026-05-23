@@ -86,6 +86,7 @@ function TradeNewInner() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [understood, setUnderstood] = useState(false);
+  const [skipVerification, setSkipVerification] = useState(false);
   const [status, setStatus] = useState("loading");
   const [loadError, setLoadError] = useState(null);
 
@@ -271,7 +272,7 @@ function TradeNewInner() {
     const res = await fetch("/api/trade/propose", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipientHandle, offerItems, requestItems }),
+      body: JSON.stringify({ recipientHandle, offerItems, requestItems, skipVerification }),
     });
 
     const data = await res.json();
@@ -584,9 +585,46 @@ function TradeNewInner() {
         {/* Footer — always visible at bottom */}
         <div className="flex-shrink-0 border-t border-[var(--po-border)] px-4 py-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           {submitError && <p className="text-xs text-rose-400 mb-2 text-center">{submitError}</p>}
-          <p className="text-[8px] text-center mb-2" style={{ color: "var(--po-text-faint)" }}>
+          <p className="text-[8px] text-center mb-3" style={{ color: "var(--po-text-faint)" }}>
             Trades happen between users. Trade at your own risk.
           </p>
+
+          {/* Skip-verification toggle */}
+          <button
+            type="button"
+            onClick={() => setSkipVerification((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 mb-1 px-1"
+          >
+            <span className="text-xs font-semibold text-left" style={{ color: "var(--po-text)" }}>
+              Skip verification (we know each other)
+            </span>
+            {/* Toggle track */}
+            <span
+              className="flex-shrink-0 relative inline-flex items-center rounded-full transition-colors"
+              style={{
+                width: 36, height: 20,
+                background: skipVerification ? "var(--po-green)" : "var(--po-border)",
+              }}
+            >
+              {/* Thumb */}
+              <span
+                className="absolute rounded-full transition-transform"
+                style={{
+                  width: 14, height: 14,
+                  background: skipVerification ? "#050507" : "var(--po-text-dim)",
+                  transform: skipVerification ? "translateX(18px)" : "translateX(3px)",
+                }}
+              />
+            </span>
+          </button>
+          <p className="text-[10px] mb-3 px-1" style={{
+            fontFamily: '"IBM Plex Mono", monospace',
+            color: "var(--po-text-faint)",
+            letterSpacing: "0.02em",
+          }}>
+            The other person can still choose to verify if they want.
+          </p>
+
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
@@ -598,6 +636,8 @@ function TradeNewInner() {
               ? "Sending…"
               : selectedRows.length === 0
               ? "Select cards to offer"
+              : skipVerification
+              ? `Propose Trade — no verification (${selectedRows.length} card${selectedRows.length !== 1 ? "s" : ""})`
               : `Propose Trade (${selectedRows.length} card${selectedRows.length !== 1 ? "s" : ""})`}
           </button>
         </div>
