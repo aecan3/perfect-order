@@ -11,8 +11,13 @@ function getSupabase() {
 }
 
 export async function GET(request) {
+  if (!process.env.CRON_SECRET) {
+    console.error("cron: CRON_SECRET env var is not set — rejecting all requests");
+    return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
+  }
+
   const authHeader = request.headers.get("authorization");
-  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
