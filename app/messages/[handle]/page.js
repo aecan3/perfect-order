@@ -352,7 +352,9 @@ export default function ThreadPage() {
                                 <div className="px-1.5 py-1.5">
                                   {c.side && (
                                     <p className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: c.side === "request" ? "var(--po-green)" : "var(--po-text-dim)" }}>
-                                      {c.side === "offer" ? "Offer" : "Want"}
+                                      {c.side === "offer"
+                                        ? (isMine ? "You offer" : "They offer")
+                                        : (isMine ? "They offer" : "You offer")}
                                     </p>
                                   )}
                                   <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
