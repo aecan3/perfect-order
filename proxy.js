@@ -60,6 +60,10 @@ const PUBLIC_PATHS = new Set([
   // Authenticated via shared-secret Authorization header (CARD_REPORT_WEBHOOK_SECRET),
   // NOT via user session. Must be public to receive POSTs from Supabase infrastructure.
   "/api/admin/card-report-notify",
+
+  // Vercel cron endpoint — called by Vercel scheduler, no session cookie present.
+  // Authenticated via Authorization: Bearer CRON_SECRET header.
+  "/api/cron/trade-handover-prompts",
 ]);
 
 export async function proxy(request) {
