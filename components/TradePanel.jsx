@@ -19,6 +19,7 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
   const [verifyError, setVerifyError] = useState(null);
   const [acceptError, setAcceptError] = useState(null);
   const [declineError, setDeclineError] = useState(null);
+  const [handoverError, setHandoverError] = useState(null);
   const [logisticsChoice, setLogisticsChoice] = useState(null);
   const [nearbyShops, setNearbyShops] = useState(null);
   const [shopsLoading, setShopsLoading] = useState(false);
@@ -98,16 +99,39 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
     }
   };
 
-  const handleAccept = async () => {
+  const handleAccept = async (acceptanceMode = "with_verification") => {
     setProcessing(true);
     setAcceptError(null);
     try {
-      const res = await fetch(`/api/trade/${tradeId}/accept`, { method: "POST" });
+      const res = await fetch(`/api/trade/${tradeId}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acceptanceMode }),
+      });
       const data = await res.json();
       if (!res.ok) { setAcceptError(data.error || "Failed to accept trade"); return; }
       await loadTradeState();
     } catch {
       setAcceptError("Network error — please try again.");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleConfirmHandover = async (confirmation) => {
+    setProcessing(true);
+    setHandoverError(null);
+    try {
+      const res = await fetch(`/api/trade/${tradeId}/confirm-handover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setHandoverError(data.error || "Failed to confirm handover"); return; }
+      await loadTradeState();
+    } catch {
+      setHandoverError("Network error — please try again.");
     } finally {
       setProcessing(false);
     }
@@ -187,11 +211,44 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
                 <Clock size={13} className="flex-shrink-0" />
                 Waiting for @{otherHandle} to accept or decline…
               </div>
+            ) : trade.proposer_offered_skip ? (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Respond to this trade</p>
+                <button
+                  onClick={() => handleAccept("no_verification")}
+                  disabled={processing}
+                  className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
+                  style={{ background: "var(--po-green)" }}
+                >
+                  {processing ? "Accepting…" : "Accept — No Verification"}
+                </button>
+                <button
+                  onClick={() => handleAccept("with_verification")}
+                  disabled={processing}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm border border-[var(--po-green)] text-[var(--po-green)] disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Camera size={13} />
+                  {processing ? "Accepting…" : "Accept — With Verification"}
+                </button>
+                <button
+                  onClick={handleDecline}
+                  disabled={processing}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm border border-rose-700/60 text-rose-400 disabled:opacity-50 flex items-center justify-center"
+                >
+                  Decline Trade
+                </button>
+                <p className="text-[9px] leading-relaxed text-[var(--po-text-dim)] pt-1">
+                  Skipping verification means you trust this person to send the card. Master Setter can&apos;t help recover items if a trade goes wrong. Verification uses photo timestamps and AI to check that the photo is real and shows the correct card — but it&apos;s only available if both parties opt in.
+                </p>
+                {(acceptError || declineError) && (
+                  <p className="text-xs text-rose-300">{acceptError || declineError}</p>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Respond to this trade</p>
                 <button
-                  onClick={handleAccept}
+                  onClick={() => handleAccept("with_verification")}
                   disabled={processing}
                   className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
                   style={{ background: "var(--po-green)" }}
@@ -286,6 +343,54 @@ export function TradePanel({ tradeId, user, otherHandle, otherUserId, requestCar
                 </div>
               )}
             </>
+          )}
+
+          {/* ── AGREED PENDING HANDOVER (skip-verification path) ── */}
+          {trade.status === "agreed_pending_handover" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Clock size={14} style={{ color: "var(--po-green)" }} />
+                <span className="text-xs font-bold" style={{ color: "var(--po-green)" }}>Trade Agreed — Awaiting Exchange</span>
+              </div>
+              <p className="text-xs text-[var(--po-text-dim)] leading-relaxed">
+                Both parties agreed to trade without photo verification. Once you&apos;ve exchanged cards, confirm what happened below.
+              </p>
+              <div className="space-y-2 border-t border-[var(--po-border)] pt-3">
+                <p className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)]">Did the exchange happen?</p>
+                <button
+                  onClick={() => handleConfirmHandover("completed")}
+                  disabled={processing}
+                  className="w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest text-black disabled:opacity-50 flex items-center justify-center gap-2 po-glow-green"
+                  style={{ background: "var(--po-green)" }}
+                >
+                  {processing ? "Confirming…" : "Yes — We Exchanged Cards"}
+                </button>
+                <button
+                  onClick={() => handleConfirmHandover("did_not_happen")}
+                  disabled={processing}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm border border-rose-700/60 text-rose-400 disabled:opacity-50 flex items-center justify-center"
+                >
+                  No — Trade Didn&apos;t Happen
+                </button>
+                {handoverError && <p className="text-xs text-rose-300">{handoverError}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* ── PHYSICALLY COMPLETED ── */}
+          {trade.status === "physically_completed" && (
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--po-green)]/30 bg-[var(--po-green)]/5 px-3 py-3">
+              <CheckCircle size={14} style={{ color: "var(--po-green)" }} className="flex-shrink-0" />
+              <p className="text-xs text-[var(--po-text)]">Exchange confirmed. Trade complete.</p>
+            </div>
+          )}
+
+          {/* ── CANCELLED (did_not_happen path) ── */}
+          {trade.status === "cancelled" && (
+            <div className="flex items-center gap-2 rounded-xl border border-rose-700/40 bg-rose-950/30 px-3 py-3">
+              <AlertTriangle size={14} className="text-rose-400 flex-shrink-0" />
+              <p className="text-xs text-rose-300">Trade reported as not completed.</p>
+            </div>
           )}
 
           {/* ── EXPIRED ── */}
