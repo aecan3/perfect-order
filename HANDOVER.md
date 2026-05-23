@@ -754,6 +754,8 @@ All safe at current scale; flagged so they're not forgotten.
 
 ### Gotchas — 30-second fixes that took 20 minutes to find
 
+- **Supabase real-time requires explicit publication membership.** A `supabase.channel().on("postgres_changes", ...).subscribe()` will appear correctly wired in code but silently receive zero events if the table isn't in the `supabase_realtime` publication. Always verify both: code subscription exists AND table is in the publication (`SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime'`). Add missing tables via `ALTER PUBLICATION supabase_realtime ADD TABLE <table>;` and save as a migration. Discovered 23 May 2026 when TradePanel real-time updates weren't firing across devices despite the subscription code being correct.
+
 - **Windows PowerShell glob expansion.** `[` and `]` in file paths (Next.js dynamic routes like `[tradeId]`) are treated as wildcards by PowerShell's `Remove-Item`. Use `Remove-Item -LiteralPath ...` to actually delete dynamic-route files.
 
 - **Supabase Auth config location.** Password minimum length, leaked-password check, and other auth-provider config lives at: Dashboard → Authentication → Sign In / Providers → scroll to Auth Providers → expand the Email provider row. NOT the Policies page (that's RLS). NOT Attack Protection (that's captcha + leaked-password toggle only). NOT Email under NOTIFICATIONS (that's email templates). The `auth.config` SQL table no longer exists in current Supabase — must use the dashboard.
