@@ -1,13 +1,14 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ChevronDown, X, Check, LayoutGrid, BookOpen, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { useRouter, useParams } from "next/navigation";
+import { ChevronDown, X, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { Avatar } from "@/components/Avatar";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -168,13 +169,10 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
 export default function FriendSetTrackerPage() {
   const router = useRouter();
   const params = useParams();
-  const searchParams = useSearchParams();
   const supabase = createClient();
   const handle = params.handle;
   const setId = params.setId;
-  const backTo = searchParams.get("from") === "discover" ? "/discover" : `/friend/${handle}`;
 
-  const [me, setMe] = useState(null);
   const [friend, setFriend] = useState(null);
   const [setRow, setSetRow] = useState(null);
   const [cards, setCards] = useState([]);
@@ -182,15 +180,13 @@ export default function FriendSetTrackerPage() {
   const [ownedPrintings, setOwnedPrintings] = useState({});
   const [pickingCard, setPickingCard] = useState(null);
   const [currency, setCurrency] = useState("AUD");
-  const [masterSet, setMasterSet] = useState(false);
+  const [view, setView] = useState("rarity");
   const [openSections, setOpenSections] = useState({});
   const [status, setStatus] = useState("loading");
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
-    const m = localStorage.getItem("po:masterSet");
-    if (m !== null) setMasterSet(m === "true");
   }, []);
 
   useEffect(() => {
@@ -200,7 +196,6 @@ export default function FriendSetTrackerPage() {
         router.replace("/welcome");
         return;
       }
-      setMe(user);
 
       const { data: friendProfile } = await supabase
         .from("profiles")
@@ -285,17 +280,6 @@ export default function FriendSetTrackerPage() {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const switchCurrency = (c) => {
-    setCurrency(c);
-    localStorage.setItem("po:currency", c);
-  };
-
-  const toggleMasterSet = () => {
-    const next = !masterSet;
-    setMasterSet(next);
-    localStorage.setItem("po:masterSet", String(next));
-  };
-
   if (status === "loading") {
     return (
       <MSShell>
@@ -341,43 +325,17 @@ export default function FriendSetTrackerPage() {
     const prints = printingsByCard[cardNumber] || [];
     return prints.some((p) => ownedPrintings[p.id]?.checked);
   };
-  const cardOwnedCount = (cardNumber) => {
-    const prints = printingsByCard[cardNumber] || [];
-    return prints.filter((p) => ownedPrintings[p.id]?.checked).length;
-  };
 
   const allPrintings = cards.flatMap((c) => printingsByCard[c.number] || []);
-  const totalCards = cards.length;
   const totalPrintings = allPrintings.length;
-  const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
   const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
+  const pct = totalPrintings > 0 ? Math.round((ownedPrintingCount / totalPrintings) * 100) : 0;
 
-  const totalCardValue = cards.reduce((s, c) => {
-    const prints = printingsByCard[c.number] || [];
-    const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
-    return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
-  }, 0);
-  const totalPrintingValue = allPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
-
-  const ownedCardValue = cards
-    .filter((c) => isCardOwned(c.number))
-    .reduce((s, c) => {
-      const prints = printingsByCard[c.number] || [];
-      const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
-      return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
-    }, 0);
-  const ownedPrintingValue = allPrintings
-    .filter((p) => ownedPrintings[p.id]?.checked)
-    .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
-
-  const checkedDisplay = ownedPrintingCount;
-  const totalDisplay = totalPrintings;
-  const ownedValueDisplay = ownedPrintingValue;
-  const totalValueDisplay = totalPrintingValue;
-  const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
+  const missingCards = cards.filter((c) => !isCardOwned(c.number));
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
+  const themeBg = setRow.theme_bg || "#050507";
 
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
@@ -469,59 +427,104 @@ export default function FriendSetTrackerPage() {
     <MSShell>
       <MSPageTitle sub={`@${friend.handle}`}>{setRow.name}</MSPageTitle>
 
-      <div className="px-4 pb-3 max-w-md mx-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="grid grid-cols-2 gap-3 flex-1">
-            <div>
-              <div className="text-3xl font-black tabular-nums leading-none">
-                {checkedDisplay}<span className="text-[var(--po-text-dim)] text-xl">/{totalDisplay}</span>
-              </div>
-              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                printings collected
-              </div>
+      <div
+        className="px-4 pt-0 pb-4 max-w-md mx-auto"
+        style={{ borderBottom: `1px solid ${themePrimary}30` }}
+      >
+        {/* Set hero */}
+        <div className="flex items-center gap-3 mb-4">
+          {setRow.logo_url ? (
+            <img src={setRow.logo_url} alt={setRow.name} className="h-14 object-contain flex-shrink-0" />
+          ) : (
+            <div
+              className="h-14 w-14 rounded-lg flex items-center justify-center font-black text-xl flex-shrink-0"
+              style={{ background: themePrimary, color: themeBg }}
+            >
+              {setRow.code}
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-black tabular-nums leading-none" style={{ color: themePrimary }}>
-                {fmtMoney(ownedValueDisplay, currency)}
-              </div>
-              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                owned · {fmtMoney(remainingValueDisplay, currency)} to go
-              </div>
+          )}
+          <div className="min-w-0">
+            <div className="text-2xl font-black leading-tight truncate" style={{ color: themePrimary }}>
+              {setRow.name}
             </div>
+            {setRow.series && (
+              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
+                {setRow.series}
+              </div>
+            )}
           </div>
-          <select
-            value={currency}
-            onChange={(e) => switchCurrency(e.target.value)}
-            className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer ml-3 flex-shrink-0"
-          >
-            <option value="AUD">AUD</option>
-            <option value="USD">USD</option>
-            <option value="GBP">GBP</option>
-          </select>
         </div>
-        <div className="h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden mb-3">
+
+        {/* Identity row */}
+        <Link href={`/friend/${handle}`} className="flex items-center gap-3 mb-4">
+          <Avatar profile={friend} size={40} themePrimary={themePrimary} />
+          <div className="min-w-0">
+            <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">
+              {friend.display_name || friend.handle}
+            </div>
+            <div className="text-[10px] text-[var(--po-text-dim)] truncate">@{friend.handle}</div>
+          </div>
+        </Link>
+
+        {/* Stats */}
+        <div className="mb-3">
+          <div
+            className="tabular-nums font-black leading-none"
+            style={{ fontSize: 36, color: themePrimary, textShadow: `0 0 20px ${themePrimary}60` }}
+          >
+            {ownedPrintingCount}
+            <span className="font-black text-[var(--po-text-dim)]" style={{ fontSize: 24 }}>
+              /{totalPrintings}
+            </span>
+          </div>
+          <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-1">
+            printings collected · {totalPrintings - ownedPrintingCount} to go
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1 w-full bg-[var(--po-bg-soft)] rounded-full overflow-hidden mb-4">
           <div
             className="h-full transition-all duration-300"
             style={{
-              width: `${totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0}%`,
+              width: `${pct}%`,
               background: `linear-gradient(90deg, ${themePrimary}, ${themeSecondary})`,
               boxShadow: `0 0 12px ${themePrimary}80`,
             }}
           />
         </div>
-        <button
-          onClick={toggleMasterSet}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border border-[var(--po-border)] bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] hover:border-[var(--po-text-dim)] transition-colors"
-        >
-          {masterSet ? <BookOpen size={13} /> : <LayoutGrid size={13} />}
-          {masterSet ? "Binder View" : "Rarity View"}
-        </button>
+
+        {/* 3-button toggle */}
+        <div className="flex gap-2">
+          {[
+            { id: "rarity", label: "Rarity" },
+            { id: "binder", label: "Binder" },
+            { id: "missing", label: "Missing" },
+          ].map(({ id, label }) => {
+            const active = view === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                className="flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold border transition-colors"
+                style={{
+                  background: active ? themePrimary : "var(--po-bg-soft)",
+                  borderColor: active ? themePrimary : "var(--po-border)",
+                  color: active ? "#000" : "var(--po-text-dim)",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="px-3 py-4">
-        {masterSet ? (
+        {view === "binder" && (
           <div className="grid grid-cols-2 gap-3">{cards.map(renderCard)}</div>
-        ) : (
+        )}
+        {view === "rarity" && (
           <div className="space-y-3">
             {sections.map((section) => {
               const isOpen = !!openSections[section.id];
@@ -548,6 +551,15 @@ export default function FriendSetTrackerPage() {
               );
             })}
           </div>
+        )}
+        {view === "missing" && (
+          missingCards.length === 0 ? (
+            <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
+              They&apos;ve got everything — nothing missing.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">{missingCards.map(renderCard)}</div>
+          )
         )}
       </div>
 
