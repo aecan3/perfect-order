@@ -853,15 +853,22 @@ async function processSet(admin, userId, setId, slugMap) {
       return s + (upd?.price_usd ?? Number(p.price_usd) ?? 0);
     }, 0);
 
-  // 6. Stamp user_sets with previous_value + refresh timestamp
-  await admin
-    .from("user_sets")
-    .update({
-      previous_value: previousValue,
-      prices_updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId)
-    .eq("set_id", setId);
+  // 6. Stamp user_sets with previous_value + refresh timestamp — only when real
+  // prices were written. An empty run (upstream down, all 404s, etc.) must not
+  // advance the timestamp or the 6h staleness gate blocks an immediate retry.
+  if (updates.length > 0) {
+    console.log(`[refresh-prices] Wrote ${updates.length} prices for set ${setId}, prices_updated_at advanced`);
+    await admin
+      .from("user_sets")
+      .update({
+        previous_value: previousValue,
+        prices_updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("set_id", setId);
+  } else {
+    console.warn(`[refresh-prices] No prices written for set ${setId}, prices_updated_at NOT advanced — user can retry immediately`);
+  }
 
   return {
     setId, cardsUpdated: updates.length, previousValue, newValue,
