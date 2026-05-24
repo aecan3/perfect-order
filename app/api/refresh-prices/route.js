@@ -10,7 +10,7 @@ const PPT_BASE        = "https://www.pokemonpricetracker.com/api/v2";
 const POKESCOPE_BASE  = "https://pokescope.app/card";
 
 // ME sets have no PokeTrace individual card data - skip source 1 for these
-const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3"]);
+const ME_SETS = new Set(["me1", "me2", "me2pt5", "me3", "me4"]);
 
 // PPT numeric set IDs for sets with pokeball/masterball pattern variant products.
 // Pattern variants are separate TCGPlayer products (separate product IDs) from the
