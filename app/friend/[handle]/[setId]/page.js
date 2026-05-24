@@ -212,6 +212,13 @@ export default function FriendSetTrackerPage() {
         setStatus("not-found");
         return;
       }
+
+      const { data: blocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: friendProfile.id });
+      if (blocked) {
+        setStatus("not-found");
+        return;
+      }
+
       setFriend(friendProfile);
 
       const { data: friendship } = await supabase
