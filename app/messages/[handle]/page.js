@@ -41,6 +41,8 @@ export default function ThreadPage() {
   const [messages, setMessages] = useState([]);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [sendError, setSendError] = useState(null);
   const [currency, setCurrency] = useState("AUD");
 
   // Pre-populated trade message from discover panel
@@ -97,6 +99,13 @@ export default function ThreadPage() {
         .maybeSingle();
 
       if (!profile) { router.replace("/messages"); return; }
+
+      const { data: isBlocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: profile.id });
+      if (isBlocked) {
+        setBlocked(true);
+        return;
+      }
+
       setOtherProfile(profile);
 
       // Load messages
@@ -184,6 +193,11 @@ export default function ThreadPage() {
 
   const send = async () => {
     if (!body.trim() || !user || !otherProfile || sending) return;
+    const { data: nowBlocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: otherProfile.id });
+    if (nowBlocked) {
+      setSendError("Couldn't send message.");
+      return;
+    }
     setSending(true);
     const payload = {
       sender_id: user.id,
@@ -195,6 +209,7 @@ export default function ThreadPage() {
     const { error } = await supabase.from("messages").insert(payload);
     if (!error) {
       setBody("");
+      setSendError(null);
       // Clear card attachment after first send
       if (cardsMeta) router.replace(`/messages/${handle}`);
     }
@@ -217,6 +232,26 @@ export default function ThreadPage() {
     acc[acc.length - 1].msgs.push(msg);
     return acc;
   }, []);
+
+  if (blocked) {
+    return (
+      <MSShell hideTabBar>
+        <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ flexShrink: 0, borderBottom: "1px solid var(--po-border)", padding: "12px 16px", background: "var(--po-bg)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 448, margin: "0 auto" }}>
+              <button onClick={() => router.back()} style={{ color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+                <ArrowLeft size={20} />
+              </button>
+              <p style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2, color: "var(--po-text)", margin: 0, flex: 1, minWidth: 0 }}>@{handle}</p>
+            </div>
+          </div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <p className="text-sm text-center px-8" style={{ color: "var(--po-text-dim)" }}>This conversation is unavailable.</p>
+          </div>
+        </div>
+      </MSShell>
+    );
+  }
 
   return (
     <>
@@ -441,6 +476,9 @@ export default function ThreadPage() {
 
         {/* Input bar */}
         <div style={{ flexShrink: 0, borderTop: "1px solid var(--po-border)", background: "var(--po-bg)", padding: "12px 16px" }}>
+          {sendError && (
+            <p className="text-xs text-rose-400 text-center mb-2 max-w-md mx-auto">{sendError}</p>
+          )}
           <div className="flex items-end gap-2 max-w-md mx-auto">
             <textarea
               ref={inputRef}
