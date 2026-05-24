@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronRight, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { getFriendIds } from "@/lib/queries/friends";
+import { getBlockIds } from "@/lib/queries/blocks";
 import { getDiscoverMatches } from "@/lib/queries/discover";
 import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -40,9 +41,13 @@ export default function DiscoverPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/welcome"); return; }
     if (!userId) setUserId(user.id);
-    const friendIds = await getFriendIds(supabase, user.id);
-    if (!friendIds.length) { setCards([]); return; }
-    const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds });
+    const [friendIds, blockIds] = await Promise.all([
+      getFriendIds(supabase, user.id),
+      getBlockIds(supabase, user.id),
+    ]);
+    const visibleFriendIds = friendIds.filter((id) => !blockIds.has(id));
+    if (!visibleFriendIds.length) { setCards([]); return; }
+    const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds: visibleFriendIds });
     setCards(results);
   };
 
