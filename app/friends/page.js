@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, UserPlus, Check, X, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { getBlockIds } from "@/lib/queries/blocks";
 
 export default function FriendsPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function FriendsPage() {
   const [searchHandle, setSearchHandle] = useState("");
   const [searchError, setSearchError] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [blockIds, setBlockIds] = useState(new Set());
   const [authChecked, setAuthChecked] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -24,16 +26,24 @@ export default function FriendsPage() {
   const dropdownRef = useRef(null);
 
   const loadFriendships = useCallback(async (uid) => {
-    const { data: rows } = await supabase
-      .from("friendships")
-      .select("*")
-      .or(`user_a.eq.${uid},user_b.eq.${uid}`);
+    const [{ data: rows }, ids] = await Promise.all([
+      supabase
+        .from("friendships")
+        .select("*")
+        .or(`user_a.eq.${uid},user_b.eq.${uid}`),
+      getBlockIds(supabase, uid),
+    ]);
 
-    setFriendships(rows || []);
+    setBlockIds(ids);
 
-    const otherIds = (rows || []).map((r) =>
-      r.user_a === uid ? r.user_b : r.user_a
-    );
+    const visibleRows = (rows || []).filter((r) => {
+      const otherId = r.user_a === uid ? r.user_b : r.user_a;
+      return !ids.has(otherId);
+    });
+
+    setFriendships(visibleRows);
+
+    const otherIds = visibleRows.map((r) => r.user_a === uid ? r.user_b : r.user_a);
     if (otherIds.length === 0) {
       setProfilesById({});
       return;
@@ -87,7 +97,7 @@ export default function FriendsPage() {
         ...friendships.map((f) => f.user_a),
         ...friendships.map((f) => f.user_b),
       ]);
-      const filtered = (data || []).filter((p) => !friendAndSelfIds.has(p.id));
+      const filtered = (data || []).filter((p) => !friendAndSelfIds.has(p.id) && !blockIds.has(p.id));
       setSearchResults(filtered);
       setShowDropdown(true);
     }, 300);
@@ -149,6 +159,13 @@ export default function FriendsPage() {
       setSearchError(
         existing.status === "accepted" ? "You're already friends." : "A request already exists."
       );
+      setSearchLoading(false);
+      return;
+    }
+
+    const { data: blocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: target.id });
+    if (blocked) {
+      setSearchError("Couldn't send a request to this user.");
       setSearchLoading(false);
       return;
     }
