@@ -306,15 +306,20 @@ require some of these to be true.
     sets `result`, subsequent sources are skipped.
 
     **Problem 1 — ME-set promo bleed (Gengar me3-50 example)**
-    PokeScope scrapes one HTML market price per card and applies a 0.85×
-    reverse-holo multiplier with no cross-check against any second source.
-    The $221 Gengar price on the regular holofoil is PokeScope reading the
-    GameStop/EB Games promo's market value rather than the pack-pulled card.
-    Magnitude: removing just the Gengar mis-pricing drops Perfect Order from
-    US$570 (~A$878) to ~US$162 (~A$250).
-    *Fix decided:* Use ptcgio as a secondary verification pass for ME sets;
-    log and skip prices that diverge >20% from ptcgio's value. ~1–2 hours.
-    **Not yet implemented.** Defer to next pricing session.
+    PokeScope shows a "Multiple variants available" block for cards with stamp
+    promos (and for commons/uncommons with normal+reverse_holofoil). Old code
+    grabbed the first `$amount` after "market price", which was always the
+    highest-priced stamp promo. Fix shipped 24 May 2026 (commit `e87a957`):
+    `tryPokeScope` now detects the variant block, parses label+price pairs,
+    maps `printing_type → PokeScope label` via whitelist, silently skips
+    unknown labels (Gamestop Stamp, Eb Games Stamp, etc.). Single-variant
+    cards (SIR, MHR, UR) hit the unchanged else-branch. HTML audited against
+    3 cards before fix (me3-50, me3-1, me3-122); all `rounded-lg p-3` hits
+    confirmed inside/after the variant block — no false-positive risk.
+    Post-fix re-refresh pending verification; first post-fix refresh produced
+    unexpected $330/$1.53 for me3-50 — suspected deploy-timing artifact
+    (first refresh may have hit old code before Vercel finished building
+    `e87a957`). Second refresh expected to produce ~$0.56/$1.00.
 
     **Problem 2 — Pattern variants stuck at $0.00 (sv8pt5, sv10, zsv10pt5,
     rsv10pt5 pokeball/masterball printings)**
@@ -348,6 +353,14 @@ require some of these to be true.
     - sv10: cleaned up — null entry in `PPT_PATTERN_SET_IDS`, 286 phantom rows deleted via migration `20260522130000`.
     - rsv10pt5: fully priced.
     - zsv10pt5: 72/82 pokeball + 72/74 masterball priced after re-refresh. 10 null-priced rows remain: 9 pokeball + 1 masterball. All are `_pb`-suffix IDs from pre-release ingestion — see item 36d.
+
+    **Problem 4 — me4 (Chaos Rising) pricing blocked on PokeScope upstream indexing**
+    Set ingested clean (122 cards, 198 printings, themes extracted, ME_SETS
+    updated — commit `1d004ea`, 24 May 2026). PokeScope returns 404 for all
+    me4 cards as of 24 May. `tryPokeScope` logs 122 warnings, returns null,
+    no prices written. All me4 printings remain at $0. No code action needed —
+    re-trigger refresh in a few days once PokeScope indexes the set. Confirmed
+    by sampling cards 1, 10, 50, 100, 122 via direct HTTP.
 
     **Problem 3 — ECard/Platinum holofoil stale prices**
     ptcgio builds PID `ecard3-N-normal` but DB rows are typed `ecard3-N-holofoil`.
