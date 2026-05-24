@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ChevronDown, X, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { ChevronDown, ChevronRight, X, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
@@ -431,39 +431,33 @@ export default function FriendSetTrackerPage() {
         className="px-4 pt-0 pb-4 max-w-md mx-auto"
         style={{ borderBottom: `1px solid ${themePrimary}30` }}
       >
-        {/* Set hero */}
-        <div className="flex items-center gap-3 mb-4">
+        {/* Set hero — logo only; set name shown in MSPageTitle above */}
+        <div className="mb-4">
           {setRow.logo_url ? (
-            <img src={setRow.logo_url} alt={setRow.name} className="h-14 object-contain flex-shrink-0" />
+            <img src={setRow.logo_url} alt={setRow.name} className="h-14 object-contain" />
           ) : (
             <div
-              className="h-14 w-14 rounded-lg flex items-center justify-center font-black text-xl flex-shrink-0"
+              className="h-14 w-14 rounded-lg flex items-center justify-center font-black text-xl"
               style={{ background: themePrimary, color: themeBg }}
             >
               {setRow.code}
             </div>
           )}
-          <div className="min-w-0">
-            <div className="text-2xl font-black leading-tight truncate" style={{ color: themePrimary }}>
-              {setRow.name}
-            </div>
-            {setRow.series && (
-              <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                {setRow.series}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Identity row */}
-        <Link href={`/friend/${handle}`} className="flex items-center gap-3 mb-4">
+        <Link
+          href={`/friend/${handle}`}
+          className="flex items-center gap-3 mb-4 rounded-xl p-2 -mx-2 hover:bg-[var(--po-bg-soft)] active:bg-[var(--po-border)] transition-colors"
+        >
           <Avatar profile={friend} size={40} themePrimary={themePrimary} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">
               {friend.display_name || friend.handle}
             </div>
             <div className="text-[10px] text-[var(--po-text-dim)] truncate">@{friend.handle}</div>
           </div>
+          <ChevronRight size={16} className="text-[var(--po-text-dim)] flex-shrink-0" />
         </Link>
 
         {/* Stats */}
