@@ -775,6 +775,11 @@ export default function SetTrackerPage() {
           },
           { onConflict: "user_id,set_id,card_number,printing_id" }
         );
+        fetch("/api/feed/record-milestone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ setId }),
+        }).catch((err) => console.warn("[feed] milestone record failed:", err));
       } else {
         // Unticking — if duplicates exist, show confirm dialog first
         if ((cur.duplicate_count || 0) > 0) {
