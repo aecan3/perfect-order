@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { Flag, ShieldOff } from "lucide-react";
+import { Flag, ShieldOff, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
@@ -219,6 +219,18 @@ export default function FriendOverviewPage() {
             <div className="text-sm text-[var(--po-text-dim)] truncate mt-0.5">@{friend.handle}</div>
           </div>
         </div>
+      </div>
+
+      <div className="px-4 pb-0 max-w-md mx-auto">
+        <Link
+          href={`/friend/${handle}/favourites`}
+          className="flex items-center gap-3 py-3 rounded-xl px-2 -mx-2 hover:bg-[var(--po-bg-soft)] active:bg-[var(--po-border)] transition-colors"
+          style={{ borderBottom: "1px solid var(--po-border)" }}
+        >
+          <span style={{ fontSize: 16, color: "#FFB830", lineHeight: 1 }}>★</span>
+          <span className="flex-1 font-bold text-sm text-[var(--po-text)]">Favourites</span>
+          <ChevronRight size={16} className="text-[var(--po-text-dim)] flex-shrink-0" />
+        </Link>
       </div>
 
       <div className="px-4 py-4 space-y-3 max-w-md mx-auto">

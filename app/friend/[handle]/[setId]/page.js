@@ -178,6 +178,7 @@ export default function FriendSetTrackerPage() {
   const [cards, setCards] = useState([]);
   const [printingsByCard, setPrintingsByCard] = useState({});
   const [ownedPrintings, setOwnedPrintings] = useState({});
+  const [friendFavourites, setFriendFavourites] = useState(new Set());
   const [pickingCard, setPickingCard] = useState(null);
   const [currency, setCurrency] = useState("AUD");
   const [view, setView] = useState("rarity");
@@ -231,7 +232,7 @@ export default function FriendSetTrackerPage() {
         return;
       }
 
-      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }] = await Promise.all([
+      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: favData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
@@ -240,6 +241,7 @@ export default function FriendSetTrackerPage() {
           .select("printing_id, card_number, checked, photo_url")
           .eq("user_id", friendProfile.id)
           .eq("set_id", setId),
+        supabase.rpc("get_friend_favourites", { viewer: user.id, target: friendProfile.id }),
       ]);
 
       setSetRow(setData);
@@ -259,6 +261,7 @@ export default function FriendSetTrackerPage() {
         }
       });
       setOwnedPrintings(ownedMap);
+      setFriendFavourites(new Set((favData || []).map((f) => f.printing_id)));
 
       setStatus("ok");
     })();
@@ -339,6 +342,7 @@ export default function FriendSetTrackerPage() {
 
   const renderCard = (card) => {
     const prints = printingsByCard[card.number] || [];
+    const isCardFavourited = prints.some((p) => friendFavourites.has(p.id));
     const checkedCount = prints.filter((p) => ownedPrintings[p.id]?.checked).length;
     const completionState =
       prints.length === 0 || checkedCount === 0 ? "uncollected"
@@ -391,6 +395,15 @@ export default function FriendSetTrackerPage() {
             >
               {checkedCount}/{prints.length}
             </div>
+          )}
+          {isCardFavourited && (
+            <Link
+              href={`/friend/${handle}/favourites`}
+              onClick={(e) => e.stopPropagation()}
+              style={{ position: "absolute", top: 5, right: 6, fontSize: 15, color: "#FFB830", lineHeight: 1, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.85))", zIndex: 10, textDecoration: "none" }}
+            >
+              ★
+            </Link>
           )}
         </div>
         {prints.length > 1 && (
