@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Send, Flag } from "lucide-react";
+import { ArrowLeft, Send, Flag, ShieldOff } from "lucide-react";
 import { TradePanel } from "@/components/TradePanel";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { OverflowMenu } from "@/components/OverflowMenu";
 import { ReportUserForm } from "@/components/ReportUserForm";
+import { BlockConfirmModal } from "@/components/BlockConfirmModal";
 
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -38,6 +39,7 @@ export default function ThreadPage() {
   const [user, setUser] = useState(null);
   const [otherProfile, setOtherProfile] = useState(null);
   const [reportFormOpen, setReportFormOpen] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -273,6 +275,11 @@ export default function ThreadPage() {
                   icon: Flag,
                   label: "Report user",
                   onClick: () => setReportFormOpen(true),
+                }, {
+                  icon: ShieldOff,
+                  label: "Block user",
+                  destructive: true,
+                  onClick: () => setBlockModalOpen(true),
                 }]}
               />
             )}
@@ -515,6 +522,16 @@ export default function ThreadPage() {
         context="thread"
       />
     )}
-    </>
+    {otherProfile && (
+      <BlockConfirmModal
+        mode="block"
+        open={blockModalOpen}
+        onClose={() => setBlockModalOpen(false)}
+        targetHandle={otherProfile.handle}
+        targetUserId={otherProfile.id}
+        onSuccess={() => router.push("/messages")}
+      />
+    )}
+</>
   );
 }
