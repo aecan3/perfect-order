@@ -400,7 +400,7 @@ export default function FriendSetTrackerPage() {
             <Link
               href={`/friend/${handle}/favourites`}
               onClick={(e) => e.stopPropagation()}
-              style={{ position: "absolute", top: 5, right: 6, fontSize: 15, color: "#FFB830", lineHeight: 1, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.85))", zIndex: 10, textDecoration: "none" }}
+              style={{ position: "absolute", top: 5, left: 6, fontSize: 15, color: "#FFB830", lineHeight: 1, filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.85))", zIndex: 10, textDecoration: "none" }}
             >
               ★
             </Link>
