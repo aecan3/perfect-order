@@ -305,7 +305,7 @@ require some of these to be true.
     `PokeTrace → ptcgio → PPT → PokeScope` in a waterfall; once any source
     sets `result`, subsequent sources are skipped.
 
-    **Problem 1 — ME-set promo bleed (Gengar me3-50 example)**
+    **~~Problem 1 — ME-set promo bleed (Gengar me3-50 example)~~ FIXED 24 May 2026**
     PokeScope shows a "Multiple variants available" block for cards with stamp
     promos (and for commons/uncommons with normal+reverse_holofoil). Old code
     grabbed the first `$amount` after "market price", which was always the
@@ -313,13 +313,24 @@ require some of these to be true.
     `tryPokeScope` now detects the variant block, parses label+price pairs,
     maps `printing_type → PokeScope label` via whitelist, silently skips
     unknown labels (Gamestop Stamp, Eb Games Stamp, etc.). Single-variant
-    cards (SIR, MHR, UR) hit the unchanged else-branch. HTML audited against
-    3 cards before fix (me3-50, me3-1, me3-122); all `rounded-lg p-3` hits
-    confirmed inside/after the variant block — no false-positive risk.
-    Post-fix re-refresh pending verification; first post-fix refresh produced
-    unexpected $330/$1.53 for me3-50 — suspected deploy-timing artifact
-    (first refresh may have hit old code before Vercel finished building
-    `e87a957`). Second refresh expected to produce ~$0.56/$1.00.
+    cards (SIR, MHR, UR) hit the unchanged else-branch.
+    Secondary bug found during fix verification: the variant block window was
+    1500 chars, cutting off the Holofoil div (4th of 4, offset ~1360+) exactly
+    1 byte short of its closing `</p>` tag — labelM regex failed, Holofoil
+    silently dropped from variantMap. Fixed in commit `f305475`: window
+    expanded to `VARIANT_BLOCK_WINDOW = 3000` (named constant; covers ~7
+    variant divs). **Lesson: always size string-slice windows with explicit
+    headroom and a named constant — off-by-one truncation is silent.**
+    Tertiary block: after the partial 1500-char run wrote all rows except
+    holofoil, the staleness gate (`prices_updated_at` stamped at 03:15)
+    blocked all subsequent refresh attempts. Required manually NULLing
+    `user_sets.prices_updated_at` for @alex/me3 to let f305475 run. This is
+    the same family of issue as item 40 — staleness gate fires on partial
+    success, locking out the corrective run. **Item 40 is now elevated:
+    blocking a real fix, not just a theoretical concern.**
+    Final verified state (24 May 2026, 04:00 UTC): me3-50-holofoil=$0.56,
+    me3-50-reverse_holofoil=$1.00, me3-121-holofoil=$197.87 (unchanged),
+    me3-124-holofoil=$171.62 (unchanged). Problem 1 closed.
 
     **Problem 2 — Pattern variants stuck at $0.00 (sv8pt5, sv10, zsv10pt5,
     rsv10pt5 pokeball/masterball printings)**
@@ -484,7 +495,7 @@ it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 
 39. **Block prompt after report submit.** When item 6 (Block user) ships, the `ReportUserForm` success state should change from a plain toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. The toast-only path ships now so Report is clean and self-contained. The inline prompt is the right final UX but depends on Block existing first. UI flow decided 22 May 2026. File to modify: `components/ReportUserForm.jsx` — the `handleSubmit` success branch.
 
-40. **Staleness gate bug — refresh-prices route updates `user_sets.prices_updated_at` even when the refresh fails or has zero usable price data.** This means a failed/empty refresh silently locks out future refresh attempts for 6 hours (the `PRICE_STALENESS_MS` window). The gate should only advance `prices_updated_at` when at least one real price was written to `printings`. File: `app/api/refresh-prices/route.js` — the section that writes `prices_updated_at` back to `user_sets`. Not yet implemented; diagnosed during the sv8pt5 pattern refresh debugging where this bit us when PPT was down (had to manually NULL out `prices_updated_at` in the DB to force a retry).
+40. **Staleness gate bug — refresh-prices route updates `user_sets.prices_updated_at` even on partial success, locking out corrective runs. ELEVATED — has now blocked a real fix.** The gate should only advance `prices_updated_at` when all printings for a set received a price write (or at minimum, when the source returned a non-null result). Current behaviour: any non-null priceMap result stamps `prices_updated_at`, even if some printings were silently skipped (e.g. variant window too small). Bitten twice: (1) sv8pt5 pattern refresh with PPT down — had to manually NULL `prices_updated_at`. (2) me3 promo-bleed fix session (24 May 2026) — 1500-char window wrote all rows except me3-50-holofoil, stamped gate, blocked f305475's corrective run; required manually NULLing `user_sets.prices_updated_at` for @alex/me3. Fix: only stamp `prices_updated_at` when `updates.length > 0` AND `updates.length >= allPrintings.length` (or a similar completeness check). File: `app/api/refresh-prices/route.js` — step 6 in `processSet`. Not yet implemented.
 
 42. **Trade-aware duplicate inventory.** Today's 5b implementation hides offered cards from Discover via filter, but the underlying `duplicate_count` isn't decremented. This leaves a concurrency window where two users could propose for the same single duplicate between Discover refreshes. The durable solution is to decrement `duplicate_count` on trade proposal and restore on resolution (decline/cancel). Requires careful state-machine work — touches the `printings`/`collection_entries` table which trade flow has not previously mutated. Defer until trade volume warrants. Captured 23 May during 5b verification.
 
