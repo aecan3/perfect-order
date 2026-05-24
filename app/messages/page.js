@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { getBlockIds } from "@/lib/queries/blocks";
 import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
@@ -25,11 +26,14 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState(null);
 
   const loadConversations = async (userId) => {
-    const { data: messages } = await supabase
-      .from("messages")
-      .select("id, sender_id, recipient_id, body, read, created_at, message_type, metadata")
-      .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
-      .order("created_at", { ascending: false });
+    const [{ data: messages }, blockIds] = await Promise.all([
+      supabase
+        .from("messages")
+        .select("id, sender_id, recipient_id, body, read, created_at, message_type, metadata")
+        .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        .order("created_at", { ascending: false }),
+      getBlockIds(supabase, userId),
+    ]);
 
     if (!messages?.length) { setConversations([]); return; }
 
@@ -39,6 +43,9 @@ export default function InboxPage() {
       if (!threadMap[otherId]) threadMap[otherId] = { otherId, latest: msg, unread: 0 };
       if (!msg.read && msg.recipient_id === userId) threadMap[otherId].unread++;
     }
+
+    // Remove blocked peers — prunes threadMap so both otherIds and convos are filtered in one pass
+    for (const id of blockIds) delete threadMap[id];
 
     const otherIds = Object.keys(threadMap);
     const { data: profiles } = await supabase
