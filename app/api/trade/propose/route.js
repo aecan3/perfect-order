@@ -39,6 +39,9 @@ export async function POST(req) {
 
   if (!recipient) return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
 
+  const { data: blocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: recipient.id });
+  if (blocked) return NextResponse.json({ error: "Couldn't send proposal" }, { status: 403 });
+
   const { data: friendship } = await supabase
     .from("friendships")
     .select("id")
