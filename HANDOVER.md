@@ -1,6 +1,6 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 22 May 2026 (session 8). Single source of truth for the next session.*
+*Updated end of session, 24 May 2026 (session 10). Single source of truth for the next session.*
 *Supersedes the previous handover note from session 7.*
 
 ---
@@ -913,6 +913,17 @@ All safe at current scale; flagged so they're not forgotten.
   will be written for that user. Not a bug, but worth knowing before doing data fixes
   on trigger-backed tables. Discovered pattern 24 May 2026.
 
+- **Event capture race condition pattern.** When multiple parallel requests check
+  "has this event already fired?" before any have inserted, all see "no" and all
+  insert. Fix is a partial UNIQUE INDEX scoped to the event type, with the route
+  handling Postgres error code `23505` as a successful no-op (return 200,
+  `thresholds_fired: []`). Established 24 May 2026 for `set_milestone` events
+  (migration `20260524174839`, index `feed_events_milestone_unique_idx`). The race
+  was observed in production: four parallel ticks crossing the 90% threshold produced
+  two `set_milestone` rows 18ms apart before the unique index existed. Apply this
+  pattern to any future event type where threshold detection requires server-side
+  computation and concurrent firing is possible.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -953,13 +964,22 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
-**Done since last handover (24 May 2026, session 10):** Pricing pipeline fully resolved (item 12 Problem 1 + item 40). me4 ingested.
+**Done since last handover (24 May 2026, session 10):** Pricing pipeline fully resolved (item 12 Problem 1 + item 40). me4 ingested. Feed Milestone 1 shipped end-to-end.
 
 - **me4 (Chaos Rising) ingested** (commit `1d004ea`): 122 cards, 198 printings, themes extracted, `ME_SETS` updated. PokeScope returns 404 for all me4 cards as of 24 May — pricing blocked on upstream indexing (Problem 4, item 12). Re-trigger in a few days.
 - **PokeScope promo bleed-through fix** (commits `e87a957`, `f305475`): `tryPokeScope` now detects the "Multiple variants available" block and parses label+price pairs via whitelist, silently skipping stamp promos (Gamestop Stamp, Eb Games Stamp). Single-variant cards hit unchanged else-branch. Secondary fix: variant block window expanded from 1500 → `VARIANT_BLOCK_WINDOW = 3000` after the Holofoil div (4th of 4, offset ~1360) was cut off 1 byte short of its closing `</p>`. Final verified state: me3-50-holofoil $216.08 → $0.56, me3-50-reverse_holofoil $1.00 (unchanged), me3-121/124 holofoil untouched.
 - **Staleness gate fix** (commit `bd0be5a`, item 40): `prices_updated_at` now only advances when `updates.length > 0`. Zero-write and failed runs leave the timestamp unchanged so the user can retry immediately. Verified: me4 (zero writes) left timestamp NULL across two consecutive triggers; me3 (real writes) advanced correctly and blocked the immediate second trigger.
-- **Diagnosis discipline applied:** three separate bugs (promo parser, window truncation, staleness gate) were each fully diagnosed before any fix was written. Gate as root cause of "holofoil still wrong after f305475" took the most effort — Vercel logs would have confirmed it immediately; OAuth deferred but the DB staleness query was the eventual diagnostic.
-- **Commits:** `1d004ea`, `e87a957`, `f305475`, `3c9cfb6`, `a21baa3`, `bd0be5a`.
+- **Feed Milestone 1 — event capture infrastructure** (8 commits, all verified on device):
+  - `10fd806` — `feed_events` table, indexes, RLS + friends-only SELECT policy
+  - `19d853e` — `user_interactions` table, index, RLS + own-only SELECT policy
+  - `613d941` — `set_started` trigger (`trg_feed_set_started` AFTER INSERT ON `user_sets`)
+  - `a574792` — `card_favourited` trigger (`trg_feed_card_favourited` AFTER INSERT ON `favourites`, resolves `card_id`/`set_id` from `printings`)
+  - `29f83a4` — `friend_added` trigger (`trg_feed_friend_added` AFTER UPDATE ON `friendships` WHEN pending→accepted, inserts 2 rows — one per user)
+  - `e250cac` — `set_completed` trigger (`trg_feed_set_completed` AFTER INSERT ON `master_completions`; upsert re-assertions take UPDATE path, trigger does not re-fire — verified)
+  - `6b1791e` — `set_milestone` API route (`/api/feed/record-milestone` POST) + fire-and-forget fetch call in `togglePrinting` tick handler after `collection_entries` upsert, tick-only (not untick). Route computes ownership pct server-side from master printings, checks thresholds 50/75/90, idempotency via `feed_events` lookup, inserts via service role client. Returns `{ thresholds_fired, pct }`.
+  - `88c66b9` — Race condition fix: partial unique index `feed_events_milestone_unique_idx ON feed_events (actor_user_id, related_set_id, (metadata->>'threshold')) WHERE event_type = 'set_milestone'`; route handles `23505` as silent no-op. Race observed in production (4 parallel ticks, 2 rows 18ms apart). All 5 event types verified on device: each count = 1, idempotency confirmed.
+- **All triggers use `SECURITY DEFINER SET search_path = public`** — bypass RLS for `feed_events` INSERT while preventing search-path injection. Established as the convention for all Feed triggers.
+- **Commits:** `1d004ea`, `e87a957`, `f305475`, `3c9cfb6`, `a21baa3`, `bd0be5a`, `10fd806`, `19d853e`, `613d941`, `a574792`, `29f83a4`, `e250cac`, `6b1791e`, `88c66b9`.
 
 **Done since last handover (23–24 May 2026, session 9):** Skip-verification trades + post-trade confirmation flow shipped end-to-end.
 
@@ -1069,23 +1089,36 @@ order (not milestone number order).
 
 **Execution order — optimised for value delivery:**
 
-| # | Milestone | Why this order |
-|---|---|---|
-| 1 | Event capture infrastructure | Foundation; can't backfill |
-| 6 | Privacy controls | Ship before broadcast goes live |
-| 2 | Basic feed + heuristic ranking | Highest visible value |
-| 3 | Duplicate-match decoration | The killer mechanic |
-| 4 | Real-time updates | Makes the feed feel alive |
-| 5 | Activity batching | Matters once usage grows |
-| 7 | More event types | Iterate on real data |
-| 8 | Promote to default tab | Only after value is proven |
-| 9 | Push notifications | Late-stage, own complexity |
+| # | Milestone | Status | Why this order |
+|---|---|---|---|
+| 1 | Event capture infrastructure | ✅ DONE 24 May 2026 | Foundation; can't backfill |
+| 6 | Privacy controls | **← NEXT** | Ship before broadcast goes live |
+| 2 | Basic feed + heuristic ranking | Not started | Highest visible value |
+| 3 | Duplicate-match decoration | Not started | The killer mechanic |
+| 4 | Real-time updates | Not started | Makes the feed feel alive |
+| 5 | Activity batching | Not started | Matters once usage grows |
+| 7 | More event types | Not started | Iterate on real data |
+| 8 | Promote to default tab | Not started | Only after value is proven |
+| 9 | Push notifications | Not started | Late-stage, own complexity |
 
 **Total estimate:** 8–12 Claude Code sessions, 4–8 weeks of part-time solo dev.
 
 ---
 
-#### Milestone 1 — Event capture infrastructure *(data foundation)*
+#### Milestone 1 — Event capture infrastructure *(data foundation)* — ✅ DONE 24 May 2026
+
+**Commits:** `10fd806` (feed_events table), `19d853e` (user_interactions table),
+`613d941` (set_started trigger), `a574792` (card_favourited trigger),
+`29f83a4` (friend_added trigger), `e250cac` (set_completed trigger),
+`6b1791e` (set_milestone API route + tick handler), `88c66b9` (race fix + partial unique index).
+
+All 5 event types verified on device. See session 10 log in §18 for full detail.
+
+**Key learning:** Trigger-based capture is the right pattern for client-side
+Supabase operations. The one exception (`set_milestone`) needed an API route
+because threshold detection requires server-side computation. The race condition
+on the API-route path is solved via a partial UNIQUE INDEX + 23505 handling (see
+§17). Established patterns apply to all future Feed event types.
 
 **Goal:** Every meaningful user action writes a row to a new `feed_events`
 table. No UI changes. Invisible plumbing.
