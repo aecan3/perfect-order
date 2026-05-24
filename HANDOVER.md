@@ -495,7 +495,30 @@ it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 
 39. **Block prompt after report submit.** When item 6 (Block user) ships, the `ReportUserForm` success state should change from a plain toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. The toast-only path ships now so Report is clean and self-contained. The inline prompt is the right final UX but depends on Block existing first. UI flow decided 22 May 2026. File to modify: `components/ReportUserForm.jsx` — the `handleSubmit` success branch.
 
-40. **Staleness gate bug — refresh-prices route updates `user_sets.prices_updated_at` even on partial success, locking out corrective runs. ELEVATED — has now blocked a real fix.** The gate should only advance `prices_updated_at` when all printings for a set received a price write (or at minimum, when the source returned a non-null result). Current behaviour: any non-null priceMap result stamps `prices_updated_at`, even if some printings were silently skipped (e.g. variant window too small). Bitten twice: (1) sv8pt5 pattern refresh with PPT down — had to manually NULL `prices_updated_at`. (2) me3 promo-bleed fix session (24 May 2026) — 1500-char window wrote all rows except me3-50-holofoil, stamped gate, blocked f305475's corrective run; required manually NULLing `user_sets.prices_updated_at` for @alex/me3. Fix: only stamp `prices_updated_at` when `updates.length > 0` AND `updates.length >= allPrintings.length` (or a similar completeness check). File: `app/api/refresh-prices/route.js` — step 6 in `processSet`. Not yet implemented.
+40. ~~**Staleness gate bug.**~~ **RESOLVED 24 May 2026, commit `bd0be5a`.**
+    **Cause:** `prices_updated_at` was advanced unconditionally at the end of
+    every refresh run — including failed runs (upstream down), zero-write runs
+    (all sources returned null), and partial-success runs (some printings
+    skipped due to parser bugs). The timestamp advanced regardless of whether
+    a single real price had been written.
+    **Impact:** Failed or empty runs locked the user out of retrying for 6
+    hours, requiring manual `NULL` of `user_sets.prices_updated_at` via
+    Supabase SQL editor to unblock. Happened in production twice before fix:
+    (1) sv8pt5 refresh with PPT down. (2) me3 promo-bleed fix session — the
+    1500-char window bug wrote 199/200 rows, stamped the gate, and blocked
+    the `f305475` corrective run for hours of unnecessary debugging.
+    **Fix:** Wrapped the step-6 `user_sets` update in `if (updates.length > 0)`.
+    Both `previous_value` and `prices_updated_at` are conditional together —
+    if no real prices were written, neither advances. Zero-write runs now log
+    a `console.warn` and leave the timestamp unchanged so the user can retry
+    immediately. Verified end-to-end: me4 (zero writes, PokeScope 404) left
+    timestamp NULL across two consecutive triggers; me3 (real writes) advanced
+    timestamp and correctly blocked the second immediate trigger.
+    **Cross-reference:** Item 12 (Gengar pricing pipeline) required two manual
+    DB interventions and an hour of diagnosis because of this gate. The
+    combined fix (item 12 parser + item 40 gate) removes both root causes.
+    Bonus: the item 40 verification run also produced the final me3-50-holofoil
+    correction ($216.08 → $0.56), retroactively completing item 12 verification.
 
 42. **Trade-aware duplicate inventory.** Today's 5b implementation hides offered cards from Discover via filter, but the underlying `duplicate_count` isn't decremented. This leaves a concurrency window where two users could propose for the same single duplicate between Discover refreshes. The durable solution is to decrement `duplicate_count` on trade proposal and restore on resolution (decline/cancel). Requires careful state-machine work — touches the `printings`/`collection_entries` table which trade flow has not previously mutated. Defer until trade volume warrants. Captured 23 May during 5b verification.
 
@@ -911,6 +934,14 @@ When picking this back up, suggested sequence:
    nudge (item 8). Quick wins.
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
+
+**Done since last handover (24 May 2026, session 10):** Pricing pipeline fully resolved (item 12 Problem 1 + item 40). me4 ingested.
+
+- **me4 (Chaos Rising) ingested** (commit `1d004ea`): 122 cards, 198 printings, themes extracted, `ME_SETS` updated. PokeScope returns 404 for all me4 cards as of 24 May — pricing blocked on upstream indexing (Problem 4, item 12). Re-trigger in a few days.
+- **PokeScope promo bleed-through fix** (commits `e87a957`, `f305475`): `tryPokeScope` now detects the "Multiple variants available" block and parses label+price pairs via whitelist, silently skipping stamp promos (Gamestop Stamp, Eb Games Stamp). Single-variant cards hit unchanged else-branch. Secondary fix: variant block window expanded from 1500 → `VARIANT_BLOCK_WINDOW = 3000` after the Holofoil div (4th of 4, offset ~1360) was cut off 1 byte short of its closing `</p>`. Final verified state: me3-50-holofoil $216.08 → $0.56, me3-50-reverse_holofoil $1.00 (unchanged), me3-121/124 holofoil untouched.
+- **Staleness gate fix** (commit `bd0be5a`, item 40): `prices_updated_at` now only advances when `updates.length > 0`. Zero-write and failed runs leave the timestamp unchanged so the user can retry immediately. Verified: me4 (zero writes) left timestamp NULL across two consecutive triggers; me3 (real writes) advanced correctly and blocked the immediate second trigger.
+- **Diagnosis discipline applied:** three separate bugs (promo parser, window truncation, staleness gate) were each fully diagnosed before any fix was written. Gate as root cause of "holofoil still wrong after f305475" took the most effort — Vercel logs would have confirmed it immediately; OAuth deferred but the DB staleness query was the eventual diagnostic.
+- **Commits:** `1d004ea`, `e87a957`, `f305475`, `3c9cfb6`, `a21baa3`, `bd0be5a`.
 
 **Done since last handover (23–24 May 2026, session 9):** Skip-verification trades + post-trade confirmation flow shipped end-to-end.
 
