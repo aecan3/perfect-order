@@ -258,10 +258,7 @@ require some of these to be true.
 5. ~~**Build "Report user" feature.**~~ **DONE 22 May 2026 (commits `930935e`, `245ccb5`, `223e156`).** `user_reports` table created with 10 columns, 4 indexes, 2 CHECK constraints (`no_self_report`, `details_required_when_other`), RLS insert + select-own policies. `OverflowMenu` component (`components/OverflowMenu.jsx`) — iOS-style bottom action sheet (portal, ESC, focus trap, return-focus-to-trigger). Takes `targetHandle` + `items` array; built for extensibility when Block adds a second row. `ReportUserForm` component (`components/ReportUserForm.jsx`) — portal bottom sheet matching `ReportCardForm` gold standard (ESC, focus trap, form reset, aria-modal). Reason as tappable radio rows; details always visible with dynamic optional/required label; submit gated on reason + details-when-other. On success: self-contained toast "Thanks — we'll review this report." On error: sheet stays open, inline message. Mounted on `app/friend/[handle]/page.js` (context='profile', hidden on own profile via `currentUserId !== friend.id`) and `app/messages/[handle]/page.js` (context='thread'). **This is the T&S data-corrections funnel — entirely separate from `card_reports` (data corrections).** Verified: row insertion correct on both surfaces, RLS blocks reported user from seeing the row, no notification sent to reported user. Admin queue (item 7) is unbuilt — separate future session.
    **Follow-up (loose thread 39):** When Block ships (item 6), the report form success state should upgrade from a toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. UI flow decided 22 May 2026 but deliberately deferred so the Report brief ships clean.
 
-6. **Build "Block user" feature.** Same surfaces as Report. Effects: blocker
-   and blocked can't see each other in Discover; blocker doesn't receive
-   messages from blocked; existing threads hidden; can't initiate new
-   trades. Needs `user_blocks` table.
+6. ~~**Build "Block user" feature.**~~ **DONE 24 May 2026 (session 10).** `user_blocks` table with RLS (blocker SELECT/INSERT/DELETE own rows). SECURITY DEFINER functions `is_blocked()` and `get_block_peer_ids()` bypass RLS for bidirectional block checks. All enforcement surfaces: Discover (search + card tap), Friends list (search filter + sendRequest guard), Friend profile view, Friend set-detail view, Messages thread (load + send guard), Messages inbox, Trade propose API, `feed_events` SELECT RLS. API routes: `POST /api/block`, `DELETE /api/block/[targetUserId]`, `GET /api/block/list`. UI: `BlockConfirmModal` (shared sheet, `mode="block"|"unblock"`), Settings blocked-users list, overflow-menu "Block user" on profile + message thread, post-report block prompt in `ReportUserForm`. Silent block design: blocked user is not notified. Key commits: `51e5140` (DB + `lib/queries/blocks.js`), `69982ce` (Friends), `c251165` (profile), `c5c62e9` (set-detail), `d48e2d0` (message thread), `defee19` (inbox), `c739627` (trade propose), `f06de55` (feed_events RLS), `a2f3c35` (POST /api/block), `f88482c` (DELETE /api/block), `21ef4ad` (GET /api/block/list), `30bcabb` (BlockConfirmModal), `70ee0de` (Settings + unblock mode), `70278e9` (profile overflow), `b1aa070` (thread overflow), `94a3cc5` (post-report prompt). Verified end-to-end on device 24 May 2026.
 
 7. **Admin moderation queue.** Admin-only view of the `user_reports` table
    with action buttons (warn, suspend, terminate, dismiss). Doesn't need
@@ -493,7 +490,7 @@ it. **Deferred** — low urgency, cosmetic only. See item 36a below.
 
 16. ~~**The 800ms timer in `/auth/confirm`.**~~ **DONE 19 May 2026 (commit `59604ff`).** Audited the confirm page. The timer fires after `verifyOtp` and `profiles.upsert` are both `await`ed — it's purely cosmetic, letting the user read the "Confirmed!" state before the redirect. It is NOT a race condition. Explanatory 4-line comment added above the `setTimeout` to make this permanently clear. *(Item was originally item 15 in some earlier numbering — don't be confused by this. In the current handover item 15 is "Password minimum length consistency." The 800ms timer is correctly item 16.)*
 
-39. **Block prompt after report submit.** When item 6 (Block user) ships, the `ReportUserForm` success state should change from a plain toast to an inline "Would you like to block @{handle} as well?" prompt with [Block] and [Not now] buttons. The toast-only path ships now so Report is clean and self-contained. The inline prompt is the right final UX but depends on Block existing first. UI flow decided 22 May 2026. File to modify: `components/ReportUserForm.jsx` — the `handleSubmit` success branch.
+39. ~~**Block prompt after report submit.**~~ **DONE 24 May 2026 (commit `94a3cc5`).** `ReportUserForm` now renders a `submitted` state after a successful report instead of closing immediately: title "Report submitted", body offering to block the reported user, primary "Block @{handle}" button (opens `BlockConfirmModal` via `onBlockRequested` callback prop), secondary "Done" closes. Toast removed — the in-sheet title is the confirmation. Wired on both profile (`context="profile"`) and message thread (`context="thread"`) surfaces.
 
 40. ~~**Staleness gate bug.**~~ **RESOLVED 24 May 2026, commit `bd0be5a`.**
     **Cause:** `prices_updated_at` was advanced unconditionally at the end of
@@ -895,6 +892,10 @@ All safe at current scale; flagged so they're not forgotten.
   me2pt5. ME-set logic must NOT be touched by future pricing fixes — `tryPptPatterns`
   already guards this with `!ME_SETS.has(setId)`.
 
+- **Supabase JS silently drops RLS WITH CHECK failures on INSERT — no error, just empty data.** When an INSERT fails the `WITH CHECK` policy, Supabase JS returns `{ data: [], error: null }` — not an error object. Any route that checks only `if (error)` will falsely report success while persisting nothing. Always pair INSERTs to RLS-protected tables with `.select()` and verify `data.length > 0` before returning success. Discovered 24 May 2026 debugging `POST /api/block` — the route returned `{ blocked: true }` while `user_blocks` stayed empty. Applied fix: both an `insertErr` check and a `!insertData?.length` check before returning success.
+
+- **Old notifications referencing later-blocked users surface dead links.** Notifications created before a block (trade proposals, friend requests) remain in the recipient's notification list; their links resolve to now-restricted content (blank profile view, empty trade panel). Acceptable per the "historical events stay; access is restricted" design — same as past messages remaining in the DB. Polish opportunity: "no longer available" state for stale notification links if it generates user complaints. Discovered 24 May 2026 during Block end-to-end device test.
+
 - **Event-capture for client-side Supabase operations uses Postgres triggers (security
   definer), not application-level inserts.** All five Feed Milestone 1 event types
   (`set_started`, `set_completed`, `card_favourited`, `friend_added`, and
@@ -943,12 +944,7 @@ When picking this back up, suggested sequence:
    account-creation work, not coding. Once you have the DSN, Claude Code can
    do the install-and-wire-up in one focused pass.
 
-3. **The trust & safety block — Block + Admin queue (items 6-7).**
-   Report (item 5) is now done. Block and Admin queue are required before
-   opening to strangers. Budget a full session per piece. Block first
-   (`user_blocks` table, effects on Discover/messages/trades), then Admin
-   queue. When Block ships, also update `ReportUserForm` success state to
-   show the block prompt (loose thread 39).
+3. ~~**Block (item 6) — DONE 24 May 2026.**~~ **Admin queue (item 7) still pending.** Admin queue required before opening to strangers — budget a full session. `ReportUserForm` post-submit block prompt (loose thread 39) shipped with Block.
 
 4. **PPT API plan upgrade (item 10a) — already captured as a launch blocker
    in §2. Repeated here for sequencing only.**

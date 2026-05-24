@@ -45,15 +45,12 @@ export async function POST(req) {
     .insert({ blocker_id: user.id, blocked_id: target_user_id, reason })
     .select();
 
-  console.log("[block] insert result:", {
-    data: insertData,
-    error: insertErr,
-    user_id: user.id,
-    target_user_id,
-  });
-
   if (insertErr && insertErr.code !== "23505") {
     console.error("[block] insert failed:", insertErr);
+    return NextResponse.json({ error: "Failed to block user" }, { status: 500 });
+  }
+  if (!insertData?.length && insertErr?.code !== "23505") {
+    console.error("[block] insert returned no rows (silent RLS drop?):", { user_id: user.id, target_user_id });
     return NextResponse.json({ error: "Failed to block user" }, { status: 500 });
   }
 
