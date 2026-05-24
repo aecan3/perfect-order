@@ -106,6 +106,10 @@ export async function POST(req) {
 
   const { error: insertError } = await admin.from("feed_events").insert(rows);
   if (insertError) {
+    if (insertError.code === "23505") {
+      // Concurrent request already inserted this milestone — treat as success.
+      return NextResponse.json({ thresholds_fired: [], pct });
+    }
     console.error("[feed/record-milestone] feed_events insert failed:", insertError);
     return NextResponse.json({ error: "Failed to record milestone" }, { status: 500 });
   }
