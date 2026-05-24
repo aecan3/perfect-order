@@ -334,7 +334,10 @@ export default function FriendSetTrackerPage() {
   const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
   const pct = totalPrintings > 0 ? Math.round((ownedPrintingCount / totalPrintings) * 100) : 0;
 
-  const missingCards = cards.filter((c) => !isCardOwned(c.number));
+  const missingCards = cards.filter((c) => {
+    const prints = printingsByCard[c.number] || [];
+    return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
+  });
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
