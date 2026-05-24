@@ -512,7 +512,8 @@ async function tryPokeScope(setId, allPrintings) {
             reverse_holofoil: "Reverse Holofoil",
             normal: "Normal",
           };
-          const block = html.slice(multiIdx, multiIdx + 1500);
+          const VARIANT_BLOCK_WINDOW = 3000; // chars; each div ~400 chars, covers up to ~7 variant divs
+          const block = html.slice(multiIdx, multiIdx + VARIANT_BLOCK_WINDOW);
           const variantMap = {};
           const divRe = /<div class="rounded-lg p-3[^"]*">([\s\S]*?)(?=<div class="rounded-lg|$)/g;
           for (const divMatch of block.matchAll(divRe)) {
