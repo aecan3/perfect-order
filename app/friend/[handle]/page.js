@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { Flag } from "lucide-react";
+import { Flag, ShieldOff } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { OverflowMenu } from "@/components/OverflowMenu";
 import { ReportUserForm } from "@/components/ReportUserForm";
+import { BlockConfirmModal } from "@/components/BlockConfirmModal";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -35,6 +36,7 @@ export default function FriendOverviewPage() {
   const [status, setStatus] = useState("loading");
   const [currentUserId, setCurrentUserId] = useState(null);
   const [reportFormOpen, setReportFormOpen] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -186,6 +188,12 @@ export default function FriendOverviewPage() {
       label: "Report user",
       onClick: () => setReportFormOpen(true),
     },
+    {
+      icon: ShieldOff,
+      label: "Block user",
+      destructive: true,
+      onClick: () => setBlockModalOpen(true),
+    },
   ];
 
   return (
@@ -272,6 +280,14 @@ export default function FriendOverviewPage() {
       reportedUserHandle={friend.handle}
       context="profile"
     />
-    </>
+    <BlockConfirmModal
+      mode="block"
+      open={blockModalOpen}
+      onClose={() => setBlockModalOpen(false)}
+      targetHandle={friend.handle}
+      targetUserId={friend.id}
+      onSuccess={() => router.push("/friends")}
+    />
+</>
   );
 }
