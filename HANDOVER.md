@@ -895,6 +895,24 @@ All safe at current scale; flagged so they're not forgotten.
   me2pt5. ME-set logic must NOT be touched by future pricing fixes — `tryPptPatterns`
   already guards this with `!ME_SETS.has(setId)`.
 
+- **Event-capture for client-side Supabase operations uses Postgres triggers (security
+  definer), not application-level inserts.** All five Feed Milestone 1 event types
+  (`set_started`, `set_completed`, `card_favourited`, `friend_added`, and
+  `set_milestone` via thin API route) are captured this way because the source
+  operations (user_sets INSERT, master_completions INSERT, favourites INSERT,
+  friendships UPDATE) are done client-side via the Supabase SDK. Migrating those to
+  API routes would be meaningful scope creep. Trigger functions run as security definer
+  and bypass RLS to write into `feed_events`. Established 24 May 2026, Feed Milestone 1.
+  Future event types follow the same pattern unless the source operation already has an
+  API route.
+
+- **Postgres triggers fire on manual Supabase Studio edits too.** The feed_events
+  triggers (on `user_sets`, `master_completions`, `favourites`, `friendships`) will
+  fire for manual row edits made via Supabase Studio — not just app traffic. If you
+  manually insert a `user_sets` row for debugging, a `set_started` feed_events row
+  will be written for that user. Not a bug, but worth knowing before doing data fixes
+  on trigger-backed tables. Discovered pattern 24 May 2026.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
