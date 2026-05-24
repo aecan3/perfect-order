@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { Flag, ShieldOff } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { Avatar } from "@/components/Avatar";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
@@ -206,6 +207,18 @@ export default function FriendOverviewPage() {
             <OverflowMenu targetHandle={friend.handle} items={overflowItems} />
           </div>
         )}
+      </div>
+
+      <div className="px-4 pt-4 pb-0 max-w-md mx-auto">
+        <div className="flex items-center gap-4 pb-4 mb-1" style={{ borderBottom: "1px solid var(--po-border)" }}>
+          <Avatar profile={friend} size={56} />
+          <div className="min-w-0">
+            <div className="font-black text-lg leading-tight truncate text-[var(--po-text)]">
+              {friend.display_name || friend.handle}
+            </div>
+            <div className="text-sm text-[var(--po-text-dim)] truncate mt-0.5">@{friend.handle}</div>
+          </div>
+        </div>
       </div>
 
       <div className="px-4 py-4 space-y-3 max-w-md mx-auto">
