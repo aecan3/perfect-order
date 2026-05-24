@@ -1,6 +1,6 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 24 May 2026 (session 10). Single source of truth for the next session.*
+*Updated end of session, 24 May 2026 (session 11). Single source of truth for the next session.*
 *Supersedes the previous handover note from session 7.*
 
 ---
@@ -925,6 +925,10 @@ All safe at current scale; flagged so they're not forgotten.
   pattern to any future event type where threshold detection requires server-side
   computation and concurrent firing is possible.
 
+- **Friend-facing card render sites must call `get_friend_favourites` and pass the resulting Set to the renderer.** When building any new surface that renders a friend's cards, call `supabase.rpc("get_friend_favourites", { viewer, target })` alongside the other data fetches and store the result as a `Set<string>` of printing IDs. In the card renderer, `isCardFavourited = prints.some(p => favouritesSet.has(p.id))`. Display a `★` overlay (top-left, `#FFB830`, `fontSize:15`, `drop-shadow(0 1px 3px rgba(0,0,0,0.85))`) that taps to `/friend/${handle}/favourites` with `stopPropagation`. Top-left positioning avoids the existing completion badge (top-right) and partial-collected N/M badge (top-right). Pattern established 24 May 2026 in `app/friend/[handle]/[setId]/page.js`. Apply to any future friend-facing card surface.
+
+- **Set logos contain the set name as part of the graphic art — this is acceptable alongside MSPageTitle.** When a set logo is rendered alongside MSPageTitle's text-rendered set name, the words appear visually duplicated. This reads as graphic brand mark + page title, not as two text strings, and is considered acceptable. A SEPARATE earlier fix (commit `3496418`, 24 May 2026) removed a real text-rendered set name from the friend set-detail hero that duplicated the MSPageTitle. These are different categories: logo-art overlap is acceptable; independent text elements duplicating the title text are not.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -959,6 +963,17 @@ When picking this back up, suggested sequence:
    nudge (item 8). Quick wins.
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
+
+**Done since last handover (24 May 2026, session 11):** Friend-view polish + favourites feature shipped end-to-end. Verified on device.
+
+- **Friend set-detail hero polish** (commit `3496418`): Removed redundant text-rendered set name from the hero (set name already in MSPageTitle). Added tappable affordance to identity row: `ChevronRight`, `flex-1` on text div, `rounded-xl p-2 -mx-2 hover:bg-[var(--po-bg-soft)] active:bg-[var(--po-border)] transition-colors`.
+- **Avatar on friend profile page header** (commit `34d4de9`): Added shared `Avatar` component (size=56) to the friend profile page identity section between the page title and the set list. `Avatar` component location: `components/Avatar.jsx`. Props: `profile`, `size` (default 40), `themePrimary` (default `#b9ff3c`). Renders `<img>` if `profile.avatar_url`, else letter-placeholder div. No `themePrimary` passed on the profile page — profiles table has no `theme_primary` column (that's sets only).
+- **`get_friend_favourites` SECURITY DEFINER function** (commit `3746dff`, migration `20260524220000_add_get_friend_favourites_function.sql`): Viewer≠target → block check both directions on `user_blocks` → friendship check (accepted, either ordering) → `SELECT printing_id, created_at FROM favourites WHERE user_id = target`. SECURITY DEFINER pattern used because favourites has a single `*` RLS policy on `auth.uid() = user_id` — modifying it would widen INSERT/DELETE too. Same pattern as `is_blocked` / `get_block_peer_ids`. Verified: self-access, friend-access, non-friend empty, blocked empty.
+- **Favourites page at `/friend/[handle]/favourites`** (commit `aa05bde`): Auth → profile fetch → `is_blocked` check → friendship check → `get_friend_favourites` RPC → `selectMasterPrintings().in("id", printingIds)` (order preserved from RPC result). Loading / not-found / not-friends states match other friend pages. 2-col grid of card art, display-only `★` on each card (top:5 right:6 `#FFB830`), number badge. Card tap → picking modal with Propose Trade + Message Directly (no printing-selection step — each favourite IS already a specific printing). Empty state: "They haven't favourited any cards yet."
+- **Star indicators on friend set cards + Favourites entry on profile** (commit `0269cb4`): In `app/friend/[handle]/[setId]/page.js`: `friendFavourites` state (Set<string>), `get_friend_favourites` RPC added as 5th call in `Promise.all`, `isCardFavourited` computed in `renderCard`, `<Link href=".../favourites" onClick={stopPropagation}>★</Link>` rendered as absolute overlay. In `app/friend/[handle]/page.js`: `ChevronRight` added to lucide import, Favourites tappable row (★ + label + ChevronRight) inserted between identity section and set list with `borderBottom` separator.
+- **Star position fix** (commit `7bf59ba`): Moved star from `top:5 right:6` to `top:5 left:6` after code audit confirmed collision with the partial-collected N/M badge (`absolute top-1 right-1`) and the completion checkmark circle (`absolute top-1 right-1 w-7 h-7`). Top-left corner is empty in all three completion states. Verified on device: no collision.
+
+**Loose threads (acceptable, not blocking):** Picking modal duplicated across `/friend/[handle]/favourites` and `/friend/[handle]/[setId]/page.js` — extract if a third site needs it. `get_friend_favourites` fetched on every friend set-detail load — acceptable N+1 cost at current scale.
 
 **Done since last handover (24 May 2026, session 10):** Pricing pipeline fully resolved (item 12 Problem 1 + item 40). me4 ingested. Feed Milestone 1 shipped end-to-end.
 
