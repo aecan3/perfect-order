@@ -501,35 +501,70 @@ async function tryPokeScope(setId, allPrintings) {
         }
 
         const html = await res.text();
-        const lowerHtml = html.toLowerCase();
-        let amtMatch = null;
-        let searchFrom = 0;
-        while (!amtMatch) {
-          const mpIdx = lowerHtml.indexOf("market price", searchFrom);
-          if (mpIdx === -1) break;
-          const segment = html.slice(mpIdx, mpIdx + 500).replace(/<!--.*?-->/g, "");
-          amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
-          searchFrom = mpIdx + 1;
-        }
-        if (!amtMatch) {
-          console.warn(`[PokeScope] No price found for ${setId}-${cardNumber}`);
-          return;
-        }
 
-        const marketPrice = parseFloat(amtMatch[1].replace(/,/g, ""));
-        console.log(`[PokeScope] ${setId}-${cardNumber}: market=$${marketPrice}`);
-
-        for (const printing of printingsByNumber.get(cardNumber) ?? []) {
-          const prefix = `${setId}-${cardNumber}-`;
-          const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
-          let price;
-          switch (type) {
-            case "holofoil":         price = marketPrice;           break;
-            case "reverse_holofoil": price = marketPrice * 0.85;    break;
-            case "normal":           price = marketPrice * 0.5;     break;
-            default:                 price = marketPrice;           break;
+        const multiIdx = html.indexOf("Multiple variants available");
+        if (multiIdx !== -1) {
+          // Card has distinct variant pricing — parse the variant block.
+          // Labels map printing_type → PokeScope display label; unknown labels
+          // (e.g. "Gamestop Stamp", "Eb Games Stamp") are silently skipped.
+          const LABEL_MAP = {
+            holofoil: "Holofoil",
+            reverse_holofoil: "Reverse Holofoil",
+            normal: "Normal",
+          };
+          const block = html.slice(multiIdx, multiIdx + 1500);
+          const variantMap = {};
+          const divRe = /<div class="rounded-lg p-3[^"]*">([\s\S]*?)(?=<div class="rounded-lg|$)/g;
+          for (const divMatch of block.matchAll(divRe)) {
+            const inner = divMatch[1];
+            const labelM = inner.match(/<p class="text-xs mb-1 font-medium[^"]*">([\s\S]*?)(?:<span|<\/p>)/);
+            const priceM = inner.match(/<p class="text-lg font-bold[^"]*">\$(?:<!--.*?-->)?([\d,]+(?:\.\d{1,2})?)/);
+            if (labelM && priceM) {
+              variantMap[labelM[1].trim()] = parseFloat(priceM[1].replace(/,/g, ""));
+            }
           }
-          if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+          console.log(`[PokeScope] ${setId}-${cardNumber}: variants=${JSON.stringify(variantMap)}`);
+
+          for (const printing of printingsByNumber.get(cardNumber) ?? []) {
+            const prefix = `${setId}-${cardNumber}-`;
+            const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
+            const label = LABEL_MAP[type];
+            if (!label || !(label in variantMap)) continue;
+            const price = variantMap[label];
+            if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+          }
+        } else {
+          // Single-variant card — existing market-price scrape path.
+          const lowerHtml = html.toLowerCase();
+          let amtMatch = null;
+          let searchFrom = 0;
+          while (!amtMatch) {
+            const mpIdx = lowerHtml.indexOf("market price", searchFrom);
+            if (mpIdx === -1) break;
+            const segment = html.slice(mpIdx, mpIdx + 500).replace(/<!--.*?-->/g, "");
+            amtMatch = segment.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+            searchFrom = mpIdx + 1;
+          }
+          if (!amtMatch) {
+            console.warn(`[PokeScope] No price found for ${setId}-${cardNumber}`);
+            return;
+          }
+
+          const marketPrice = parseFloat(amtMatch[1].replace(/,/g, ""));
+          console.log(`[PokeScope] ${setId}-${cardNumber}: market=$${marketPrice}`);
+
+          for (const printing of printingsByNumber.get(cardNumber) ?? []) {
+            const prefix = `${setId}-${cardNumber}-`;
+            const type = printing.id.startsWith(prefix) ? printing.id.slice(prefix.length) : "";
+            let price;
+            switch (type) {
+              case "holofoil":         price = marketPrice;           break;
+              case "reverse_holofoil": price = marketPrice * 0.85;    break;
+              case "normal":           price = marketPrice * 0.5;     break;
+              default:                 price = marketPrice;           break;
+            }
+            if (price > 0) priceMap.set(printing.id, { price_usd: parseFloat(price.toFixed(2)) });
+          }
         }
       } catch (err) {
         console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
