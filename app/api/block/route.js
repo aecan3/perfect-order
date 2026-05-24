@@ -40,9 +40,17 @@ export async function POST(req) {
 
   if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const { error: insertErr } = await supabase
+  const { data: insertData, error: insertErr } = await supabase
     .from("user_blocks")
-    .insert({ blocker_id: user.id, blocked_id: target_user_id, reason });
+    .insert({ blocker_id: user.id, blocked_id: target_user_id, reason })
+    .select();
+
+  console.log("[block] insert result:", {
+    data: insertData,
+    error: insertErr,
+    user_id: user.id,
+    target_user_id,
+  });
 
   if (insertErr && insertErr.code !== "23505") {
     console.error("[block] insert failed:", insertErr);
