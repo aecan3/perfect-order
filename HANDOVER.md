@@ -188,6 +188,35 @@ favourites. User works primarily on iPhone PWA.
 - **Card data sources:** pokemontcg.io (names, set info, prices),
   Limitless TCG (image hotlinks). Documented in the policy.
 - **Affiliate scope:** eBay only currently. Policy is scoped accordingly.
+- **Vercel cron (first in codebase — added 23 May 2026).** `vercel.json` at
+  project root defines a single daily cron at 08:00 UTC pointing to
+  `GET /api/cron/trade-handover-prompts`. The route authenticates via
+  `Authorization: Bearer CRON_SECRET` (env var set in Vercel dashboard — NOT
+  in `.env.local`). Pattern for future cron routes: (1) use service-role
+  Supabase client (no user session in cron context); (2) fail-closed auth
+  check (503 if env var unset, 401 if wrong); (3) add route to `PUBLIC_PATHS`
+  in `proxy.js` or Vercel scheduler gets 307'd to `/welcome`; (4) per-record
+  error isolation — don't let one bad row abort the batch; (5) record
+  idempotency event BEFORE mutating state so concurrent runs bail cleanly.
+
+### Trade state machine
+Trades progress through these statuses. All values are enforced by a CHECK
+constraint (`trades_status_check`) on the `trades` table.
+
+| Status | How reached | Who can advance it |
+|---|---|---|
+| `pending` | Trade proposed (INSERT default) | Recipient (accept/decline) |
+| `verification_required` | Recipient accepts with verification | Both parties (photo upload → accept) |
+| `accepted` | Both parties confirm after photo verification | Terminal for verified path |
+| `agreed_pending_handover` | Recipient accepts with `no_verification` (skip path) | Either party (confirm-handover) |
+| `physically_completed` | Either party confirms exchange happened, OR cron auto-completes at day 21 | Terminal |
+| `declined` | Recipient declines | Terminal |
+| `cancelled` | Either party reports exchange didn't happen | Terminal |
+| `completed` | Legacy — never written by any current code, preserved in constraint | N/A |
+
+**Skip-verification path (added 23 May 2026):** `pending` → `agreed_pending_handover` → `physically_completed` or `cancelled`. Proposer signals skip intent via `proposer_offered_skip = true` at proposal time. Recipient sees three-button UI: accept-no-verify / accept-with-verify / decline. Both parties see a confirm-handover UI once agreed. Informational only — no `collection_entries` mutations on any completion path (deferred, see item 42).
+
+**Cron behaviour:** `app/api/cron/trade-handover-prompts` runs daily at 08:00 UTC. Prompts both parties at day 7, day 14. Auto-completes with `physical_handover_auto_completed = true` at day 21. Idempotency tracked via `trade_events` (`handover_prompt_d7`, `handover_prompt_d14`, `handover_auto_completed`). Anchor timestamp: `trades.updated_at` at the moment the `agreed_pending_handover` UPDATE was applied — reliable because no code mutates trades rows between that transition and cron/confirm-handover firing.
 
 ---
 
@@ -758,6 +787,8 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Supabase real-time requires explicit publication membership.** A `supabase.channel().on("postgres_changes", ...).subscribe()` will appear correctly wired in code but silently receive zero events if the table isn't in the `supabase_realtime` publication. Always verify both: code subscription exists AND table is in the publication (`SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime'`). Add missing tables via `ALTER PUBLICATION supabase_realtime ADD TABLE <table>;` and save as a migration. Discovered 23 May 2026 when TradePanel real-time updates weren't firing across devices despite the subscription code being correct.
 
+- **Fail-closed env var checks on auth-protected routes.** When a route is authenticated via a shared-secret env var (not a user session), always check explicitly for env var presence at the top of the handler and return 503 "not configured" if unset — before doing any string comparison. Do NOT combine the presence check and the value comparison into a single `||` expression: `!process.env.SECRET || header !== \`Bearer ${process.env.SECRET}\`` fails closed correctly today, but produces an indistinguishable 401 for both "env var missing" and "wrong secret", making misconfiguration invisible in logs. Correct pattern: `if (!process.env.SECRET) return 503; if (header !== \`Bearer ${process.env.SECRET}\`) return 401;`. This prevents `Bearer undefined` string-comparison footguns and makes deployment misconfiguration immediately diagnosable. Applied to both `card-report-notify` and `trade-handover-prompts` routes.
+
 - **Windows PowerShell glob expansion.** `[` and `]` in file paths (Next.js dynamic routes like `[tradeId]`) are treated as wildcards by PowerShell's `Remove-Item`. Use `Remove-Item -LiteralPath ...` to actually delete dynamic-route files.
 
 - **Supabase Auth config location.** Password minimum length, leaked-password check, and other auth-provider config lives at: Dashboard → Authentication → Sign In / Providers → scroll to Auth Providers → expand the Email provider row. NOT the Policies page (that's RLS). NOT Attack Protection (that's captcha + leaked-password toggle only). NOT Email under NOTIFICATIONS (that's email templates). The `auth.config` SQL table no longer exists in current Supabase — must use the dashboard.
@@ -856,6 +887,22 @@ When picking this back up, suggested sequence:
    nudge (item 8). Quick wins.
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
+
+**Done since last handover (23–24 May 2026, session 9):** Skip-verification trades + post-trade confirmation flow shipped end-to-end.
+
+- **DB migration** (`20260522150000_add_skip_verification_to_trades.sql`): 4 new columns on `trades` (`proposer_offered_skip`, `verification_skipped`, `physical_handover_confirmed_at`, `physical_handover_auto_completed`); CHECK constraint updated with `agreed_pending_handover` and `physically_completed`.
+- **Route handlers** (PART 3): `propose/route.js` passes `proposer_offered_skip`; `accept/route.js` handles `no_verification` path (pending → agreed_pending_handover) and `with_verification` path (unchanged); `verify-photo/route.js` guards against verification_skipped trades; new `confirm-handover/route.js` for `completed`/`did_not_happen` confirmation.
+- **Proposer UI** (PART 4, `app/trade/new/page.js`): skip-verification toggle with helper text; button label updates dynamically.
+- **Acceptor UI** (PART 5a, `components/TradePanel.jsx`): 3-button UI when proposer offered skip (accept-no-verify / accept-with-verify / decline) with trust disclaimer; `handleAccept` now passes `acceptanceMode`; new `handleConfirmHandover`; `agreed_pending_handover` branch with confirm-handover Yes/No UI; `physically_completed` and `cancelled` terminal branches.
+- **Card attribution clarity** (PART 5a amend, `app/messages/[handle]/page.js`): "Offer"/"Want" labels replaced with viewer-perspective "You offer"/"They offer" using `isMine`.
+- **Real-time trade updates** (PART 5c): `trades`, `trade_verifications`, `trade_events` added to `supabase_realtime` publication via migration `20260523000000_add_trade_tables_to_realtime_publication.sql`. Root cause was missing publication membership — subscription code was already correct. Updates now fire within ~1s across devices.
+- **Discover trade-awareness** (PART 5b, `lib/queries/discover.js`): `fetchInFlightKeys()` excludes a proposer's offered cards from Discover results while the trade is active (`pending`/`verification_required`/`agreed_pending_handover`). Keyed per `(friendUserId, printingId)` so the same printing available from a different friend still surfaces. Bug fix in same session: initial implementation incorrectly hid recipient's cards too — fixed to only exclude `side="offer"` items keyed on `proposer_id`.
+- **Vercel cron** (PART 6): `vercel.json` created; `app/api/cron/trade-handover-prompts/route.js` — daily at 08:00 UTC, day-7/14 prompt notifications, day-21 auto-complete. Service-role client, fail-closed auth, per-trade error isolation, record-then-mutate idempotency order.
+- **proxy.js**: `/api/cron/trade-handover-prompts` added to PUBLIC_PATHS.
+- **Deferred items captured**: item 41 (apparent card movement observation — re-verify before acting); item 42 (trade-aware duplicate inventory — decrement `duplicate_count` on proposal, deferred until trade volume warrants).
+- **Commits:** `87b1077`, `1fab379`, `667976e`, `8bcdec9`, `7a18110`, `f56e2fe`, `7c66c60`.
+
+*Cross-reference: item 41 (loose thread — apparent ownership transfer, re-verify before acting on it). Item 42 (deferred — proper `duplicate_count` decrement on trade proposal to close concurrency window).*
 
 **Done since last handover (22 May 2026, session 8):** sv8pt5 pattern pricing
 verified clean (PPT 100/67 product counts match DB row counts exactly; all
