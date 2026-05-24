@@ -15,15 +15,13 @@ const REASONS = [
 const DETAILS_WARN = 1000;
 const DETAILS_MAX  = 2000;
 
-const TOAST_BOTTOM = "calc(64px + env(safe-area-inset-bottom, 0px) + 16px)";
-
-export function ReportUserForm({ isOpen, onClose, reportedUserId, reportedUserHandle, context }) {
+export function ReportUserForm({ isOpen, onClose, reportedUserId, reportedUserHandle, context, onBlockRequested }) {
   const [mounted, setMounted]       = useState(false);
   const [reason, setReason]         = useState("");
   const [details, setDetails]       = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState(null);
-  const [showToast, setShowToast]   = useState(false);
+  const [submitted, setSubmitted]   = useState(false);
 
   const sheetRef    = useRef(null);
   const firstRadio  = useRef(null);
@@ -37,6 +35,7 @@ export function ReportUserForm({ isOpen, onClose, reportedUserId, reportedUserHa
       setDetails("");
       setSubmitting(false);
       setError(null);
+      setSubmitted(false);
     }
   }, [isOpen]);
 
@@ -95,77 +94,98 @@ export function ReportUserForm({ isOpen, onClose, reportedUserId, reportedUserHa
         context,
       });
       if (insertErr) throw insertErr;
-      // Success: close sheet (triggers form reset), show toast
-      onClose();
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
+      setSubmitted(true);
     } catch {
       setSubmitting(false);
       setError("Couldn't send your report. Please try again.");
     }
   };
 
-  // Toast renders independently of isOpen so it persists after sheet closes
-  const toast = showToast && mounted && createPortal(
+  if (!mounted || !isOpen) return null;
+
+  return createPortal(
     <div
-      aria-live="polite"
       style={{
-        position: "fixed",
-        bottom: TOAST_BOTTOM,
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 9999,
-        background: "rgba(30,30,34,0.97)",
-        border: "1px solid rgba(244,244,246,0.12)",
-        borderRadius: 10,
-        padding: "10px 18px",
-        fontSize: 14,
-        fontFamily: '"IBM Plex Sans", sans-serif',
-        color: "rgba(244,244,246,0.9)",
-        whiteSpace: "nowrap",
-        pointerEvents: "none",
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.7)",
+        display: "flex", flexDirection: "column", justifyContent: "flex-end",
       }}
+      onClick={onClose}
     >
-      Thanks — we'll review this report.
-    </div>,
-    document.body
-  );
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Report @${reportedUserHandle}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#111113",
+          borderRadius: "16px 16px 0 0",
+          padding: "20px 20px 40px",
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+      >
+        {/* Drag handle */}
+        <div style={{
+          width: 40, height: 4,
+          background: "rgba(244,244,246,0.18)",
+          borderRadius: 2,
+          margin: "0 auto 20px",
+        }} />
 
-  if (!mounted || !isOpen) return toast ?? null;
-
-  return (
-    <>
-      {createPortal(
-        <div
-          style={{
-            position: "fixed", inset: 0, zIndex: 9999,
-            background: "rgba(0,0,0,0.7)",
-            display: "flex", flexDirection: "column", justifyContent: "flex-end",
-          }}
-          onClick={onClose}
-        >
-          <div
-            ref={sheetRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Report @${reportedUserHandle}`}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#111113",
-              borderRadius: "16px 16px 0 0",
-              padding: "20px 20px 40px",
-              maxHeight: "85vh",
-              overflowY: "auto",
-            }}
-          >
-            {/* Drag handle */}
-            <div style={{
-              width: 40, height: 4,
-              background: "rgba(244,244,246,0.18)",
-              borderRadius: 2,
-              margin: "0 auto 20px",
-            }} />
-
+        {submitted ? (
+          <>
+            <p style={{
+              margin: "0 0 12px",
+              fontSize: 16, fontWeight: 800,
+              color: "rgba(244,244,246,0.9)",
+              fontFamily: '"IBM Plex Sans", sans-serif',
+            }}>
+              Report submitted
+            </p>
+            <p style={{
+              margin: "0 0 24px",
+              fontSize: 14,
+              color: "rgba(244,244,246,0.55)",
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              lineHeight: 1.5,
+            }}>
+              Thanks. You can also block @{reportedUserHandle} to stop them from contacting you.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  flex: 1, padding: "14px",
+                  background: "transparent",
+                  border: "1px solid rgba(244,244,246,0.14)",
+                  borderRadius: 10,
+                  color: "rgba(244,244,246,0.55)",
+                  fontSize: 15, fontFamily: '"IBM Plex Sans", sans-serif',
+                  cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+              <button
+                onClick={() => { onClose(); onBlockRequested?.(); }}
+                style={{
+                  flex: 1, padding: "14px",
+                  background: "rgba(220,38,38,0.85)",
+                  border: "none", borderRadius: 10,
+                  color: "#fff",
+                  fontSize: 15, fontWeight: 800,
+                  fontFamily: '"IBM Plex Sans", sans-serif',
+                  cursor: "pointer",
+                }}
+              >
+                Block @{reportedUserHandle}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
             {/* Title */}
             <p style={{
               margin: "0 0 20px",
@@ -321,11 +341,10 @@ export function ReportUserForm({ isOpen, onClose, reportedUserId, reportedUserHa
                 {submitting ? "Sending…" : "Submit"}
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
-      {toast}
-    </>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
   );
 }

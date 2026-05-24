@@ -520,6 +520,7 @@ export default function ThreadPage() {
         reportedUserId={otherProfile.id}
         reportedUserHandle={otherProfile.handle}
         context="thread"
+        onBlockRequested={() => setBlockModalOpen(true)}
       />
     )}
     {otherProfile && (

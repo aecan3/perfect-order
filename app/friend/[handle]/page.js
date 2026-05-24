@@ -279,6 +279,7 @@ export default function FriendOverviewPage() {
       reportedUserId={friend.id}
       reportedUserHandle={friend.handle}
       context="profile"
+      onBlockRequested={() => setBlockModalOpen(true)}
     />
     <BlockConfirmModal
       mode="block"
