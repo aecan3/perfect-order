@@ -5,14 +5,47 @@ import { createPortal } from "react-dom";
 
 const TOAST_BOTTOM = "calc(64px + env(safe-area-inset-bottom, 0px) + 16px)";
 
-export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, onSuccess }) {
+const MODE_CONFIG = {
+  block: {
+    title:        (handle) => `Block @${handle}?`,
+    body:         "They won't be able to see your collection or contact you, and your friendship will end. You can unblock them later in Settings.",
+    primaryLabel: "Block",
+    inFlight:     "Blocking…",
+    toastText:    (handle) => `@${handle} blocked`,
+    primaryStyle: (submitting) => ({
+      background: submitting ? "rgba(220,38,38,0.2)" : "rgba(220,38,38,0.85)",
+      color:      submitting ? "rgba(252,165,165,0.5)" : "#fff",
+    }),
+    doFetch: (targetUserId) => fetch("/api/block", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_user_id: targetUserId }),
+    }),
+  },
+  unblock: {
+    title:        (handle) => `Unblock @${handle}?`,
+    body:         "They'll be able to see your collection and contact you again. You'll need to re-add them as a friend separately.",
+    primaryLabel: "Unblock",
+    inFlight:     "Unblocking…",
+    toastText:    (handle) => `@${handle} unblocked`,
+    primaryStyle: (submitting) => ({
+      background: submitting ? "rgba(200,255,74,0.15)" : "#c8ff4a",
+      color:      submitting ? "rgba(200,255,74,0.35)" : "#000",
+    }),
+    doFetch: (targetUserId) => fetch(`/api/block/${targetUserId}`, { method: "DELETE" }),
+  },
+};
+
+export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, onSuccess, mode = "block" }) {
   const [mounted, setMounted]       = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState(null);
   const [showToast, setShowToast]   = useState(false);
 
-  const sheetRef    = useRef(null);
-  const cancelRef   = useRef(null);
+  const sheetRef  = useRef(null);
+  const cancelRef = useRef(null);
+
+  const cfg = MODE_CONFIG[mode];
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -56,19 +89,15 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
     return () => document.removeEventListener("keydown", trapTab);
   }, [open]);
 
-  const handleBlock = async () => {
+  const handleConfirm = async () => {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/block", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_user_id: targetUserId }),
-      });
+      const res = await cfg.doFetch(targetUserId);
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || "Failed to block user");
+        throw new Error(json.error || `Failed to ${mode} user`);
       }
       onClose();
       setShowToast(true);
@@ -76,7 +105,7 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
       onSuccess?.();
     } catch (err) {
       setSubmitting(false);
-      setError(err.message || "Couldn't block this user. Please try again.");
+      setError(err.message || `Couldn't ${mode} this user. Please try again.`);
     }
   };
 
@@ -100,7 +129,7 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
         pointerEvents: "none",
       }}
     >
-      @{targetHandle} blocked
+      {cfg.toastText(targetHandle)}
     </div>,
     document.body
   );
@@ -122,7 +151,7 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
             ref={sheetRef}
             role="dialog"
             aria-modal="true"
-            aria-label={`Block @${targetHandle}`}
+            aria-label={cfg.title(targetHandle)}
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "#111113",
@@ -145,7 +174,7 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
               color: "rgba(244,244,246,0.9)",
               fontFamily: '"IBM Plex Sans", sans-serif',
             }}>
-              Block @{targetHandle}?
+              {cfg.title(targetHandle)}
             </p>
 
             {/* Body */}
@@ -156,7 +185,7 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
               fontFamily: '"IBM Plex Sans", sans-serif',
               lineHeight: 1.5,
             }}>
-              They won&apos;t be able to see your collection or contact you, and your friendship will end. You can unblock them later in Settings.
+              {cfg.body}
             </p>
 
             {/* Inline error */}
@@ -193,21 +222,20 @@ export function BlockConfirmModal({ open, onClose, targetHandle, targetUserId, o
                 Cancel
               </button>
               <button
-                onClick={handleBlock}
+                onClick={handleConfirm}
                 disabled={submitting}
                 aria-disabled={submitting}
                 style={{
                   flex: 1, padding: "14px",
-                  background: submitting ? "rgba(220,38,38,0.2)" : "rgba(220,38,38,0.85)",
+                  ...cfg.primaryStyle(submitting),
                   border: "none", borderRadius: 10,
-                  color: submitting ? "rgba(252,165,165,0.5)" : "#fff",
                   fontSize: 15, fontWeight: 800,
                   fontFamily: '"IBM Plex Sans", sans-serif',
                   cursor: submitting ? "not-allowed" : "pointer",
                   transition: "background 0.15s, color 0.15s",
                 }}
               >
-                {submitting ? "Blocking…" : "Block"}
+                {submitting ? cfg.inFlight : cfg.primaryLabel}
               </button>
             </div>
           </div>

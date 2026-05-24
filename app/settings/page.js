@@ -4,24 +4,35 @@ import { useState, useEffect } from "react";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { SuburbAutocomplete } from "@/components/SuburbAutocomplete";
+import { BlockConfirmModal } from "@/components/BlockConfirmModal";
 import { createClient } from "@/lib/supabase";
 
 export default function SettingsPage() {
   const supabase = createClient();
-  const [profile, setProfile] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [profile, setProfile]             = useState(null);
+  const [saving, setSaving]               = useState(false);
+  const [saved, setSaved]                 = useState(false);
+  const [blocks, setBlocks]               = useState(null);
+  const [unblockTarget, setUnblockTarget] = useState(null);
 
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("suburb, postcode, state")
-        .eq("id", user.id)
-        .single();
-      if (data) setProfile(data);
+
+      const [profileRes, blocksRes] = await Promise.all([
+        supabase.from("profiles").select("suburb, postcode, state").eq("id", user.id).single(),
+        fetch("/api/block/list"),
+      ]);
+
+      if (profileRes.data) setProfile(profileRes.data);
+
+      if (blocksRes.ok) {
+        const { blocks: list } = await blocksRes.json();
+        setBlocks(list || []);
+      } else {
+        setBlocks([]);
+      }
     })();
   }, []);
 
@@ -93,12 +104,82 @@ export default function SettingsPage() {
           )}
         </section>
 
-        {/* ── Placeholder for future sections ── */}
-        <section style={{ fontSize: 14, color: "var(--ms-dim)", lineHeight: 1.6 }}>
-          More settings coming soon.
+        {/* ── Blocked Users ── */}
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ms-dim)",
+            marginBottom: 12,
+          }}>
+            Blocked Users
+          </h2>
+
+          {blocks === null && null}
+
+          {blocks?.length === 0 && (
+            <p style={{ fontSize: 14, color: "var(--ms-dim)" }}>You haven&apos;t blocked anyone.</p>
+          )}
+
+          {blocks?.length > 0 && (
+            <div>
+              {blocks.map((block) => (
+                <div
+                  key={block.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 0",
+                    borderBottom: "1px solid rgba(244,244,246,0.07)",
+                  }}
+                >
+                  <div>
+                    {block.display_name && (
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "rgba(244,244,246,0.9)", margin: 0 }}>
+                        {block.display_name}
+                      </p>
+                    )}
+                    <p style={{ fontSize: 12, color: "rgba(244,244,246,0.4)", margin: block.display_name ? "2px 0 0" : 0 }}>
+                      @{block.handle}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setUnblockTarget({ blocked_id: block.blocked_id, handle: block.handle })}
+                    style={{
+                      padding: "7px 14px",
+                      background: "transparent",
+                      border: "1px solid rgba(244,244,246,0.2)",
+                      borderRadius: 8,
+                      color: "rgba(244,244,246,0.7)",
+                      fontSize: 13,
+                      fontFamily: '"IBM Plex Sans", sans-serif',
+                      cursor: "pointer",
+                    }}
+                  >
+                    Unblock
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
       </div>
+
+      <BlockConfirmModal
+        mode="unblock"
+        open={!!unblockTarget}
+        onClose={() => setUnblockTarget(null)}
+        targetHandle={unblockTarget?.handle ?? ""}
+        targetUserId={unblockTarget?.blocked_id ?? ""}
+        onSuccess={() => {
+          setBlocks((prev) => prev.filter((b) => b.blocked_id !== unblockTarget?.blocked_id));
+          setUnblockTarget(null);
+        }}
+      />
     </MSShell>
   );
 }
