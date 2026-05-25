@@ -64,6 +64,11 @@ const PUBLIC_PATHS = new Set([
   // Vercel cron endpoint — called by Vercel scheduler, no session cookie present.
   // Authenticated via Authorization: Bearer CRON_SECRET header.
   "/api/cron/trade-handover-prompts",
+
+  // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
+  // Must be public: events are sent from unauthenticated contexts (pre-login errors,
+  // logged-out error states). Auth gate would silently 307 these to /welcome.
+  "/monitoring",
 ]);
 
 export async function proxy(request) {
