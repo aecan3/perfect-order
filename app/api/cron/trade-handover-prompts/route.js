@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
@@ -21,6 +22,11 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const checkInId = Sentry.captureCheckIn(
+    { monitorSlug: "trade-handover-prompts", status: "in_progress" },
+    { schedule: { type: "crontab", value: "0 8 * * *" }, timezone: "UTC" }
+  );
+
   const supabase = getSupabase();
 
   const { data: trades, error: tradesErr } = await supabase
@@ -30,11 +36,14 @@ export async function GET(request) {
     .is("physical_handover_confirmed_at", null);
 
   if (tradesErr) {
+    Sentry.captureException(tradesErr, { tags: { cron: "trade-handover-prompts" } });
+    Sentry.captureCheckIn({ monitorSlug: "trade-handover-prompts", checkInId, status: "error" });
     console.error("cron: failed to fetch trades", tradesErr.message);
     return NextResponse.json({ error: tradesErr.message }, { status: 500 });
   }
 
   if (!trades?.length) {
+    Sentry.captureCheckIn({ monitorSlug: "trade-handover-prompts", checkInId, status: "ok" });
     return NextResponse.json({ processed: 0 });
   }
 
@@ -169,10 +178,15 @@ export async function GET(request) {
         processed++;
       }
     } catch (err) {
+      Sentry.captureException(err, {
+        tags: { cron: "trade-handover-prompts" },
+        extra: { tradeId: trade.id },
+      });
       console.error(`cron: trade ${trade.id} failed —`, err.message);
       errors.push({ tradeId: trade.id, error: err.message });
     }
   }
 
+  Sentry.captureCheckIn({ monitorSlug: "trade-handover-prompts", checkInId, status: errors.length ? "error" : "ok" });
   return NextResponse.json({ processed, errors: errors.length ? errors : undefined });
 }
