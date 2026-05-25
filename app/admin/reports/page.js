@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { isAdminClient } from "@/lib/admin";
+import { isAdminClient } from "@/lib/admin-client";
 
 export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);

@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin-server";
 import { NextResponse } from "next/server";
 
 export async function PATCH(request, { params }) {
