@@ -257,9 +257,7 @@ require some of these to be true.
 
 6. ~~**Build "Block user" feature.**~~ **DONE 24 May 2026 (session 10).** `user_blocks` table with RLS (blocker SELECT/INSERT/DELETE own rows). SECURITY DEFINER functions `is_blocked()` and `get_block_peer_ids()` bypass RLS for bidirectional block checks. All enforcement surfaces: Discover (search + card tap), Friends list (search filter + sendRequest guard), Friend profile view, Friend set-detail view, Messages thread (load + send guard), Messages inbox, Trade propose API, `feed_events` SELECT RLS. API routes: `POST /api/block`, `DELETE /api/block/[targetUserId]`, `GET /api/block/list`. UI: `BlockConfirmModal` (shared sheet, `mode="block"|"unblock"`), Settings blocked-users list, overflow-menu "Block user" on profile + message thread, post-report block prompt in `ReportUserForm`. Silent block design: blocked user is not notified. Key commits: `51e5140` (DB + `lib/queries/blocks.js`), `69982ce` (Friends), `c251165` (profile), `c5c62e9` (set-detail), `d48e2d0` (message thread), `defee19` (inbox), `c739627` (trade propose), `f06de55` (feed_events RLS), `a2f3c35` (POST /api/block), `f88482c` (DELETE /api/block), `21ef4ad` (GET /api/block/list), `30bcabb` (BlockConfirmModal), `70ee0de` (Settings + unblock mode), `70278e9` (profile overflow), `b1aa070` (thread overflow), `94a3cc5` (post-report prompt). Verified end-to-end on device 24 May 2026.
 
-7. **Admin moderation queue.** Admin-only view of the `user_reports` table
-   with action buttons (warn, suspend, terminate, dismiss). Doesn't need
-   to be fancy — a table view is enough for launch.
+7. ~~**Admin moderation queue — PARTIAL DONE 25 May 2026.**~~ Queue visibility + dismiss action shipped. Warn/suspend/terminate deferred (require `user_actions` schema — separate session). Commits: `cf79bc1` (admin helper + trade-events refactor), `794804e` (RLS policies migration), `d8c5e6b` (reports page), `c318e36` (dismiss API route), `561fb81` (server/client split fix), `c2890e7` (diagnostic logging removal). **⚠️ KNOWN SECURITY GAP: page-level admin gate (`isAdminClient` in `useEffect`) does NOT currently block non-admin authenticated users from viewing report data. Confirmed 25 May 2026 — `@alex2` (is_admin=false) loaded `/admin/reports` and saw all rows. API gate (`requireAdmin`) is correct — non-admins cannot dismiss. Fix this before opening to strangers. See §18 for diagnosis notes.**
 
 8. **Address-reveal nudge in messages.** When a user types something that
    looks like a mailing address into a message thread, show a one-time
@@ -268,12 +266,7 @@ require some of these to be true.
 
 ### Pricing infrastructure (required before soft launch)
 
-10a. **Upgrade PPT API plan to $9.99/mo (20,000 credits/day).** Free tier
-    (100 credits/day) will be exhausted immediately under multi-user load.
-    Worst-case pattern-variant pricing costs ~24 PPT credits per full 4-set
-    refresh cycle — fine for single-user dev, catastrophic at launch.
-    Account: PokemonPriceTracker.com → Settings → Plans / Billing.
-    **Do this before soft launch — soft launch is not single-user.**
+10a. ~~**Upgrade PPT API plan to $9.99/mo (20,000 credits/day).**~~ **DONE 25 May 2026.** Plan upgraded — 20,000 credits/day active.
 
 ### Legal / UI compliance
 
@@ -942,6 +935,12 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **API route Sentry instrumentation: only the cron route is manually instrumented.** All other API routes rely on `onRequestError` (exported from `instrumentation.js` as `Sentry.captureRequestError`) which captures all unhandled server-side errors automatically. If finer-grained capture is needed in a specific route later (custom tags, breadcrumbs, partial-failure tracking), wrap the relevant section with `try/catch + Sentry.captureException`. Do not manually instrument every route — the automatic hook is sufficient for the common case.
 
+- **Files in `lib/` that mix server-only and client-safe exports MUST be split into `*-server.js` and `*-client.js`.** Importing `next/headers` (or any other server-only module) in a file that a `"use client"` page also imports causes Webpack/Turbopack to drag the server module into the client bundle and fail at build time with a cryptic error. Pattern: server-only exports (anything using `cookies`, `headers`, `NextResponse`) go in `lib/foo-server.js`; client-safe exports go in `lib/foo-client.js`. Discovered 25 May 2026 when `lib/admin.js` (mixed) caused a build failure — split into `lib/admin-server.js` and `lib/admin-client.js` to fix.
+
+- **Admin gate pattern: `profiles.is_admin` column + two helper modules.** `lib/admin-server.js` exports `requireAdmin()` for API routes — creates its own Supabase client, checks auth + `is_admin`, returns `{ user, supabase }` or a 401/403 `NextResponse`. `lib/admin-client.js` exports `isAdminClient(supabase, userId)` for `"use client"` pages — takes a browser client, returns bool, caller calls `notFound()` if false. Single admin route at `/admin/reports` — not linked from app nav, discovery-by-URL only. `profiles.is_admin` defaults to false; set to true via SQL UPDATE for each admin.
+
+- **Admin RLS pattern: additive permissive policies on `user_reports`.** Added `user_reports_admin_select_all` (SELECT) and `user_reports_admin_update` (UPDATE) policies gated on `profiles.is_admin = true`. PostgreSQL OR-combines permissive policies — existing `user_reports_select_own` still applies, so regular users see their own reports while admins see all. No existing policy was modified or removed.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -956,10 +955,16 @@ When picking this back up, suggested sequence:
 
 2. ~~**Wire Sentry (item 3) — DONE 25 May 2026 (commits `e5f12e0`, `6d459f1`, `940c7ca`).**~~
 
-3. ~~**Block (item 6) — DONE 24 May 2026.**~~ **Admin queue (item 7) still pending.** Admin queue required before opening to strangers — budget a full session. `ReportUserForm` post-submit block prompt (loose thread 39) shipped with Block.
+3. ~~**Block (item 6) — DONE 24 May 2026.**~~ ~~**Admin queue (item 7) — PARTIAL DONE 25 May 2026.**~~ Queue + dismiss shipped. **One blocker remains: page-level admin gate bypass (non-admins can view report data). Fix before opening to strangers.**
 
-4. **PPT API plan upgrade (item 10a) — already captured as a launch blocker
-   in §2. Repeated here for sequencing only.**
+   ⚠️ KNOWN SECURITY GAP — diagnose and fix next session:
+   `/admin/reports` page loads and renders report data for authenticated non-admin users. The `isAdminClient` check in `useEffect` fires asynchronously — the page renders the loading state first, then the data fetch and admin check race. Investigation starting points (cause not yet diagnosed):
+   - Add a `console.log` before and after the `isAdminClient` call in `useEffect` to confirm it's being reached and returning false for `@alex2`
+   - Check whether `notFound()` from `next/navigation` actually short-circuits rendering in a `"use client"` component (it may not — `notFound()` is a server-side primitive; calling it client-side may be a no-op or behave unexpectedly)
+   - If `notFound()` doesn't work client-side: replace with `router.replace("/welcome")` or render `null` / a blank screen while the check is in flight — never render the table until admin status is confirmed
+   - Alternative: convert the page to a server component and do the admin check server-side before any data is fetched
+
+4. ~~**PPT API plan upgrade (item 10a) — DONE 25 May 2026.**~~
 
 5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
    auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
