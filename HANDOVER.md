@@ -245,10 +245,7 @@ require some of these to be true.
    Low risk but the project's "reasoned-through ≠ tested" rule means this
    should land on a real device before being declared fully done.
 
-3. **Wire up Sentry error reporting.** Privacy Policy 2.8b discloses Sentry.
-   Install `@sentry/nextjs`, configure with a Sentry project DSN as env var,
-   confirm errors flow to a dashboard. Note region (US or EU) — the policy
-   says either.
+3. ~~**Wire up Sentry error reporting.**~~ **DONE 25 May 2026 (commits `e5f12e0` foundation, `6d459f1` cleanup, `940c7ca` Crons).** `@sentry/nextjs` installed via wizard. Error monitoring + tracing + errors-only Session Replay (0% session sample rate, 100% error replay) enabled. `proxy.js` updated to expose `/monitoring` tunnel route to unauthenticated clients. `global-error.js` wired to `captureException`. Example scaffolding removed post-verification. Cron monitor for `trade-handover-prompts` wired with full check-in lifecycle (in_progress → ok/error). Source maps upload on every Vercel build — verified in Vercel build log 25 May 2026. DSN inlined as literal string (wizard default; public by design). See §17 for gotchas.
 
 4. ~~**Verify Vercel Analytics is correctly configured.**~~ **DONE 17 May 2026 (commit `9d3b8a2`).** `@vercel/analytics` v2.0.1 installed and `<Analytics />` mounted in root layout. Page-view collection only — no Speed Insights.
    **Follow-up:** Verify page-view events appearing in Vercel dashboard within ~24h of deploy.
@@ -933,6 +930,18 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Set logos contain the set name as part of the graphic art — this is acceptable alongside MSPageTitle.** When a set logo is rendered alongside MSPageTitle's text-rendered set name, the words appear visually duplicated. This reads as graphic brand mark + page title, not as two text strings, and is considered acceptable. A SEPARATE earlier fix (commit `3496418`, 24 May 2026) removed a real text-rendered set name from the friend set-detail hero that duplicated the MSPageTitle. These are different categories: logo-art overlap is acceptable; independent text elements duplicating the title text are not.
 
+- **Sentry `enabled: process.env.NODE_ENV === 'production'` keeps local dev noise out of the dashboard.** Vercel preview deploys ARE captured because Vercel sets `NODE_ENV=production` on all builds (preview and production alike). To debug locally with Sentry active, temporarily flip this flag. Without it, development errors and test noise clutter the Issues queue.
+
+- **Source maps upload on every Vercel build via `withSentryConfig`.** Stack traces in Sentry resolve to original source code. If errors appear with minified stack traces, the source map upload broke — check Vercel build logs for lines prefixed with "Sentry" for upload errors. `SENTRY_AUTH_TOKEN` in Vercel env vars is required for this to work.
+
+- **Sentry DSN is inlined as a literal string in config files (wizard default).** DSN is public by design — it identifies the project but can only send events, not read data. No secret risk in inlining it. The brief specified env vars; we followed the wizard's pattern instead. Do not move the DSN to an env var without good reason.
+
+- **Sentry's `automaticVercelMonitors` only works with Pages Router.** App Router cron routes need manual `captureCheckIn` calls. The `trade-handover-prompts` route demonstrates the pattern: pass the schedule config object on the first (in_progress) check-in — Sentry auto-creates the monitor. Subsequent calls reference the returned `checkInId`. Every distinct exit path (error, empty, per-trade catch, final success/partial-failure) needs its own check-in call or the monitor goes stale.
+
+- **Sentry Crons partial-failure visibility: per-trade catch blocks call `captureException` with `tradeId` in `extra`.** Individual failures surface as filterable Issues in Sentry. The final check-in status is `errors.length ? "error" : "ok"` — partial failures mark the cron run red in the monitor, not just the individual exception. Strict by default; loosen only if spurious single-trade failures become noise.
+
+- **API route Sentry instrumentation: only the cron route is manually instrumented.** All other API routes rely on `onRequestError` (exported from `instrumentation.js` as `Sentry.captureRequestError`) which captures all unhandled server-side errors automatically. If finer-grained capture is needed in a specific route later (custom tags, breadcrumbs, partial-failure tracking), wrap the relevant section with `try/catch + Sentry.captureException`. Do not manually instrument every route — the automatic hook is sufficient for the common case.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -945,12 +954,7 @@ When picking this back up, suggested sequence:
    Remaining 10 null-priced rows are `_pb`-suffix IDs — known limitation, zero ticks,
    no action needed unless a user complains (see item 36d).
 
-2. **Wire Sentry (item 3).** Last open privacy-doc / code gap. Gets error
-   visibility in place before adding new T&S surface area — the ordering is
-   deliberate. **Do this first at the start of a full session:** create the Sentry
-   account/project and grab the DSN before opening Claude Code. That's
-   account-creation work, not coding. Once you have the DSN, Claude Code can
-   do the install-and-wire-up in one focused pass.
+2. ~~**Wire Sentry (item 3) — DONE 25 May 2026 (commits `e5f12e0`, `6d459f1`, `940c7ca`).**~~
 
 3. ~~**Block (item 6) — DONE 24 May 2026.**~~ **Admin queue (item 7) still pending.** Admin queue required before opening to strangers — budget a full session. `ReportUserForm` post-submit block prompt (loose thread 39) shipped with Block.
 
