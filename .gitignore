@@ -41,3 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Sentry build plugin secrets
+.env.sentry-build-plugin
+
+# Local diagnostic scripts (one-off debug tools)
+diag*.mjs
+UsersalexcAppData*

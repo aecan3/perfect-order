@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Master Setter — Feed Tab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin: 0; background: #0a0a0d; color: #f4f4f6;
+    font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#07070a"/>
+    <path d="M15 50 H35 L42 30 L52 70 L60 45 L65 50 H85"
+      stroke="#c8ff4a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="feed-tab.jsx"></script>
+<script type="text/babel">
+const { FeedScreen, IconOptionsSheet, TabBar5Sheet, NotesPanel,
+  IconFeedPulse, IconFeedTimeline, IconFeedNetwork } = window;
+
+function App() {
+  return (
+    <DesignCanvas title="Master Setter — Feed Tab + 5-cell Tab Bar">
+
+      <DCSection id="icons" title="01 · Feed icon · 3 options"
+        subtitle="22px outer, 2px stroke, rounded joins. Recommended option carries the lime badge.">
+        <DCArtboard id="icon-options" label="Feed — 3 icon options" width={840} height={300}>
+          <IconOptionsSheet/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="tabbar" title="02 · Updated tab bar · 5 cells"
+        subtitle="Feed slots into the middle position. Same active-indicator pattern as the existing tabs — 2px lime line with bracket-notch ticks.">
+        <DCArtboard id="tabbar-pulse" label="A · Pulse (recommended)" width={520} height={220}>
+          <TabBar5Sheet feedIcon={IconFeedPulse}/>
+        </DCArtboard>
+        <DCArtboard id="tabbar-timeline" label="B · Timeline" width={520} height={220}>
+          <TabBar5Sheet feedIcon={IconFeedTimeline}/>
+        </DCArtboard>
+        <DCArtboard id="tabbar-network" label="C · Network" width={520} height={220}>
+          <TabBar5Sheet feedIcon={IconFeedNetwork}/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="screen" title="03 · Feed page in context"
+        subtitle="Inside the established chrome at 390 × 844. Header + 5-cell tab bar + status bar + home indicator. Page title uses the bracket-hairline pattern; preview cards use the dashed-container treatment.">
+        <DCArtboard id="screen-pulse" label="Feed · Pulse icon (recommended)" width={390} height={844}>
+          <FeedScreen feedIcon={IconFeedPulse}/>
+        </DCArtboard>
+        <DCArtboard id="screen-timeline" label="Feed · Timeline icon (alt)" width={390} height={844}>
+          <FeedScreen feedIcon={IconFeedTimeline}/>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="notes" title="04 · Justification notes"
+        subtitle="One line per major choice. Copy-edit pass on the page text is reflected directly in the mockup above.">
+        <DCArtboard id="notes-panel" label="Why each thing is the way it is" width={840} height={620}>
+          <NotesPanel/>
+        </DCArtboard>
+      </DCSection>
+
+    </DesignCanvas>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
