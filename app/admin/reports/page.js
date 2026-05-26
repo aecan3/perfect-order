@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { notFound } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { isAdminClient } from "@/lib/admin-client";
 
 export default function AdminReportsPage() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState([]);
   const [view, setView] = useState("open");
@@ -20,11 +22,19 @@ export default function AdminReportsPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return notFound();
+      if (!user) {
+        router.replace("/welcome");
+        return;
+      }
+
       const admin = await isAdminClient(supabase, user.id);
-      if (!admin) return notFound();
+      if (!admin) {
+        router.replace("/you");
+        return;
+      }
 
       await fetchReports(supabase, view);
+      setChecking(false);
       setLoading(false);
     }
 
@@ -66,6 +76,10 @@ export default function AdminReportsPage() {
     }
     setDismissing((prev) => { const d = { ...prev }; delete d[reportId]; return d; });
   }
+
+  // Render nothing until admin check completes — prevents any data flash
+  // for non-admin users who will be redirected by router.replace above.
+  if (checking) return null;
 
   const tdStyle = {
     padding: "8px 10px",
