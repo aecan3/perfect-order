@@ -463,8 +463,8 @@ export default function FriendSetTrackerPage() {
         </div>
 
         {/* Identity row */}
-        <BackButton href={`/friend/${handle}`} />
         <div className="flex items-center gap-3 mb-4">
+          <BackButton href={`/friend/${handle}`} />
           <Avatar profile={friend} size={40} themePrimary={themePrimary} />
           <div className="min-w-0 flex-1">
             <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">

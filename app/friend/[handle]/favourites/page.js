@@ -138,8 +138,8 @@ export default function FriendFavouritesPage() {
         style={{ borderBottom: "1px solid var(--po-border)" }}
       >
         {/* Identity row */}
-        <BackButton href={`/friend/${handle}`} />
         <div className="flex items-center gap-3">
+          <BackButton href={`/friend/${handle}`} />
           <Avatar profile={friend} size={40} />
           <div className="min-w-0 flex-1">
             <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">
