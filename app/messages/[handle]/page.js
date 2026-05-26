@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Send, Flag, ShieldOff } from "lucide-react";
+import { Send, Flag, ShieldOff } from "lucide-react";
 import { TradePanel } from "@/components/TradePanel";
+import BackButton from "@/components/BackButton";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { OverflowMenu } from "@/components/OverflowMenu";
@@ -241,9 +242,7 @@ export default function ThreadPage() {
         <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ flexShrink: 0, borderBottom: "1px solid var(--po-border)", padding: "12px 16px", background: "var(--po-bg)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 448, margin: "0 auto" }}>
-              <button onClick={() => router.back()} style={{ color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
-                <ArrowLeft size={20} />
-              </button>
+              <BackButton />
               <p style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2, color: "var(--po-text)", margin: 0, flex: 1, minWidth: 0 }}>@{handle}</p>
             </div>
           </div>
@@ -262,9 +261,7 @@ export default function ThreadPage() {
         {/* Thread header with back arrow */}
         <div style={{ flexShrink: 0, borderBottom: "1px solid var(--po-border)", padding: "12px 16px", background: "var(--po-bg)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 448, margin: "0 auto" }}>
-            <button onClick={() => router.back()} style={{ color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
-              <ArrowLeft size={20} />
-            </button>
+            <BackButton />
             <Link href={`/friend/${handle}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
               <p style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2, color: "var(--po-text)", margin: 0 }}>@{handle}</p>
             </Link>

@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, UserPlus, Check, X, Eye } from "lucide-react";
+import { UserPlus, Check, X, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import BackButton from "@/components/BackButton";
 import { getBlockIds } from "@/lib/queries/blocks";
 
 export default function FriendsPage() {
@@ -222,9 +223,7 @@ export default function FriendsPage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
-          <ArrowLeft size={20} />
-        </Link>
+        <BackButton href="/" />
         <h1 className="text-lg font-bold">Friends</h1>
       </header>
 

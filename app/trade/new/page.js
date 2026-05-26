@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lucide-react";
+import { ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import BackButton from "@/components/BackButton";
 import { MSShell } from "@/components/chrome/MSShell";
 
 const BATCH = 200;
@@ -312,9 +313,9 @@ function TradeNewInner() {
 
         {/* Header */}
         <header className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-[var(--po-border)]">
-          <button onClick={() => router.back()} className="flex items-center gap-1.5 text-[var(--po-text-dim)] text-sm mb-2">
-            <ArrowLeft size={15} /> Back
-          </button>
+          <div style={{ marginBottom: 8 }}>
+            <BackButton label="Back" />
+          </div>
           <h1 className="font-black text-base uppercase tracking-tight">Propose Trade</h1>
           <p className="text-[10px] text-[var(--po-text-dim)] mt-0.5">with @{recipientHandle}</p>
         </header>
