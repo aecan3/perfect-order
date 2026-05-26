@@ -167,6 +167,25 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
   );
 }
 
+async function fetchFriendEntries(supabase, friendId, sid) {
+  const PAGE = 1000;
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("collection_entries")
+      .select("printing_id, card_number, checked, photo_url")
+      .eq("user_id", friendId)
+      .eq("set_id", sid)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return rows;
+}
+
 export default function FriendSetTrackerPage() {
   const router = useRouter();
   const params = useParams();
@@ -233,15 +252,11 @@ export default function FriendSetTrackerPage() {
         return;
       }
 
-      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: entriesData }, { data: favData }] = await Promise.all([
+      const [{ data: setData }, { data: cardData }, { data: printingData }, entriesData, { data: favData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
-        supabase
-          .from("collection_entries")
-          .select("printing_id, card_number, checked, photo_url")
-          .eq("user_id", friendProfile.id)
-          .eq("set_id", setId),
+        fetchFriendEntries(supabase, friendProfile.id, setId),
         supabase.rpc("get_friend_favourites", { viewer: user.id, target: friendProfile.id }),
       ]);
 
