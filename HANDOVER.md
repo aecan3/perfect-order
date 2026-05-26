@@ -257,7 +257,7 @@ require some of these to be true.
 
 6. ~~**Build "Block user" feature.**~~ **DONE 24 May 2026 (session 10).** `user_blocks` table with RLS (blocker SELECT/INSERT/DELETE own rows). SECURITY DEFINER functions `is_blocked()` and `get_block_peer_ids()` bypass RLS for bidirectional block checks. All enforcement surfaces: Discover (search + card tap), Friends list (search filter + sendRequest guard), Friend profile view, Friend set-detail view, Messages thread (load + send guard), Messages inbox, Trade propose API, `feed_events` SELECT RLS. API routes: `POST /api/block`, `DELETE /api/block/[targetUserId]`, `GET /api/block/list`. UI: `BlockConfirmModal` (shared sheet, `mode="block"|"unblock"`), Settings blocked-users list, overflow-menu "Block user" on profile + message thread, post-report block prompt in `ReportUserForm`. Silent block design: blocked user is not notified. Key commits: `51e5140` (DB + `lib/queries/blocks.js`), `69982ce` (Friends), `c251165` (profile), `c5c62e9` (set-detail), `d48e2d0` (message thread), `defee19` (inbox), `c739627` (trade propose), `f06de55` (feed_events RLS), `a2f3c35` (POST /api/block), `f88482c` (DELETE /api/block), `21ef4ad` (GET /api/block/list), `30bcabb` (BlockConfirmModal), `70ee0de` (Settings + unblock mode), `70278e9` (profile overflow), `b1aa070` (thread overflow), `94a3cc5` (post-report prompt). Verified end-to-end on device 24 May 2026.
 
-7. ~~**Admin moderation queue — PARTIAL DONE 25 May 2026.**~~ Queue visibility + dismiss action shipped. Warn/suspend/terminate deferred (require `user_actions` schema — separate session). Commits: `cf79bc1` (admin helper + trade-events refactor), `794804e` (RLS policies migration), `d8c5e6b` (reports page), `c318e36` (dismiss API route), `561fb81` (server/client split fix), `c2890e7` (diagnostic logging removal). **⚠️ KNOWN SECURITY GAP: page-level admin gate (`isAdminClient` in `useEffect`) does NOT currently block non-admin authenticated users from viewing report data. Confirmed 25 May 2026 — `@alex2` (is_admin=false) loaded `/admin/reports` and saw all rows. API gate (`requireAdmin`) is correct — non-admins cannot dismiss. Fix this before opening to strangers. See §18 for diagnosis notes.**
+7. ~~**Admin moderation queue — DONE 26 May 2026.**~~ Both `user_reports` and `card_reports` admin queues shipped. `user_reports` queue: view all reports, dismiss with optional note, Open/Dismissed toggle. `card_reports` queue: 4-view UI (Open/In-Progress/Resolved/Dismissed), full status transition workflow (Start Work → Mark Resolved / Dismiss, Reopen from any terminal state), inline resolution notes, `resolution_note` preserved on reopen. Admin gate fixed — non-admins silently redirected to `/you` with no data flash (`checking` state + `router.replace`, replacing the broken `notFound()` pattern). All routes: `cf79bc1` (admin helper), `794804e` (user_reports RLS), `d8c5e6b` (user_reports page), `c318e36` (dismiss route), `561fb81` (server/client split), `c2890e7` (diag logging removal), `9c50b27` (HANDOVER), `e2003b4` (gate fix), `609b5f6` (card_reports RLS), `ce699b8` (card_reports page), `cd5dc8f` (status API). Deferred: warn/suspend/terminate (needs `user_actions` schema); inline card editing in queue (fix via Studio for now); bulk actions/search/pagination.
 
 8. **Address-reveal nudge in messages.** When a user types something that
    looks like a mailing address into a message thread, show a one-time
@@ -941,6 +941,10 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Admin RLS pattern: additive permissive policies on `user_reports`.** Added `user_reports_admin_select_all` (SELECT) and `user_reports_admin_update` (UPDATE) policies gated on `profiles.is_admin = true`. PostgreSQL OR-combines permissive policies — existing `user_reports_select_own` still applies, so regular users see their own reports while admins see all. No existing policy was modified or removed.
 
+- **`notFound()` from `next/navigation` does NOT work as a security gate in `"use client"` components.** When called from inside `useEffect`, it throws a sentinel error inside an async function — the rejected Promise is silently swallowed (nothing awaits it, React's reconciler never sees it). The component stays in its current rendered state, functioning as a no-op. Use `router.replace(targetUrl)` from `useRouter()` instead, combined with a `checking` state: `if (checking) return null;` BEFORE any JSX, and `setChecking(false)` only after the gate confirms access is allowed. This pattern prevents any data flash for users who will be redirected. Applies to ANY client-side gate (admin pages, any feature checked client-side via Supabase auth). Discovered 25 May 2026 — the original admin gate let non-admins view report data because `notFound()` was silently swallowed.
+
+- **Card report status transitions preserve `resolution_note` when reopening.** When a resolved or dismissed report is reopened (status reset to 'open'), only `status` and `resolved_at` are cleared — `resolution_note` is treated as historical context, not state. Useful for "I already fixed this once, why is it being reported again?" workflows. Same principle applies to any future workflow with reversible state transitions: reset the status and timestamp, leave the audit trail.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -955,16 +959,11 @@ When picking this back up, suggested sequence:
 
 2. ~~**Wire Sentry (item 3) — DONE 25 May 2026 (commits `e5f12e0`, `6d459f1`, `940c7ca`).**~~
 
-3. ~~**Block (item 6) — DONE 24 May 2026.**~~ ~~**Admin queue (item 7) — PARTIAL DONE 25 May 2026.**~~ Queue + dismiss shipped. **One blocker remains: page-level admin gate bypass (non-admins can view report data). Fix before opening to strangers.**
-
-   ⚠️ KNOWN SECURITY GAP — diagnose and fix next session:
-   `/admin/reports` page loads and renders report data for authenticated non-admin users. The `isAdminClient` check in `useEffect` fires asynchronously — the page renders the loading state first, then the data fetch and admin check race. Investigation starting points (cause not yet diagnosed):
-   - Add a `console.log` before and after the `isAdminClient` call in `useEffect` to confirm it's being reached and returning false for `@alex2`
-   - Check whether `notFound()` from `next/navigation` actually short-circuits rendering in a `"use client"` component (it may not — `notFound()` is a server-side primitive; calling it client-side may be a no-op or behave unexpectedly)
-   - If `notFound()` doesn't work client-side: replace with `router.replace("/welcome")` or render `null` / a blank screen while the check is in flight — never render the table until admin status is confirmed
-   - Alternative: convert the page to a server component and do the admin check server-side before any data is fetched
+3. ~~**Block (item 6) — DONE 24 May 2026.**~~ ~~**Admin queue (item 7) — DONE 26 May 2026.**~~ Both queues shipped and gate fixed. Diagnosis: `notFound()` in `useEffect` is a no-op — throws inside async Promise nobody catches. Fixed with `router.replace("/you")` + `checking` state guard (commit `e2003b4`). See §17 for the `notFound()` client gotcha entry.
 
 4. ~~**PPT API plan upgrade (item 10a) — DONE 25 May 2026.**~~
+
+**⚠️ Beta tester note — 26 May 2026:** Alex showed the app to a card-shop visitor who requested early access. Beta testers are now relevant. Practical implications: Sentry will start capturing real user errors (not just dev errors); `user_reports` and `card_reports` queues will receive real submissions; first-time user experience and friend-add flow are now on the critical path before wider access.
 
 5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
    auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
