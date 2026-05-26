@@ -66,13 +66,11 @@ export default function FriendsPage() {
         return;
       }
       setUser(user);
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
+      const [{ data: profileData }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+        loadFriendships(user.id),
+      ]);
       setProfile(profileData);
-      await loadFriendships(user.id);
       setAuthChecked(true);
     })();
   }, [router, supabase, loadFriendships]);
