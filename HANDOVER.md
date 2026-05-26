@@ -1,6 +1,6 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 25 May 2026 (session 11). Single source of truth for the next session.*
+*Updated end of session, 26 May 2026 (session 12). Single source of truth for the next session.*
 *Supersedes the previous handover note from session 7.*
 
 ---
@@ -945,6 +945,12 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Card report status transitions preserve `resolution_note` when reopening.** When a resolved or dismissed report is reopened (status reset to 'open'), only `status` and `resolved_at` are cleared — `resolution_note` is treated as historical context, not state. Useful for "I already fixed this once, why is it being reported again?" workflows. Same principle applies to any future workflow with reversible state transitions: reset the status and timestamp, leave the audit trail.
 
+- **Profile fetches for @handle display should never be a serial gate before data loading.** When a page needs to show a user's handle in the header, fetching their profile and then awaiting the result before starting data fetches is a waterfall. Auth gives you `user.id` immediately — run `profiles.select().eq("id", user.id)` in parallel with all other data queries via `Promise.all`. The profile render is non-blocking; if it loads a tick later than the data, nothing breaks. Pattern established 26 May 2026 on homepage (`perf(home): parallelize profile + entries + prefs after auth`, commit `6934068`) and friends page (`perf(friends): parallelize own profile fetch with friendships load`, commit `38423af`).
+
+- **Latest-per-group queries must use a SECURITY DEFINER Postgres function, not client-side aggregation of an unbounded query.** The inbox query pattern — "fetch all messages, then loop to find the latest per peer" — hits PostgREST's 1000-row default limit silently. Once truncated, old conversations vanish from the inbox without error. The correct fix is a `SECURITY DEFINER` function using `DISTINCT ON` to return exactly one row per conversation partner server-side, with unread counts as a CTE. The canonical pair deduplication key is `LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id)` — this covers both directions of a conversation regardless of who sent first. Pattern: see `get_inbox_threads()` (migration `20260526214808`). The same pattern applies to any future "latest per entity" requirement (latest trade per peer, latest audit log per entity, etc.).
+
+- **When two related fixes are in-flight back to back, "Pushed [hash]" must name the fix explicitly.** During session 12, the homepage perf commit (`6934068`) was confirmed pushed, and the friends perf fix was separately approved — but "Pushed 6934068" in context was read ambiguously, and the friends fix was accidentally left uncommitted. Discovered via `git status`. Rule: always name what shipped ("homepage perf fix pushed as 6934068") and confirm each fix separately before moving on.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -965,6 +971,8 @@ When picking this back up, suggested sequence:
 
 **⚠️ Beta tester note — 26 May 2026:** Alex showed the app to a card-shop visitor who requested early access. Beta testers are now relevant. Practical implications: Sentry will start capturing real user errors (not just dev errors); `user_reports` and `card_reports` queues will receive real submissions; first-time user experience and friend-add flow are now on the critical path before wider access.
 
+**⚠️ Sentry follow-up — 26 May 2026:** Check homepage and friends page p95 load time in Sentry approximately 24h after the 26 May 2026 perf pushes (commits `6934068` + `38423af`). Expecting a visible reduction from baseline (~7.3s homepage, ~3.1s friends). If no improvement, the bottleneck is elsewhere (data volume, mobile network, etc.) and warrants a fresh audit before further perf work.
+
 5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
    auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
    ME sets, log and skip prices diverging >20%. Problem 3: auto-detect rule for
@@ -976,9 +984,23 @@ When picking this back up, suggested sequence:
 
 7. Then deferred items — 2FA, help system, browse feed, etc.
 
+**Deferred items (not blocking, prioritised below UI polish and price pipeline):**
+- **Refresh-prices UX:** The user-triggered refresh job runs 15–20s with no progress indication. A silent long-running operation looks like a broken feature to a beta tester. Three options: (A) fire-and-forget background job with a completion notification (~3 hours); (B) persistent progress bar or spinner during the wait (~1 hour); (C) a brief warning message before the request fires ("This takes up to 20 seconds…", ~15 min). Option C is the cheapest and ships the right signal immediately. Option A is the correct long-term fix. Do not leave this as-is once beta testers are using the refresh button regularly.
+- **Sentry walkthrough session:** When accumulated production traffic gives meaningful Performance and Issues data (a few days of real beta traffic), do a guided tour of the Sentry dashboard — check for recurring errors, slow transactions, and any surprises from the first real users. ~30 min, low-stakes, schedule opportunistically.
+- **Discover page performance:** Structurally constrained — the 3 remaining serial barriers are all genuinely dependent (auth → user ID → discovery query). No quick wins left. Skip unless usage patterns reveal a specific bottleneck users are hitting.
+
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
 - **`Avatar` component** currently renders a letter-placeholder for all users (no `avatar_url` in DB yet). When avatar upload work lands, `Avatar` handles it internally — no changes needed at any call site. The `<img>` branch at `components/Avatar.jsx` is already wired.
+
+**Done since last handover (26 May 2026, session 12):** UI polish (BackButton extraction), serial waterfall perf fixes, and messages inbox correctness fix shipped.
+
+- **BackButton component extracted** (commit `4b2cf2e`): Shared `components/BackButton.jsx` replaces all inline ArrowLeft back buttons. `href` prop → renders `<Link>`; no href → `router.back()`. Hover state via Tailwind `hover:text-[var(--po-green)]`. Refactored callers: `messages/[handle]`, `trade/new`, `friends` pages. `trade/new` uses a `<div style={{ marginBottom: 8 }}>` wrapper to preserve the pre-existing gap before the heading.
+- **Friend set-detail + favourites identity row polish** (commits `5288d67`, `00aeb22`): Removed tappable chevron-right identity rows on both pages. BackButton inlined as first child inside the flex identity row (same horizontal axis as Avatar + name/handle). No more stacked layout.
+- **Homepage serial waterfall perf fix** (commit `6934068`): Collapsed 5 serial barriers to 3. Old: auth → profile → [user_sets + entries] → [sets + counts] → prefs. New: auth → [profile + user_sets + entries + prefs] → [sets + counts]. Profile and prefs now fetch in parallel with the data they were gating.
+- **Friends page serial waterfall perf fix** (commit `38423af`): Collapsed 3 serial barriers to 2. Profile fetch now runs in `Promise.all` alongside `loadFriendships(user.id)`. `setAuthChecked(true)` called after the batch resolves.
+- **Messages inbox 1000-row data loss fix** (commits `56d1649` + `8759861`): The unbounded `messages` query + client-side `threadMap` loop was silently truncated at 1000 rows — old conversations could disappear from the inbox. Fixed via new `get_inbox_threads(viewer uuid)` SECURITY DEFINER RPC (migration `20260526214808`): uses `DISTINCT ON (LEAST/GREATEST peer pair)` + unread CTE, returns one row per conversation. Client replaced with `supabase.rpc("get_inbox_threads", { viewer: userId })`. `threadMap` loop deleted. Field names updated throughout JSX (`unread_count`, `latest_sender_id`, `latest_body`, `latest_created_at`, `peer_id`).
+- **Friend set-detail collection_entries pagination** (commit `d0e7a91`): The entries query for a friend's set had no `.range()`, risking silent 1000-row truncation on large sets. Extracted `fetchFriendEntries(supabase, friendId, sid)` as a module-level async function using the canonical PAGE=1000 loop with `.range(from, from + PAGE - 1)`. Slot in `Promise.all` unchanged; destructuring updated from `{ data: entriesData }` to plain `entriesData` (helper returns raw array).
 
 **Done since last handover (25 May 2026, session 11):** Friend-view polish + favourites feature shipped end-to-end. Verified on device.
 
