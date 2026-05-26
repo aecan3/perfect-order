@@ -26,39 +26,26 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState(null);
 
   const loadConversations = async (userId) => {
-    const [{ data: messages }, blockIds] = await Promise.all([
-      supabase
-        .from("messages")
-        .select("id, sender_id, recipient_id, body, read, created_at, message_type, metadata")
-        .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
-        .order("created_at", { ascending: false }),
+    const [{ data: threads }, blockIds] = await Promise.all([
+      supabase.rpc("get_inbox_threads", { viewer: userId }),
       getBlockIds(supabase, userId),
     ]);
 
-    if (!messages?.length) { setConversations([]); return; }
+    if (!threads?.length) { setConversations([]); return; }
 
-    const threadMap = {};
-    for (const msg of messages) {
-      const otherId = msg.sender_id === userId ? msg.recipient_id : msg.sender_id;
-      if (!threadMap[otherId]) threadMap[otherId] = { otherId, latest: msg, unread: 0 };
-      if (!msg.read && msg.recipient_id === userId) threadMap[otherId].unread++;
-    }
+    const visible = threads.filter((t) => !blockIds.has(t.peer_id));
+    if (!visible.length) { setConversations([]); return; }
 
-    // Remove blocked peers — prunes threadMap so both otherIds and convos are filtered in one pass
-    for (const id of blockIds) delete threadMap[id];
-
-    const otherIds = Object.keys(threadMap);
+    const peerIds = visible.map((t) => t.peer_id);
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, handle, display_name")
-      .in("id", otherIds);
+      .in("id", peerIds);
     const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
 
-    const convos = Object.values(threadMap)
-      .sort((a, b) => new Date(b.latest.created_at) - new Date(a.latest.created_at))
-      .map((t) => ({ ...t, profile: profileMap[t.otherId] }));
-
-    setConversations(convos);
+    setConversations(
+      visible.map((t) => ({ ...t, profile: profileMap[t.peer_id] }))
+    );
   };
 
   useEffect(() => {
@@ -101,8 +88,8 @@ export default function InboxPage() {
           <div className="divide-y divide-[var(--po-border)]">
             {conversations.map((convo) => (
               <Link
-                key={convo.otherId}
-                href={`/messages/${convo.profile?.handle || convo.otherId}`}
+                key={convo.peer_id}
+                href={`/messages/${convo.profile?.handle || convo.peer_id}`}
                 className="flex items-center gap-3 py-3.5 hover:bg-[var(--po-bg-soft)] -mx-2 px-2 rounded-xl transition-colors"
               >
                 {/* Avatar placeholder */}
@@ -115,18 +102,18 @@ export default function InboxPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm font-bold truncate ${convo.unread > 0 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
-                      @{convo.profile?.handle || convo.otherId}
+                    <span className={`text-sm font-bold truncate ${convo.unread_count > 0 ? "text-[var(--po-text)]" : "text-[var(--po-text-dim)]"}`}>
+                      @{convo.profile?.handle || convo.peer_id}
                     </span>
                     <span className="text-[10px] text-[var(--po-text-faint)] flex-shrink-0">
-                      {timeAgo(convo.latest.created_at)}
+                      {timeAgo(convo.latest_created_at)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <p className={`text-xs truncate flex-1 ${convo.unread > 0 ? "text-[var(--po-text)]" : "text-[var(--po-text-faint)]"}`}>
-                      {convo.latest.sender_id === user?.id ? "You: " : ""}{convo.latest.body}
+                    <p className={`text-xs truncate flex-1 ${convo.unread_count > 0 ? "text-[var(--po-text)]" : "text-[var(--po-text-faint)]"}`}>
+                      {convo.latest_sender_id === user?.id ? "You: " : ""}{convo.latest_body}
                     </p>
-                    {convo.unread > 0 && (
+                    {convo.unread_count > 0 && (
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "var(--po-green)" }} />
                     )}
                   </div>
