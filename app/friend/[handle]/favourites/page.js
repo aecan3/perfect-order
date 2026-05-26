@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ChevronRight, X, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { X, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -137,10 +138,8 @@ export default function FriendFavouritesPage() {
         style={{ borderBottom: "1px solid var(--po-border)" }}
       >
         {/* Identity row */}
-        <Link
-          href={`/friend/${handle}`}
-          className="flex items-center gap-3 rounded-xl p-2 -mx-2 hover:bg-[var(--po-bg-soft)] active:bg-[var(--po-border)] transition-colors"
-        >
+        <BackButton href={`/friend/${handle}`} />
+        <div className="flex items-center gap-3">
           <Avatar profile={friend} size={40} />
           <div className="min-w-0 flex-1">
             <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">
@@ -148,8 +147,7 @@ export default function FriendFavouritesPage() {
             </div>
             <div className="text-[10px] text-[var(--po-text-dim)] truncate">@{friend.handle}</div>
           </div>
-          <ChevronRight size={16} className="text-[var(--po-text-dim)] flex-shrink-0" />
-        </Link>
+        </div>
       </div>
 
       <div className="px-3 py-4 max-w-md mx-auto">

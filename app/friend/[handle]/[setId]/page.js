@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ChevronDown, ChevronRight, X, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
+import { ChevronDown, X, Check, MessageCircle, ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -462,10 +463,8 @@ export default function FriendSetTrackerPage() {
         </div>
 
         {/* Identity row */}
-        <Link
-          href={`/friend/${handle}`}
-          className="flex items-center gap-3 mb-4 rounded-xl p-2 -mx-2 hover:bg-[var(--po-bg-soft)] active:bg-[var(--po-border)] transition-colors"
-        >
+        <BackButton href={`/friend/${handle}`} />
+        <div className="flex items-center gap-3 mb-4">
           <Avatar profile={friend} size={40} themePrimary={themePrimary} />
           <div className="min-w-0 flex-1">
             <div className="font-bold text-sm leading-tight truncate text-[var(--po-text)]">
@@ -473,8 +472,7 @@ export default function FriendSetTrackerPage() {
             </div>
             <div className="text-[10px] text-[var(--po-text-dim)] truncate">@{friend.handle}</div>
           </div>
-          <ChevronRight size={16} className="text-[var(--po-text-dim)] flex-shrink-0" />
-        </Link>
+        </div>
 
         {/* Stats */}
         <div className="mb-3">
