@@ -131,10 +131,6 @@ export default function HomePage() {
       if (!user) { router.replace("/welcome"); return; }
       setUser(user);
 
-      const { data: profileData } = await supabase
-        .from("profiles").select("*").eq("id", user.id).maybeSingle();
-      setProfile(profileData);
-
       // Paginated fetch for collection_entries — loops with .range() until
       // a page returns fewer rows than PAGE, guaranteeing every row is
       // included regardless of collection size.
@@ -158,15 +154,23 @@ export default function HomePage() {
         return rows;
       };
 
-      // Step 1: user_sets metadata + all checked entries in parallel.
-      const [{ data: userSetsRows }, entries] = await Promise.all([
+      // Parallel batch: profile, user_sets, entries, and prefs all only
+      // need user.id — none depend on each other.
+      const [{ data: profileData }, { data: userSetsRows }, entries, { data: prefs }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
         supabase
           .from("user_sets")
           .select("set_id, added_at, hidden_at, prices_updated_at")
           .eq("user_id", user.id)
           .order("added_at", { ascending: false }),
         fetchAllEntries(user.id),
+        supabase
+          .from("user_set_preferences")
+          .select("set_id, sort_order")
+          .eq("user_id", user.id)
+          .not("sort_order", "is", null),
       ]);
+      setProfile(profileData);
 
       // Step 2: fetch set details at the top level.
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
@@ -211,12 +215,7 @@ export default function HomePage() {
       setSetValues(vals);
       setDisplayValues(initDisplay);
 
-      // Fetch sort order preferences and apply custom ordering
-      const { data: prefs } = await supabase
-        .from("user_set_preferences")
-        .select("set_id, sort_order")
-        .eq("user_id", user.id)
-        .not("sort_order", "is", null);
+      // Apply sort order preferences (resolved in parallel batch above)
       const prefMap = Object.fromEntries((prefs || []).map((p) => [p.set_id, p.sort_order]));
       const anyPrefs = (prefs || []).length > 0;
       const sorted = anyPrefs
