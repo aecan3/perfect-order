@@ -132,9 +132,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
   };
 
   const handleCardTap = () => {
-    if (viewerCollectsSet) {
-      router.push(`/set/${event.related_set_id}`);
-    }
+    router.push(`/friend/${event.actor_handle}`);
   };
 
   return (
@@ -144,7 +142,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
         border: "0.5px solid rgba(244,244,246,0.08)",
         borderRadius: "var(--border-radius-lg)",
         padding: "14px 16px",
-        cursor: viewerCollectsSet ? "pointer" : "default",
+        cursor: "pointer",
       }}
       onClick={handleCardTap}
     >
@@ -196,6 +194,10 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
 
       {viewerCollectsSet && (
         <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); router.push(`/set/${event.related_set_id}`); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); router.push(`/set/${event.related_set_id}`); } }}
           style={{
             marginTop: 14,
             padding: "10px 12px",
@@ -205,13 +207,14 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
             display: "flex",
             alignItems: "center",
             gap: 8,
+            cursor: "pointer",
           }}
         >
-          <Layers size={16} style={{ color: "var(--po-green)", flexShrink: 0 }} />
-          <span style={{ color: "var(--po-green)", fontSize: 13, fontWeight: 500, flex: 1 }}>
-            Got duplicates to help?
+          <Layers size={16} style={{ color: "var(--po-green)", flexShrink: 0, alignSelf: "center" }} />
+          <span style={{ color: "var(--po-green)", fontSize: 13, fontWeight: 500, flex: 1, lineHeight: 1.35 }}>
+            Own duplicates for this set? Let people know
           </span>
-          <ArrowRight size={14} style={{ color: "var(--po-green)", flexShrink: 0 }} />
+          <ArrowRight size={14} style={{ color: "var(--po-green)", flexShrink: 0, alignSelf: "center" }} />
         </div>
       )}
 

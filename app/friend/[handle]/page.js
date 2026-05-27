@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { Flag, ShieldOff, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import BackButton from "@/components/BackButton";
 import { Avatar } from "@/components/Avatar";
 import { selectMasterPrintings, fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -211,6 +212,7 @@ export default function FriendOverviewPage() {
 
       <div className="px-4 pt-4 pb-0 max-w-md mx-auto">
         <div className="flex items-center gap-4 pb-4 mb-1" style={{ borderBottom: "1px solid var(--po-border)" }}>
+          <BackButton />
           <Avatar profile={friend} size={56} />
           <div className="min-w-0">
             <div className="font-black text-lg leading-tight truncate text-[var(--po-text)]">
