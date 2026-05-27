@@ -965,6 +965,22 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **When two related fixes are in-flight back to back, "Pushed [hash]" must name the fix explicitly.** During session 12, the homepage perf commit (`6934068`) was confirmed pushed, and the friends perf fix was separately approved — but "Pushed 6934068" in context was read ambiguously, and the friends fix was accidentally left uncommitted. Discovered via `git status`. Rule: always name what shipped ("homepage perf fix pushed as 6934068") and confirm each fix separately before moving on.
 
+- **Pre-fetch idempotency doesn't survive concurrent writes.** A pattern like "SELECT to check if row exists, then INSERT if not" looks safe but isn't — N rapid parallel route calls can all pass the SELECT before any INSERT commits, then all INSERT, producing N duplicate rows. Discovered 27 May 2026 during M3 smoke test: 5 rapid ticks of a 5-card set produced 3 `set_started` rows. Milestone events were protected from session 10 (`feed_events_milestone_unique_idx`); set_started and set_completed were not. Fix: always pair pre-fetch idempotency with a partial unique index, and handle 23505 in the route as a silent no-op. Migration `20260527000003_m3_feed_events_unique_indexes.sql` is the canonical reference. Applies to ANY route-fired event; trigger-fired events are protected by the source-row constraints (e.g. favourites unique key, friendships unique pair).
+
+- **State that needs to survive in-app navigation belongs in a Context provider mounted at `app/layout.js`, above per-page MSShell instances.** Pattern established 27 May 2026 by `RefreshPricesProvider`. The provider wraps `{children}` only (not `<SwRegister />` or `<Analytics />`). Per-page MSShell consumes via hook. Global UI (slim indicator bar, etc.) mounts inside MSShell between header and `<main>`. Survives navigation between routes; does NOT survive hard reload or PWA close (that's A2 territory, deferred). `sessionStorage` can be used to detect a hard reload mid-operation and show a transient recovery state.
+
+- **Positive-direction events use API routes; negative-direction cleanup uses Postgres triggers.** New M3 pattern, alongside the existing "client-side Supabase operations use triggers" rule. Example: tick-on at 100% INSERTs a `set_completed_pending` row via the record-milestone API route (positive direction). Untick or delete on `collection_entries` deletes that pending row via `trg_delete_pending_on_collection_change` (negative direction). The asymmetry is correct — the route is already called on tick-on, but isn't called on untick. Adding a route call to every untick just to handle cleanup would double network round-trips for a one-line DB operation; a trigger handles it server-side with zero added latency.
+
+- **When both JS and SQL implementations of the same logic exist, both files must carry parity comments pointing at the other.** Drift between implementations is silent and causes correctness failures. M3 has `computeOwnershipPct` in both `lib/feed-progression.js` (JS, called by the record-milestone route) and inside `flush_pending_completions()` (SQL, called by pg_cron). Both files carry a comment block explaining what must stay in sync. If filter mechanism, join shape, or rounding changes in one, the other MUST change to match. Adopt this rule for ALL future JS/SQL duplications.
+
+- **Briefs should specify behavioural intent in plain language, not just pseudocode.** A faithful implementation of wrong pseudocode is still wrong. Discovered 27 May 2026: M3's milestone bulk-add debounce pseudocode handled "multiple newly-crossed thresholds in a single call" (rare in practice) instead of "any milestone crossing during the 30-min window" (the actual design intent). Smoke testing on a real user flow caught it; brief review wouldn't have. From now on, every brief leads with a plain-language statement of "what should happen, from the user's perspective" before any pseudocode.
+
+- **For migrations, verify the SQL that was actually applied — not just the success status.** Discovered 27 May 2026: a typo in a Claude Code summary ("set_completed_potential" instead of "set_completed_pending") on an ALTER TABLE line raised concern about whether the typo was only in the report or also in the SQL. MCP verifications (table exists with correct name, RLS enabled, no phantom typo'd table) confirmed the SQL was correct; the typo was transcription-only. The lesson: for migrations specifically, when the artifact IS the SQL, verify the database state matches expectations after apply. Cheap, catches silent failure modes that build/lint can't.
+
+- **pg_cron worst-case settle delay is up to 5 min + full cron interval, not 5 min + half-cron-interval.** Observed 27 May 2026: a `set_completed_pending` row with `crossed_at = 12:10:35` (settle expires 12:15:35) was skipped by the 12:15:00 cron run because the window hadn't expired yet, and picked up by the 12:20:00 run. Real-world worst case for the M3 design is closer to 10 minutes than the original "5+5" estimate. Acceptable for the Feed but worth knowing for any future cron-based settle pattern.
+
+- **Briefs delivered as copyable .md files via present_files for top-of-task plans; chat-format fenced code blocks for per-part follow-ups.** User workflow preference established 27 May 2026 (session 13). Files are easier to copy from a separate panel; per-part instructions are easier to copy from chat. Future sessions should default to this format.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1006,6 +1022,22 @@ When picking this back up, suggested sequence:
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
 - **`Avatar` component** currently renders a letter-placeholder for all users (no `avatar_url` in DB yet). When avatar upload work lands, `Avatar` handles it internally — no changes needed at any call site. The `<img>` branch at `components/Avatar.jsx` is already wired.
+
+**Done since last handover (27 May 2026, session 13):**
+
+- **Refresh-prices helper text** (commit `7e990bc`): Pre-flight "Takes up to ~20 seconds per set." line under the Refresh Prices button on the home page. Shipped before the deeper navigation-survival issue was understood; kept because it still adds value as first-tap context. See §17 Gotchas for the lesson about misreading a brief.
+
+- **Refresh-prices state survives navigation (A1)** (commit `d74c802`): `RefreshPricesProvider` Context lifts refresh state out of HomePage to `app/layout.js`. Slim global indicator bar in MSShell shows progress / completion / errors / hard-reload-recovery from any route during refresh. Tappable to return home. `sessionStorage`-backed recovery state for 30s after hard reload mid-refresh. Existing rich home-page progress UI preserved unchanged. +391 / -99 lines across 4 files. Deferred: A2 (PWA close / app switch mid-refresh — would need a Supabase-backed `refresh_jobs` table).
+
+- **Sentry follow-up from session 12 closed:** Homepage perf win confirmed in Sentry (p95 7.3s → 2.66s, ~64% improvement). `/friends` p95 inconclusive due to single-session sample; revisit when beta traffic accumulates. Zero new errors post-deploy. Cron monitor `trade-handover-prompts` healthy. Two stale Sentry example-page issues remain unresolved in the dashboard (boilerplate from initial wiring, not real errors) — manual resolve when convenient.
+
+- **17a audit:** Discovered the session 9 "proposer-offered-skip" feature is separate from 17a's mutual-consent design. 17a is NOT closed; all 5 sub-decisions remain unresolved. Deferred post-beta; the asymmetry of session 9 may turn out to be a feature (forces explicit suggestion, dampens social-pressure drift). Revisit if beta testers report friction.
+
+- **M3 design locked:** Full v1 design captured in §19 Milestone 3. Three jobs only: notify, prompt duplicates, celebrate milestones. No mini-screen (handover option D rejected for v1). `set_started` at 10%, milestone suppression during 30-min bulk-add window, 5-min settle on `set_completed`. CTA on Feed `set_started` cards routes viewer to their own `/set/[id]` if they collect the same set.
+
+- **M3 events layer SHIPPED** (commit `28d5faf`): Full pipeline working in production. See §19 Milestone 3 for status detail. PART 4 (Feed UI render) deferred to next session.
+
+- **2 HANDOVER.md commits during session** (commit `eb08048` for 17a + M3 design lock, plus this commit for the session 13 retrospective).
 
 **Done since last handover (26 May 2026, session 12):** UI polish (BackButton extraction), serial waterfall perf fixes, and messages inbox correctness fix shipped.
 
@@ -1225,6 +1257,8 @@ logging before displaying.
 **Verification:** Use the app for a day; watch `feed_events` and
 `user_interactions` populate in Table Editor.
 
+**Session 13 update (27 May 2026):** The `set_started` Postgres trigger on `user_sets` INSERT has been DROPPED as part of M3. `set_started` now fires from the `/api/feed/record-milestone` API route at 10% completion (regular printings, GM excluded). The Milestone 1 trigger was the right pattern for that milestone's design, but the M3 redesign moves all set-progression event firing into a single route for consolidation. The four remaining Milestone 1 triggers (`set_completed`, `card_favourited`, `friend_added`, plus the `set_milestone` API route from session 10) are unchanged. The 7 existing dev `set_started` rows from the old trigger were wiped in migration `20260527000000` — safe pre-beta. See HANDOVER §17 Gotchas for the "positive-direction events use routes, negative-direction cleanup uses triggers" architectural principle.
+
 ---
 
 #### Milestone 2 — Basic feed + heuristic ranking *(first real feed)*
@@ -1248,6 +1282,24 @@ logging before displaying.
 ---
 
 #### Milestone 3 — Set-progression Feed events with duplicate prompt *(v1 design locked 27 May 2026, session 13)*
+
+**Status (27 May 2026, session 13):** Events layer SHIPPED in commit `28d5faf`. The full pipeline works end-to-end in production: `set_started` fires at 10%, `set_milestone` is suppressed entirely during the 30-min bulk-add window with only the highest unfired threshold firing after the window expires, `set_completed` settles via pg_cron at the next */5 boundary after a 5-min wait. Verified on production data 27 May 2026 with `fut20` smoke test (5 cards, 4 ticks across all threshold crossings) and one organic pg_cron flush at 12:20:00.
+
+**Still to do for Milestone 3 (deferred to next session):**
+- PART 4 — Render `set_started` events on `/feed` with conditional duplicate-prompt CTA. `/feed` is currently the coming-soon placeholder; needs a minimum-viable Feed query (friends-only, last 30 days, `set_started` only for v1) plus an event card component.
+- PART 5 — Full lifecycle smoke test on the rendered `/feed` page (CTA conditional visibility, CTA tap routing).
+- PART 7 — Device verification on iPhone PWA.
+
+**Architectural artifacts shipped:**
+- 4 migrations: `20260527000000` (schema), `20260527000001` (untick cleanup trigger), `20260527000002` (pg_cron flush function + schedule), `20260527000003` (partial unique indexes for race protection).
+- `lib/feed-progression.js` (new helper, JS half of the JS/SQL parity).
+- `app/api/feed/record-milestone/route.js` (extended with set_started, set_completed_pending, bulk-add debounce).
+- Existing `user_sets` INSERT trigger for `set_started` dropped. The Milestone 1 set_started capture mechanism is now obsoleted by this route.
+
+**Known operational facts:**
+- pg_cron job is named `flush_pending_completions`, schedule `*/5 * * * *`, runs against production every 5 minutes regardless of deploys.
+- Worst-case settle delay observed in production: row crossed 35 seconds before a `*/5` boundary, skipped that cron, picked up by the next one ~5 minutes later. Total user-perceptible delay ~9.5 min in that case.
+- The pg_cron function and `lib/feed-progression.js` JS helper compute ownership pct using the same `collection_tier = 'master'` filter; parity comments in both files point at the other.
 
 **Guiding principle (Feed v1):** The Feed has three jobs — notify, prompt duplicates, celebrate milestones. Nothing else. This is the scope-defense test for any future Feed feature: if a proposal doesn't do one of those three, defer.
 
