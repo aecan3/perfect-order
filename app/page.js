@@ -19,6 +19,7 @@ import { getDiscoverMatches } from "@/lib/queries/discover";
 import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -76,18 +77,18 @@ export default function HomePage() {
   const touchStartRef = useRef({});
   const slidingRefs = useRef({});
 
-  // Price refresh state
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshDone, setRefreshDone] = useState(false);
-  const [refreshErrors, setRefreshErrors] = useState([]);
-  const [refreshProgress, setRefreshProgress] = useState(null);
-  const refreshTimerRef = useRef(null);
-
-  // Trend state: { [setId]: { dir: "up"|"down", diff: number (USD) } }
-  const [trends, setTrends] = useState({});
-  const [portfolioTrend, setPortfolioTrend] = useState(null);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
-  const [totalFlash, setTotalFlash] = useState(false);
+  const {
+    refreshing,
+    refreshDone,
+    refreshProgress,
+    refreshErrors,
+    portfolioTrend,
+    trends,
+    lastRefreshedAt,
+    totalFlash,
+    triggerRefresh,
+    dismissErrors,
+  } = useRefreshPrices();
 
   // Animation state
   const [displayValues, setDisplayValues] = useState({});
@@ -240,7 +241,6 @@ export default function HomePage() {
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
   }, []);
 
   useTableRefetch({
@@ -283,89 +283,21 @@ export default function HomePage() {
 
   // ── Price refresh ─────────────────────────────────────────────────────────
   const handleRefresh = () => {
-    if (refreshing || !user) return;
-
-    const visible = userSets;
-    if (visible.length === 0) return;
-
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    setRefreshing(true);
-    setRefreshDone(false);
-    setRefreshErrors([]);
-    setPortfolioTrend(null);
-    setRefreshProgress({ done: 0, total: visible.length, name: "" });
-
-    const acc = { done: 0, allPrev: 0, allNew: 0, newValues: {}, newTrends: {}, errors: [] };
-
-    const promises = visible.map((set) =>
-      fetch("/api/refresh-prices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setIds: [set.id] }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          const r = data.results?.[0];
-          acc.done++;
-          setRefreshProgress({ done: acc.done, total: visible.length, name: set.name });
-
-          if (r && !r.error) {
-            const { setId, previousValue, newValue } = r;
-            acc.newValues[setId] = newValue;
-            const oldDisplay =
-              animTargetsRef.current[setId]?.to ??
-              displayValues[setId] ??
-              setValues[setId] ??
-              0;
-            if (Math.abs(newValue - oldDisplay) > 0.005) {
-              startAnimations({ [setId]: { from: oldDisplay, to: newValue } });
-            }
-            const prev = previousValue ?? 0;
-            const diff = newValue - prev;
-            if (Math.abs(diff) > 0.005) {
-              acc.newTrends[setId] = { dir: diff > 0 ? "up" : "down", diff: Math.abs(diff) };
-            }
-            acc.allPrev += prev;
-            acc.allNew += newValue;
-          } else {
-            acc.errors.push(set.name);
-          }
-        })
-        .catch(() => {
-          acc.done++;
-          acc.errors.push(set.name);
-          setRefreshProgress({ done: acc.done, total: visible.length, name: set.name });
-        })
-    );
-
-    Promise.all(promises).then(() => {
-      setSetValues((prev) => ({ ...prev, ...acc.newValues }));
-      setTrends(acc.newTrends);
-
-      const now = new Date().toISOString();
-      const refreshedIds = new Set(visible.map((s) => s.id));
-      const stampUpdatedAt = (s) => refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: now } : s;
-      setUserSets((prev) => prev.map(stampUpdatedAt));
-      setHiddenSets((prev) => prev.map(stampUpdatedAt));
-      setLastRefreshedAt(now);
-
-      if (acc.allPrev > 0.01) {
-        const diff = acc.allNew - acc.allPrev;
-        setPortfolioTrend({ diff, pct: (diff / acc.allPrev) * 100 });
-      }
-
-      setTotalFlash(true);
-      setTimeout(() => setTotalFlash(false), 600);
-
-      if (acc.errors.length) setRefreshErrors(acc.errors);
-      setRefreshProgress(null);
-      setRefreshing(false);
-      setRefreshDone(true);
-      refreshTimerRef.current = setTimeout(() => setRefreshDone(false), 3000);
-    }).catch(() => {
-      setRefreshErrors(["Network error — prices not updated"]);
-      setRefreshProgress(null);
-      setRefreshing(false);
+    triggerRefresh({
+      visibleSets: userSets,
+      user,
+      displayValues,
+      setValues,
+      animTargetsRef,
+      startAnimations,
+      onSetValuesChange: (newValues) => {
+        setSetValues((prev) => ({ ...prev, ...newValues }));
+      },
+      onUserSetsStamp: (refreshedIds, nowIso) => {
+        const stamp = (s) => refreshedIds.has(s.id) ? { ...s, pricesUpdatedAt: nowIso } : s;
+        setUserSets((prev) => prev.map(stamp));
+        setHiddenSets((prev) => prev.map(stamp));
+      },
     });
   };
 
@@ -847,7 +779,7 @@ export default function HomePage() {
         {refreshErrors.length > 0 && (
           <div className="mx-5 mb-2 flex items-center justify-between gap-2 text-[11px] text-amber-400">
             <span>⚠ {refreshErrors.length === 1 ? refreshErrors[0] : `${refreshErrors.length} sets`} failed to update</span>
-            <button onClick={(e) => { e.stopPropagation(); setRefreshErrors([]); }} style={{ color: "var(--po-text-dim)" }}>✕</button>
+            <button onClick={(e) => { e.stopPropagation(); dismissErrors(); }} style={{ color: "var(--po-text-dim)" }}>✕</button>
           </div>
         )}
         <div className="relative mx-5 mb-5 h-10 overflow-hidden rounded-lg border border-[var(--po-border)]">

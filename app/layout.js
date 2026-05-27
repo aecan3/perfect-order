@@ -1,6 +1,7 @@
 import './globals.css';
 import SwRegister from './sw-register';
 import { Analytics } from '@vercel/analytics/react';
+import { RefreshPricesProvider } from './RefreshPricesProvider';
 
 export const metadata = {
   title: 'Master Setter',
@@ -38,7 +39,9 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <SwRegister />
-        {children}
+        <RefreshPricesProvider>
+          {children}
+        </RefreshPricesProvider>
         <Analytics />
       </body>
     </html>
