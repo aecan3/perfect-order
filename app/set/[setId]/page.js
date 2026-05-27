@@ -15,6 +15,7 @@ import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { ReportCardFAB } from "@/components/ReportCardFAB";
+import BackButton from "@/components/BackButton";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -1221,6 +1222,7 @@ export default function SetTrackerPage() {
 
         {/* Set hero: logo + name + series */}
         <div className="flex gap-3 items-center mb-4">
+          <BackButton />
           {setRow.logo_url && (
             <img src={setRow.logo_url} alt={setRow.name}
                  className="h-14 w-auto object-contain flex-shrink-0 drop-shadow-lg" />
