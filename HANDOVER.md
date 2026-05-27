@@ -981,6 +981,12 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Briefs delivered as copyable .md files via present_files for top-of-task plans; chat-format fenced code blocks for per-part follow-ups.** User workflow preference established 27 May 2026 (session 13). Files are easier to copy from a separate panel; per-part instructions are easier to copy from chat. Future sessions should default to this format.
 
+- **Any page reachable from multiple navigation paths needs a router.back() back button.** Discovered 27 May 2026 (session 13 part 2): four pages added or updated this session — `/friend/[handle]` profile, `/set/[setId]`, plus the existing `/friend/[handle]/[setId]` and `/friend/[handle]/favourites` from sessions 11/12. Pattern: `<BackButton />` (no href, defaults to `router.back()`) inlined as the FIRST child of the page's identity row or hero row flex container. Default import (`import BackButton from "@/components/BackButton"`). Works regardless of entry path. Edge case: when there's no history (deep link, PWA cold start from saved URL), `router.back()` is a no-op — silent dead tap. Accepted edge case today; upgrade BackButton with a `fallbackHref` prop if it surfaces as a beta-tester complaint.
+
+- **Dynamic routes (`[id]` parameters) build once and serve all variations.** Easy to confuse "32/32 pages" build output with "32 individual instances built." Next.js builds the route template once; the parameter fills in at request time. Adding a component to `app/set/[setId]/page.js` adds it to every set — existing, future, even sets that don't exist yet. Mental model: file = template, URL parameter = data, render = template + data at request time.
+
+- **PostgREST returns bigint columns as strings, not numbers.** Discovered 27 May 2026 during M3 PART 4: `like_count` and `comment_count` from `get_feed_events` (SQL `count(*)::bigint`) arrived as strings on the client. Without `Number()` coercion, `count + 1` on a like-tap produces `"31"` instead of `4` (string concatenation). Apply `Number(value)` immediately on consumption in JS. Affects any SQL function returning `count()`, `sum()`, or other aggregates.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1038,6 +1044,16 @@ When picking this back up, suggested sequence:
 - **M3 events layer SHIPPED** (commit `28d5faf`): Full pipeline working in production. See §19 Milestone 3 for status detail. PART 4 (Feed UI render) deferred to next session.
 
 - **2 HANDOVER.md commits during session** (commit `eb08048` for 17a + M3 design lock, plus this commit for the session 13 retrospective).
+
+- **First HANDOVER.md retrospective commit** (commit `a496802`): Captured M3 events + A1 + 17a audit + 8 §17 lessons. First doc commit of the session.
+
+- **M3 PART 4 Feed UI SHIPPED** (commit `1d4032f`): Feed page replaces coming-soon placeholder. Renders friend `set_started` events with Variant B card layout. Two new tables (feed_event_likes, feed_event_comments) with composite-key likes and uuid+soft-delete comments. `get_feed_events` SECURITY DEFINER function aggregates counts server-side. Optimistic likes with rollback. Inline-expand comments with real-time updates. Conditional lime CTA "Own duplicates for this set? Let people know" routes to viewer's own set page.
+
+- **Three fixes from device test** (commit `79538f0`): Card body now taps to friend's profile (the card is about that friend); CTA-only routes to viewer's own set. CTA copy updated to "Own duplicates for this set? Let people know" — tells the user why they're being routed. BackButton added to `/friend/[handle]` profile page (was the only friend page without one — sessions 11/12 polished set-detail and favourites but missed profile).
+
+- **BackButton on set page** (commit `e0d38d6`): Set page was reachable from Feed CTA, home page, /sets, friend's set list — none provided a back affordance. Inlined as first child of the set hero row, mirrors the friend-page pattern. router.back() handles all entry paths correctly.
+
+- **Second HANDOVER.md retrospective commit** (this commit): Captured M3 PART 4 + back-button work + 3 more §17 lessons.
 
 **Done since last handover (26 May 2026, session 12):** UI polish (BackButton extraction), serial waterfall perf fixes, and messages inbox correctness fix shipped.
 
@@ -1283,23 +1299,45 @@ logging before displaying.
 
 #### Milestone 3 — Set-progression Feed events with duplicate prompt *(v1 design locked 27 May 2026, session 13)*
 
-**Status (27 May 2026, session 13):** Events layer SHIPPED in commit `28d5faf`. The full pipeline works end-to-end in production: `set_started` fires at 10%, `set_milestone` is suppressed entirely during the 30-min bulk-add window with only the highest unfired threshold firing after the window expires, `set_completed` settles via pg_cron at the next */5 boundary after a 5-min wait. Verified on production data 27 May 2026 with `fut20` smoke test (5 cards, 4 ticks across all threshold crossings) and one organic pg_cron flush at 12:20:00.
+**Status (27 May 2026, session 13):** Events layer + UI rendering both SHIPPED. Full M3 v1 design is live in production.
 
-**Still to do for Milestone 3 (deferred to next session):**
-- PART 4 — Render `set_started` events on `/feed` with conditional duplicate-prompt CTA. `/feed` is currently the coming-soon placeholder; needs a minimum-viable Feed query (friends-only, last 30 days, `set_started` only for v1) plus an event card component.
-- PART 5 — Full lifecycle smoke test on the rendered `/feed` page (CTA conditional visibility, CTA tap routing).
-- PART 7 — Device verification on iPhone PWA.
+**Commits:**
+- `28d5faf` — Events layer (set_started, set_milestone, set_completed with pg_cron settle)
+- `1d4032f` — Feed page UI with engagement (likes, comments, CTA)
+- `79538f0` — Fixes from device test (card body taps friend profile, CTA copy "Own duplicates for this set? Let people know", BackButton on friend profile page)
+- `e0d38d6` — BackButton on set page
+
+**Verified end-to-end in production:**
+- `set_started` fires at 10%, milestone suppression in 30-min window, `set_completed` settles via pg_cron at next */5 boundary
+- Feed page renders friend events with proper card layout (avatar, headline, time, set logo, CTA conditional on viewer collecting same set, like + comment buttons)
+- Likes toggle with optimistic UI + real-time updates across sessions
+- Comments inline-expand with real-time updates while user composes
+- Back buttons present on `/feed → /friend/[handle]`, `/feed → /set/[id]` (via CTA), `/sets → /set/[id]`, `/friends → /friend/[handle]`, plus the existing `/friend/[handle]/[setId]` and `/friend/[handle]/favourites` from sessions 11/12
+
+**Still deferred to future:**
+- Real-world smoke testing on beta-tester traffic. Test data was injected via MCP for verification (raffertydall + alex friendship with a synthetic sv8pt5 set_started event). UI was device-verified using this test data but not exercised against multiple real users.
+- iOS PWA keyboard behaviour with comment input — not tested. May need `scrollIntoView` on focus if keyboard covers input.
+- M4 (Real-time feed updates beyond likes/comments — e.g. new event rows appearing live), M5 (Activity batching), M6+ per HANDOVER §19 roadmap.
 
 **Architectural artifacts shipped:**
-- 4 migrations: `20260527000000` (schema), `20260527000001` (untick cleanup trigger), `20260527000002` (pg_cron flush function + schedule), `20260527000003` (partial unique indexes for race protection).
-- `lib/feed-progression.js` (new helper, JS half of the JS/SQL parity).
-- `app/api/feed/record-milestone/route.js` (extended with set_started, set_completed_pending, bulk-add debounce).
-- Existing `user_sets` INSERT trigger for `set_started` dropped. The Milestone 1 set_started capture mechanism is now obsoleted by this route.
+- 6 migrations: `20260527000000` (set_started/completed/milestone schema), `20260527000001` (untick cleanup trigger), `20260527000002` (pg_cron flush function + schedule), `20260527000003` (partial unique indexes for race protection), `20260527000004` (feed_event_likes + feed_event_comments + realtime publication), `20260527000005` (get_feed_events SECURITY DEFINER function).
+- `lib/feed-progression.js` (computeOwnershipPct JS helper, parity-tied to SQL function).
+- `lib/queries/feed.js` (fetchFeedEvents JS wrapper around RPC).
+- `app/api/feed/record-milestone/route.js` (extended with set_started, set_completed_pending INSERT, bulk-add debounce).
+- `app/feed/page.js` (replaced 286-line coming-soon placeholder with 101-line real Feed).
+- `components/feed/FeedEventCard.jsx` (220-line component, all three engagement buttons + inline comment thread).
+- `<BackButton />` added to `app/friend/[handle]/page.js` and `app/set/[setId]/page.js`.
+- Existing `user_sets` INSERT trigger for `set_started` dropped. The Milestone 1 set_started capture mechanism obsoleted by the route.
 
 **Known operational facts:**
-- pg_cron job is named `flush_pending_completions`, schedule `*/5 * * * *`, runs against production every 5 minutes regardless of deploys.
-- Worst-case settle delay observed in production: row crossed 35 seconds before a `*/5` boundary, skipped that cron, picked up by the next one ~5 minutes later. Total user-perceptible delay ~9.5 min in that case.
-- The pg_cron function and `lib/feed-progression.js` JS helper compute ownership pct using the same `collection_tier = 'master'` filter; parity comments in both files point at the other.
+- pg_cron job `flush_pending_completions`, schedule `*/5 * * * *`, runs against production every 5 minutes regardless of deploys.
+- Worst-case settle delay observed in production: row crossed 35 seconds before a `*/5` boundary, skipped that cron, picked up by the next — total ~9.5 min user-perceptible delay.
+- `feed_event_likes` and `feed_event_comments` are in the `supabase_realtime` publication (required for `useTableRefetch` subscriptions to fire).
+- `get_feed_events` returns `actor_avatar_url` as `NULL::text` for all rows — `profiles.avatar_url` column doesn't exist yet; Avatar component falls back to letter-placeholder. When avatar uploads land in a future session, the function needs updating to return the real column.
+- `friendships` table uses `user_a` / `user_b` columns (not requester/addressee). Confirmed via audit; query function adjusted accordingly.
+- Decision: card body taps go to the friend's profile (about the friend); only the lime CTA button routes to the viewer's own set page (call to action).
+
+**Why no mini-screen (handover option D) — STILL DEFERRED:** The original Milestone 3 brief considered a dedicated "help @friend" mini-screen. Rejected for v1 in favour of routing directly to the viewer's own set page via the CTA. If beta testers report friction with this pattern, the mini-screen returns as a v2 option.
 
 **Guiding principle (Feed v1):** The Feed has three jobs — notify, prompt duplicates, celebrate milestones. Nothing else. This is the scope-defense test for any future Feed feature: if a proposal doesn't do one of those three, defer.
 
