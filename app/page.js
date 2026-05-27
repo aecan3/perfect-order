@@ -880,6 +880,14 @@ export default function HomePage() {
             )}
           </button>
         </div>
+        {!refreshing && !refreshDone && (
+          <p
+            className="mx-5 -mt-3 mb-5 text-[10px] text-center normal-case tracking-normal"
+            style={{ color: "var(--po-text-dim)" }}
+          >
+            Takes up to ~20 seconds per set.
+          </p>
+        )}
       </div>
     );
   };
