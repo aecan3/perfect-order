@@ -544,7 +544,21 @@ NOT next-session priorities. Captured to not lose them.
     stranger-trades are happening.
 
 17a. **Mutual skip of photo verification — needs design thinking, not just
-    building.** Idea raised 16 May: let both parties in a trade agree to
+    building.**
+
+    **Status (27 May 2026 audit):** Not built. The session 9 work
+    (proposer_offered_skip + verification_skipped columns + three-button
+    acceptor UI, commits 87b1077 etc.) is a SEPARATE one-party-offer
+    feature where the proposer signals skip intent and the recipient picks.
+    That work is shipped and stable. 17a as designed is MUTUAL consent —
+    either party can initiate, both must actively agree, with a consent
+    record. Audit confirmed all five sub-decisions below are still
+    unresolved. Deferred until post-beta — the asymmetry of session 9 may
+    turn out to be a feature (forces explicit suggestion, dampens
+    social-pressure drift). Revisit if beta testers report friction with
+    proposer-only initiation.
+
+    Idea raised 16 May: let both parties in a trade agree to
     skip the verification-photo step. Do NOT just build this as a toggle.
     Trust-and-safety implications worth thinking through first: the pairs
     most likely to mutually agree to skip are also the pairs where one
@@ -1233,28 +1247,48 @@ logging before displaying.
 
 ---
 
-#### Milestone 3 — Duplicate-match decoration *(the killer mechanic)*
+#### Milestone 3 — Set-progression Feed events with duplicate prompt *(v1 design locked 27 May 2026, session 13)*
 
-**Goal:** Friend starts a set → feed card shows "You have N duplicates that
-could help" with a tap-to-act CTA.
+**Guiding principle (Feed v1):** The Feed has three jobs — notify, prompt duplicates, celebrate milestones. Nothing else. This is the scope-defense test for any future Feed feature: if a proposal doesn't do one of those three, defer.
 
-**Pre-milestone decision needed before the brief is written:**
-CTA target — four options:
-- **A.** Filtered own-collection view (passive)
-- **B.** Pre-filled message thread — *current push: B for v1* (friction-light,
-  messaging surface already built)
-- **C.** Pre-filtered `/trade/new` flow (pushes toward transaction)
-- **D.** New mini-screen: duplicate list + Message/Propose Trade/View
-  Collection actions (most useful, most work — post-v1)
+**Goal:** Real Feed events for set progression. Single CTA per event — viewers who collect the same set get a duplicate-logging prompt that routes to their own set page. No new screens.
 
-Confirm B or choose another before writing the Milestone 3 brief.
+**Event types:**
 
-**Scope:**
-- For each `set_started` event, also fetch count of MY printings where
-  `duplicate_count > 0` in that set
-- If count > 0: render inline CTA on the event card
-- Layer 1 ranking update: events with duplicate-match > 0 get significant
-  score boost
+`set_started` — Fires at 10% completion of regular printings (Grand Master excluded — GM is a hidden tier and counting it would mean broadcasting against a denominator the user doesn't see). One-time per (user, set) — never re-fires. Triggered via the existing `/api/feed/record-milestone` route, not the `user_sets` INSERT trigger (which gets deleted).
+
+`set_milestone` (50/75/90) — Fires on threshold crossing as today. New behaviour: suppressed for 30 minutes after `set_started` (bulk-add debounce window). During suppression, only the highest currently-crossed threshold fires when the window expires (single bracket-jump). Outside the window, fires immediately. No settle delay — milestones are "rough indicators" by design; a user at 73% who was briefly at 75% is reasonably described as "around 75%."
+
+`set_completed` — Fires at 100% with a 5-minute settle delay. New `set_completed_pending` table holds the intent. On crossing 100%, INSERT a pending row. If the user drops below 100% before settle, DELETE the pending row. A cron running every 2 minutes flushes pending rows older than 5 min whose user is still at 100% to `feed_events`, then deletes the pending rows. Protects against "tick all → broadcast → untick three" without lying to friends.
+
+**Feed CTA on `set_started`:**
+- Default card text: "@handle started collecting [Set Name]"
+- If the viewer has a `user_sets` row for the same set: additional CTA line "You're collecting [Set Name] — do you have duplicates to help?"
+- Tap CTA: `router.push(`/set/${setId}`)` — viewer's own set page. They mark duplicates using existing UI.
+- No mini-screen, no new components, no schema additions for the CTA itself.
+
+**Why no mini-screen (handover option D):** Considered and rejected for v1. The Feed's job is to surface events and prompt action — a dedicated "help @friend" screen would be a feature surface, not a notification surface. The existing set page already supports duplicate-logging; routing there preserves the framing without duplicating UI. Mini-screen remains a post-MVP option if friction with the routed-to-set-page pattern is observed in beta.
+
+**Why no settle on milestones:** Per locked decision — milestones are rough indicators. A user at 73% who was briefly at 75% is reasonably "around 75%." Settle infrastructure exists only for `set_completed` because completion is a hard binary claim that can be falsified by a single untick.
+
+**Migrations needed:**
+- Drop existing `user_sets` INSERT trigger that fires `set_started`
+- Wipe existing dev test rows in `feed_events` WHERE `event_type = 'set_started'` (pre-beta, safe to clean)
+- Create `set_completed_pending` table (`user_id`, `set_id`, `crossed_at` — composite primary key on user/set)
+- Add `vercel.json` cron entry for `/api/cron/flush-pending-completions` (runs every 2 min)
+- Update `proxy.js` `PUBLIC_PATHS` to include the new cron route
+
+**Implementation notes:**
+- Folding `set_started` into the milestone API route consolidates progression logic in one place. The route already computes ownership % for milestones; adding the 10% case is mechanical.
+- The 30-minute bulk-add window is anchored to the actor's most recent `set_started` event for the set — query `feed_events` for `actor_user_id = me AND event_type = 'set_started' AND related_set_id = X` and check `created_at`.
+- The cron pattern follows the session 9 `trade-handover-prompts` precedent: service-role client, fail-closed auth check, per-record error isolation, idempotency via the pending-row-deletion (no double-fires possible because the pending row IS the work item).
+
+**Deferred (not v1):**
+- Mini-screen for "help @friend" duplicate-logging interaction
+- Settle delay on `set_milestone` events
+- Bulk-import mode toggle (e.g. "I'm logging existing inventory")
+- Account-age quiet periods for new users
+- Special metadata flagging bulk-completed sets
 
 ---
 
