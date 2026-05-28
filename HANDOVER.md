@@ -165,6 +165,74 @@ favourites. User works primarily on iPhone PWA.
   `7dfb9f1`, `f41b163`, `a73ee67` — full pipeline verified end-to-end on device.
   **Admin queue is not yet built** — see item 38.
 
+- **eBay Find Online domestic filter (`78c83ae`):** Added `&LH_PrefLoc=1` to
+  the eBay search URL in `lib/ebay.js`, restricting results to items physically
+  located in the buyer's domestic market rather than just items that ship there.
+  Works across all 5 markets — `lib/ebay.js` already swaps the domain per market,
+  `LH_PrefLoc=1` is universal. One-line change; no UI or API changes.
+
+- **Avatar upload system (`6f89e01`, `98f7467`):** Profile pictures, end to end.
+  Migration: `profiles.avatar_url` column + a public-read `avatars` Storage bucket
+  with 4 RLS policies scoping writes to the owner's folder (`{user_id}/avatar.webp`
+  via `storage.foldername()`). `lib/avatar.js` does client-side processing:
+  `createImageBitmap` → center-crop to square → canvas 400×400 → WebP 0.85 →
+  upload (upsert) → cache-busted public URL → persist to `profiles.avatar_url`.
+  Upload UI on `/settings` (initial test surface) and `/you` (via the profile
+  dashboard redesign). Read-surface pass: wired `avatar_url` through every avatar
+  render site — `get_feed_events` (was returning `NULL::text` since the column
+  didn't exist at M3 time), `FeedEventCard` comment authors (was hardcoded null),
+  `/friends` search, `/messages` inbox + thread. Friend pages already worked via
+  `select("*")`. HEIC on iPhone confirmed working (Safari decodes natively via
+  `createImageBitmap`).
+
+- **Duplicates storefront (`0de383c`, fixes `3228951`/`7e19085`/`c2d7d80`):**
+  New `/duplicates/[handle]` page — a user's spare master-tier cards
+  (`duplicate_count > 0`) as a trade shop window. `get_user_duplicates(target_user,
+  viewer)` is a SECURITY DEFINER function returning the target's dupes enriched with
+  `hunted_by_viewer` (does the viewer have this printing in favourites?). Privacy:
+  non-friends are hard-blocked before any data fetch. One flat route serves own and
+  friend views. Three fixes followed device testing: card images use
+  `cards.image_large` (not the universally-NULL `printings.image_url`); the
+  `--border-radius-md` / `--border-radius-lg` tokens were ghost variables
+  (referenced but undefined — see §17); card aspect is 2.5/3.5 not 2/3.
+
+- **Profile dashboard, Stage 1 (`86a5a28`) and Stage 2 (within `e5ddd7e`):**
+  `/you` replaced a settings menu with a collector dashboard via a new shared
+  `components/profile/ProfileView.jsx` component. `ProfileView` accepts `footer`
+  and `headerAction` slots and is used by both `/you` (own view: gear → settings,
+  friends face-pile, account menu) and `/friend/[handle]` (friend view: ⋯ overflow
+  with Report/Block + speech-bubble → `/messages/[handle]`, mutual friends, inline
+  collection set list). Hero = Hunting strip (up to 6 favourites as card art, sorted
+  by price DESC). Stats row: Sets / Cards / DUPES (lime, tappable →
+  `/duplicates/[handle]`). Friend page Stage 2 rewrite preserved the `is_blocked`
+  RPC safety gate, Report/Block modals, and the paginated set-list pipeline verbatim.
+  `/friends` page gained a per-row `MessageCircle` speech bubble → direct message.
+
+- **Duplicates select-to-trade (`e5ddd7e`):** The duplicates storefront became
+  interactive. Tap cards to multi-select (green `outline`). A fixed bottom bar
+  ("N selected · Clear · Propose Trade") appears; `MSShell hideTabBar` hides the
+  tab bar while the bar is visible (otherwise the bar is obscured — same pattern as
+  Discover's selection mode). Propose Trade builds `?with=handle&requests=JSON`
+  with the same param shape Discover uses, verified against `/trade/new`'s parser —
+  selected cards pre-load as the "You want" side so the flow completes rather than
+  erroring. Hunting (viewer-favourited) cards get a soft gold box-shadow halo
+  (`rgba(255,184,48,0.55)`) distinct from the green selection outline; both can
+  coexist on a tile. The big "Propose Trade" / "Message" buttons were removed from
+  the friend-view profile in favour of the top-right speech-bubble + ⋯.
+
+- **Navigable duplicates (`c974c0a`):** `get_user_duplicates` extended with
+  `set_logo_url` and `rarity` return columns (required `DROP FUNCTION` + recreate —
+  Postgres rejects `CREATE OR REPLACE` for return-type changes). Tile overlay
+  restructured as a flex row (text `flex:1 minWidth:0`, logo `flex-shrink:0`) so
+  the set name truncates before colliding with the logo. Sort pills (Price ↓/↑
+  toggle, Name A–Z, Rarity rarest-first), client-side via `useMemo`. Rarity
+  ranking extracted from `app/set/[setId]/page.js` to `lib/rarity.js`
+  (`rarityBucket` + `BUCKET_ORDER`) and imported in both places — single source of
+  truth. Set filter chips ("All" + one per set present, shown only when dupes span
+  ≥2 sets). Filter + sort compose in one memo (filter first, sort second). Selection
+  survives both (keyed by `printing_id`). Header restructured to eyebrow `@handle`
+  + big "DUPLICATES" title instead of the wrapping `@handle's duplicates`.
+
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
 - Grand Master tier hidden everywhere except dedicated set-page sections
@@ -987,6 +1055,20 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **PostgREST returns bigint columns as strings, not numbers.** Discovered 27 May 2026 during M3 PART 4: `like_count` and `comment_count` from `get_feed_events` (SQL `count(*)::bigint`) arrived as strings on the client. Without `Number()` coercion, `count + 1` on a like-tap produces `"31"` instead of `4` (string concatenation). Apply `Number(value)` immediately on consumption in JS. Affects any SQL function returning `count()`, `sum()`, or other aggregates.
 
+- **`printings.image_url` is universally NULL — always use `cards.image_large` for card art.** Every join that needs card art must reach through `printings → cards.image_large`. Any code that reads `printings.image_url` directly will render a broken image with no error. Verified during session 14 when the duplicates page tiles were first wired up. Applies to every new card-art surface going forward.
+
+- **Pokémon card aspect ratio is 2.5/3.5, not 2/3.** The correct CSS value is `aspectRatio: "2.5/3.5"`. Using `"2/3"` makes cards appear visibly squashed. Discovered session 14 when duplicates tiles looked wrong vs. the set page. Use this aspect ratio on every new card image surface.
+
+- **`--border-radius-md` (8px) and `--border-radius-lg` (12px) are now defined in `globals.css`.** These CSS custom properties were ghost variables — referenced in several components but not defined anywhere — until session 14. Now canonical. Do not add hard-coded `borderRadius: 8` or `borderRadius: 12` to new components; reference the token.
+
+- **Changing a Postgres function's return type (RETURNS TABLE columns) requires `DROP FUNCTION IF EXISTS` before `CREATE OR REPLACE`.** PostgreSQL rejects `CREATE OR REPLACE` if the new definition adds, removes, or changes column types in `RETURNS TABLE` — even if the function body is otherwise identical. Always lead migration files that change a function signature with `DROP FUNCTION IF EXISTS public.fn_name(arg_types);` then the full `CREATE OR REPLACE`. Discovered 28 May 2026 when adding `set_logo_url` and `rarity` to `get_user_duplicates` (migration `20260528000004`).
+
+- **`MSShell hideTabBar={condition}` is required whenever a page has a fixed bottom action bar.** The app tab bar sits at `bottom: 0` and will fully obscure any `position: fixed; bottom: 0` action bar. Pass `hideTabBar={showingBar}` to the MSShell for that page. The shell shifts the tab bar off-screen when the condition is true. Pattern established on Discover; applied to the duplicates page selection bar in session 14. Any future page with a fixed bottom CTA must do the same.
+
+- **PostgREST cannot reliably order by a nested/aliased embed column — sort client-side.** Attempting `ORDER BY embed_alias.column` in a PostgREST query either errors or is silently ignored depending on the join type. For any surface that needs sorted results from a multi-table query, sort in JavaScript after fetching. `useMemo` with a dependency array on the sort key is the standard pattern used throughout this app. Applies to all new list surfaces that need custom sort orders.
+
+- **Rarity ranking is centralised in `lib/rarity.js` — import, don't copy.** `rarityBucket(rarity, subtypes, cardNumber, setPrintedTotal)` and `BUCKET_ORDER` (33-entry array, index 0 = Common, index 32 = Promo) live in `lib/rarity.js`. The set page originally had its own copy; it was replaced with an import in session 14. Any future surface that needs rarity sort or display must import from `lib/rarity.js`. `rarityRankOf(rarity)` pattern: `const idx = BUCKET_ORDER.indexOf(rarityBucket(rarity, [], 0, 0)); return idx === -1 ? 999 : idx;` — passing `([], 0, 0)` for the variant args gives the base bucket, which is adequate for sort purposes.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1009,25 +1091,48 @@ When picking this back up, suggested sequence:
 
 **⚠️ Sentry follow-up — 26 May 2026:** Check homepage and friends page p95 load time in Sentry approximately 24h after the 26 May 2026 perf pushes (commits `6934068` + `38423af`). Expecting a visible reduction from baseline (~7.3s homepage, ~3.1s friends). If no improvement, the bottleneck is elsewhere (data volume, mobile network, etc.) and warrants a fresh audit before further perf work.
 
-5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
+5. **Advanced duplicates sort + filter** — the big next feature on the duplicates page. Replace the current simple sort pills + set chips with a Sort dropdown (Price ↓, Price ↑, Name A–Z, Name Z–A) and a slide-in Filter panel with collapsible, dynamic sections: Set (only sets present in the current dupes), Rarity (only rarities present), Price buckets ($0–1, $1–5, $5–15, $15–50, $50–150, $150+). Dynamic = as filters apply, remaining options narrow. Sort works in conjunction with filter. Needs varied test data (item 6) to build and test properly.
+
+6. **Varied test data in @admin** — add duplicates across many sets, rarities, and price points in the @admin account so the advanced filter panel can be exercised with realistic data. Set this up at the start of the sort+filter work.
+
+7. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
    auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
    ME sets, log and skip prices diverging >20%. Problem 3: auto-detect rule for
    sets with zero non-holofoil printings → use `normal` key for holofoil rows.
    See item 12 for decision details.
 
-6. **UI polish items** — suggested-match language (item 10), address-reveal
+8. **UI polish items** — suggested-match language (item 10), address-reveal
    nudge (item 8). Quick wins.
 
-7. Then deferred items — 2FA, help system, browse feed, etc.
+9. Then deferred items — 2FA, help system, browse feed, etc.
 
 **Deferred items (not blocking, prioritised below UI polish and price pipeline):**
 - **Refresh-prices UX:** The user-triggered refresh job runs 15–20s with no progress indication. A silent long-running operation looks like a broken feature to a beta tester. Three options: (A) fire-and-forget background job with a completion notification (~3 hours); (B) persistent progress bar or spinner during the wait (~1 hour); (C) a brief warning message before the request fires ("This takes up to 20 seconds…", ~15 min). Option C is the cheapest and ships the right signal immediately. Option A is the correct long-term fix. Do not leave this as-is once beta testers are using the refresh button regularly.
 - **Sentry walkthrough session:** When accumulated production traffic gives meaningful Performance and Issues data (a few days of real beta traffic), do a guided tour of the Sentry dashboard — check for recurring errors, slow transactions, and any surprises from the first real users. ~30 min, low-stakes, schedule opportunistically.
 - **Discover page performance:** Structurally constrained — the 3 remaining serial barriers are all genuinely dependent (auth → user ID → discovery query). No quick wins left. Skip unless usage patterns reveal a specific bottleneck users are hitting.
+- **eBay Discover build** — still blocked on production keyset approval from eBay. No action until approved.
+- **Nav-bug pass:** three known highlights issues — `/duplicates` dead tab-highlight (no tab is active); friend-set page tab mis-highlight; Profile→Settings highlight mystery (needs device repro to diagnose). Group into a single nav-polish pass.
+- **`/friend/[handle]/favourites` route is now orphaned** — the Hunting strip on the ProfileView replaced the link that pointed here. The page still works by URL. Either wire it back in somewhere (e.g. a "See all" link from the Hunting strip) or accept reachable-by-URL-only for now.
+- **Remove /settings avatar test UI** once a real `/profile` edit page exists. The avatar upload currently lives in /settings as a test surface. The permanent home is a dedicated profile-edit page; strip the settings route once that lands.
+- **Empty Hunting strip nudge** — new users with no starred cards see a blank strip with no call-to-action. Add a "Star cards you're chasing" prompt when `favourites.length === 0`.
+- **DUPES vs DUPLICATES stat label** — the stats row on the dashboard shows "DUPES" (lime, taps to /duplicates). Kept as-is. Revisit the label only if users find it unclear.
 
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
-- **`Avatar` component** currently renders a letter-placeholder for all users (no `avatar_url` in DB yet). When avatar upload work lands, `Avatar` handles it internally — no changes needed at any call site. The `<img>` branch at `components/Avatar.jsx` is already wired.
+
+**Done since last handover (28 May 2026, session 14):**
+
+- **eBay domestic filter** (commit `78c83ae`): Added `&LH_PrefLoc=1` to the eBay search URL so Find Online results are restricted to listings located in the user's market, not just ones that ship there. Works across all 5 markets because `lib/ebay.js` already swaps the domain per locale — one-line fix at the URL construction site.
+
+- **Avatar upload system** (commits `6f89e01`, `98f7467`): End-to-end profile pictures. Migration added `profiles.avatar_url` + a public-read `avatars` Storage bucket with 4 RLS policies scoping writes to the owner's folder (`{user_id}/avatar.webp` via `storage.foldername`). `lib/avatar.js` does client-side processing: `createImageBitmap` → center-crop square → `canvas` 400×400 → WebP 0.85 → upload (upsert) → cache-busted public URL → persist. Upload UI first landed on /settings as a test surface; now also on /you via the dashboard redesign. Read-surface pass then wired `avatar_url` through every render site: `get_feed_events` (had been returning `NULL::text` since the column didn't exist at M3 time), `FeedEventCard` comment authors, /friends search, /messages inbox + thread. Friend pages already worked via `select("*")`. HEIC on iPhone confirmed working (Safari decodes natively).
+
+- **Duplicates storefront** (commits `0de383c`, `3228951`, `7e19085`, `c2d7d80`): New `/duplicates/[handle]` page — a user's spare cards (`duplicate_count > 0`, master-tier) as a trade shop window. `SECURITY DEFINER get_user_duplicates(target_user, viewer)` returns the target's dupes enriched with `hunted_by_viewer` (does the viewer favourite this printing). Privacy: non-friends hard-blocked before any fetch. One flat route serves both own view and friend view. Three device-found fixes followed the initial ship: card images use `cards.image_large` not the always-NULL `printings.image_url`; the `--border-radius-md`/`--border-radius-lg` CSS tokens were ghost variables (defined in briefs but not in `globals.css` — silently resolved to 0); card aspect ratio corrected to `2.5/3.5`.
+
+- **Profile dashboard** (commit `86a5a28` Stage 1; Stage 2 within `e5ddd7e`): `/you` went from a settings menu to a collector dashboard via a new shared `ProfileView` component (`components/profile/ProfileView.jsx`) with `footer` and `headerAction` slots, used by both `/you` (own view: gear icon + friends face-pile + account menu) and `/friend/[handle]` (friend view: ⋯ overflow with Report/Block + speech-bubble message icon, mutual friends, inline set list). Hero = the Hunting strip (favourited cards as card images, price-sorted). Stats row: Sets / Cards / DUPES (lime, → `/duplicates/[handle]`). Friend page rewrite preserved the `is_blocked` safety gate, Report/Block modals, and the paginated set-list pipeline verbatim. `/friends` gained a per-row speech-bubble icon linking to `/messages/[handle]`.
+
+- **Duplicates select-to-trade** (commit `e5ddd7e`): The storefront became interactive — tap cards to multi-select (green outline border), a fixed bottom bar ("N selected → Propose Trade", with `MSShell hideTabBar` so it isn't obscured by the tab bar) builds the same `?with=&requests=` param shape that Discover uses. Verified against `/trade/new`'s `requests` parser — identical encoding (`encodeURIComponent(JSON.stringify([{printingId, cardName, setName, setId, imageUrl, priceUsd}]))`). Hunting/favourited cards get a soft gold glow (distinct from green selection outline). The large Propose Trade + Message buttons were removed from the profile hero in favour of the top-right speech-bubble + ⋯ overflow pattern.
+
+- **Navigable duplicates** (commit `c974c0a`): Set logo badge per tile (from `set_logo_url` now returned by `get_user_duplicates`); sort pills (Price ↓/↑ toggle, Name, Rarity — rarity via `lib/rarity.js`, extracted from the set page so both share one ranking); set filter chips (shown only when dupes span 2+ sets); eyebrow+title header (`MSPageTitle sub={@handle}` for friend view). Sort and filter compose in a single `useMemo`; selection survives both (keyed by `printing_id`, filtering is a view not a deselect). `rarityBucket` + `BUCKET_ORDER` extracted to `lib/rarity.js` as single source of truth — set page updated to import from there, no divergent copies.
 
 **Done since last handover (27 May 2026, session 13):**
 
