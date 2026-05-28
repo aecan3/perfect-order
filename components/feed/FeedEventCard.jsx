@@ -46,7 +46,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
     (async () => {
       const { data } = await supabase
         .from("feed_event_comments")
-        .select(`id, body, created_at, author_id, author:profiles!author_id(handle)`)
+        .select(`id, body, created_at, author_id, author:profiles!author_id(handle, avatar_url)`)
         .eq("event_id", event.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
@@ -68,7 +68,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
       if (!commentsExpanded) return;
       const { data } = await supabase
         .from("feed_event_comments")
-        .select(`id, body, created_at, author_id, author:profiles!author_id(handle)`)
+        .select(`id, body, created_at, author_id, author:profiles!author_id(handle, avatar_url)`)
         .eq("event_id", event.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
@@ -278,7 +278,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
           {comments.map(c => (
             <div key={c.id} style={{ display: "flex", gap: 10, marginBottom: 12 }}>
               <Avatar
-                profile={{ handle: c.author?.handle, avatar_url: null }}
+                profile={{ handle: c.author?.handle, avatar_url: c.author?.avatar_url }}
                 size={28}
               />
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -39,7 +39,7 @@ export default function InboxPage() {
     const peerIds = visible.map((t) => t.peer_id);
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, handle, display_name")
+      .select("id, handle, display_name, avatar_url")
       .in("id", peerIds);
     const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
 

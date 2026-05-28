@@ -88,7 +88,7 @@ export default function FriendsPage() {
       const q = searchHandle.trim().toLowerCase();
       const { data } = await supabase
         .from("profiles")
-        .select("id, handle, display_name")
+        .select("id, handle, display_name, avatar_url")
         .or(`handle.ilike.%${q}%,display_name.ilike.%${q}%`)
         .limit(8);
       const friendAndSelfIds = new Set([

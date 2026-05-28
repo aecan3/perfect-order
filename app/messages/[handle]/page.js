@@ -97,7 +97,7 @@ export default function ThreadPage() {
       // Resolve other user by handle
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, handle, display_name")
+        .select("id, handle, display_name, avatar_url")
         .eq("handle", handle)
         .maybeSingle();
 
