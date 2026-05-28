@@ -31,6 +31,10 @@
   --ms-accent-ink: #07070a;
   --ms-gold:       #FFB830;
   --ms-danger:     #ff5a6a;
+
+  /* radii */
+  --border-radius-md: 8px;   /* matches Tailwind rounded-lg, the dominant radius */
+  --border-radius-lg: 12px;  /* matches Tailwind rounded-xl */
 }
 
 html, body {
