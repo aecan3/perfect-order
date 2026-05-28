@@ -1069,6 +1069,8 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Rarity ranking is centralised in `lib/rarity.js` — import, don't copy.** `rarityBucket(rarity, subtypes, cardNumber, setPrintedTotal)` and `BUCKET_ORDER` (33-entry array, index 0 = Common, index 32 = Promo) live in `lib/rarity.js`. The set page originally had its own copy; it was replaced with an import in session 14. Any future surface that needs rarity sort or display must import from `lib/rarity.js`. `rarityRankOf(rarity)` pattern: `const idx = BUCKET_ORDER.indexOf(rarityBucket(rarity, [], 0, 0)); return idx === -1 ? 999 : idx;` — passing `([], 0, 0)` for the variant args gives the base bucket, which is adequate for sort purposes.
 
+- **Faceted filter narrowing pattern:** when building a multi-select filter where options narrow dynamically, each section's available options must be computed from the data filtered by the OTHER sections only — never its own selection. Computing a section's options including its own filter collapses it to the selected value(s) and breaks multi-select within that section. Implemented on the duplicates filter panel (`setOptions`/`rarityOptions`/`priceOptions` each exclude their own filter from the deps). Reusable if faceted filtering appears elsewhere.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1091,20 +1093,18 @@ When picking this back up, suggested sequence:
 
 **⚠️ Sentry follow-up — 26 May 2026:** Check homepage and friends page p95 load time in Sentry approximately 24h after the 26 May 2026 perf pushes (commits `6934068` + `38423af`). Expecting a visible reduction from baseline (~7.3s homepage, ~3.1s friends). If no improvement, the bottleneck is elsewhere (data volume, mobile network, etc.) and warrants a fresh audit before further perf work.
 
-5. **Advanced duplicates sort + filter** — the big next feature on the duplicates page. Replace the current simple sort pills + set chips with a Sort dropdown (Price ↓, Price ↑, Name A–Z, Name Z–A) and a slide-in Filter panel with collapsible, dynamic sections: Set (only sets present in the current dupes), Rarity (only rarities present), Price buckets ($0–1, $1–5, $5–15, $15–50, $50–150, $150+). Dynamic = as filters apply, remaining options narrow. Sort works in conjunction with filter. Needs varied test data (item 6) to build and test properly.
-
-6. **Varied test data in @admin** — add duplicates across many sets, rarities, and price points in the @admin account so the advanced filter panel can be exercised with realistic data. Set this up at the start of the sort+filter work.
-
-7. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
+5. **Price pipeline — Problem 1 (ME-set cross-check) and Problem 3 (E-Card
    auto-detect).** Both ~1–2 hours. Problem 1: ptcgio secondary verification for
    ME sets, log and skip prices diverging >20%. Problem 3: auto-detect rule for
    sets with zero non-holofoil printings → use `normal` key for holofoil rows.
    See item 12 for decision details.
 
-8. **UI polish items** — suggested-match language (item 10), address-reveal
+6. **UI polish items** — suggested-match language (item 10), address-reveal
    nudge (item 8). Quick wins.
 
-9. Then deferred items — 2FA, help system, browse feed, etc.
+7. Then deferred items — 2FA, help system, browse feed, etc.
+
+**Note — @admin duplicates test data is already seeded (28 May 2026):** 30 duplicate entries across 5 sets (151, Ascended Heroes, Black Bolt, Perfect Order, Prismatic Evolutions), 9 rarities (Common through SIR), and all 6 price buckets ($0–1 through $150+). Persistent in the DB — no re-seeding needed. Use `/duplicates/admin` to test any future duplicates-page work.
 
 **Deferred items (not blocking, prioritised below UI polish and price pipeline):**
 - **Refresh-prices UX:** The user-triggered refresh job runs 15–20s with no progress indication. A silent long-running operation looks like a broken feature to a beta tester. Three options: (A) fire-and-forget background job with a completion notification (~3 hours); (B) persistent progress bar or spinner during the wait (~1 hour); (C) a brief warning message before the request fires ("This takes up to 20 seconds…", ~15 min). Option C is the cheapest and ships the right signal immediately. Option A is the correct long-term fix. Do not leave this as-is once beta testers are using the refresh button regularly.
@@ -1133,6 +1133,8 @@ When picking this back up, suggested sequence:
 - **Duplicates select-to-trade** (commit `e5ddd7e`): The storefront became interactive — tap cards to multi-select (green outline border), a fixed bottom bar ("N selected → Propose Trade", with `MSShell hideTabBar` so it isn't obscured by the tab bar) builds the same `?with=&requests=` param shape that Discover uses. Verified against `/trade/new`'s `requests` parser — identical encoding (`encodeURIComponent(JSON.stringify([{printingId, cardName, setName, setId, imageUrl, priceUsd}]))`). Hunting/favourited cards get a soft gold glow (distinct from green selection outline). The large Propose Trade + Message buttons were removed from the profile hero in favour of the top-right speech-bubble + ⋯ overflow pattern.
 
 - **Navigable duplicates** (commit `c974c0a`): Set logo badge per tile (from `set_logo_url` now returned by `get_user_duplicates`); sort pills (Price ↓/↑ toggle, Name, Rarity — rarity via `lib/rarity.js`, extracted from the set page so both share one ranking); set filter chips (shown only when dupes span 2+ sets); eyebrow+title header (`MSPageTitle sub={@handle}` for friend view). Sort and filter compose in a single `useMemo`; selection survives both (keyed by `printing_id`, filtering is a view not a deselect). `rarityBucket` + `BUCKET_ORDER` extracted to `lib/rarity.js` as single source of truth — set page updated to import from there, no divergent copies.
+
+- **Advanced duplicates sort + filter** (commit `f27cd0c`): Replaced the sort pills + set chips with a Sort dropdown (Price ↓/↑, Name A–Z/Z–A; rarity moved out of sort) and a slide-in faceted Filter panel (right side, `createPortal`, `translateX` slide, mirrors `OverflowMenu` portal/backdrop/ESC structure). Three collapsible multi-select sections — Set, Rarity, Price (buckets `$0–1` through `$150+` via `priceBucketOf`, `[min,max)` rule). Faceted dynamic narrowing: each section's options are computed from the dupes filtered by the OTHER two sections only, so multi-select within a section keeps siblings visible while sections still narrow each other. Zero-result options disappear. Rarity options ordered via `lib/rarity.js`; price in bucket order. Filter (N) active badge, "Showing N of M" subtitle, "No cards match" empty state with clear affordance, "Show N results" / "Clear all" in panel footer. Filter composes with sort; selection-for-trade reads the raw `duplicates` array so it survives filtering. Tested against seeded @admin data (30 dupes, 5 sets, 9 rarities, all 6 price buckets).
 
 **Done since last handover (27 May 2026, session 13):**
 
