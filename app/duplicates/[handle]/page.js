@@ -180,7 +180,7 @@ export default function DuplicatesPage() {
                   borderRadius: "var(--border-radius-md)",
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.4)",
-                  aspectRatio: "2/3",
+                  aspectRatio: "2.5/3.5",
                   outline: !isOwnPage && card.hunted_by_viewer ? "2px solid var(--po-green)" : "none",
                   outlineOffset: 2,
                 }}
