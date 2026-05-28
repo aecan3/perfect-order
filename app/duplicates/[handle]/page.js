@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Star, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { fetchUserDuplicates } from "@/lib/queries/duplicates";
+import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import BackButton from "@/components/BackButton";
+
+const rarityRankOf = (rarity) => {
+  const bucket = rarityBucket(rarity, [], 0, 0);
+  const idx = BUCKET_ORDER.indexOf(bucket);
+  return idx === -1 ? 999 : idx;
+};
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -33,7 +40,32 @@ export default function DuplicatesPage() {
   const [targetProfile, setTargetProfile] = useState(null);
   const [duplicates, setDuplicates] = useState([]);
   const [selected, setSelected] = useState(new Set());
+  const [sortBy, setSortBy] = useState("price-desc");
+  const [setFilter, setSetFilter] = useState(null);
   const currency = "AUD";
+
+  const availableSets = useMemo(() => {
+    const seen = new Map();
+    for (const d of duplicates) {
+      if (!seen.has(d.set_id)) seen.set(d.set_id, d.set_name);
+    }
+    return [...seen.entries()].map(([set_id, set_name]) => ({ set_id, set_name }));
+  }, [duplicates]);
+
+  const sortedDuplicates = useMemo(() => {
+    const filtered = setFilter ? duplicates.filter(d => d.set_id === setFilter) : duplicates;
+    const arr = [...filtered];
+    if (sortBy === "price-desc") {
+      arr.sort((a, b) => (Number(b.price_usd) || 0) - (Number(a.price_usd) || 0));
+    } else if (sortBy === "price-asc") {
+      arr.sort((a, b) => (Number(a.price_usd) || 0) - (Number(b.price_usd) || 0));
+    } else if (sortBy === "name") {
+      arr.sort((a, b) => (a.card_name || "").localeCompare(b.card_name || ""));
+    } else if (sortBy === "rarity") {
+      arr.sort((a, b) => rarityRankOf(b.rarity) - rarityRankOf(a.rarity));
+    }
+    return arr;
+  }, [duplicates, sortBy, setFilter]);
 
   const toggleSelect = (printingId) => {
     setSelected(prev => {
@@ -143,8 +175,8 @@ export default function DuplicatesPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
           <BackButton />
         </div>
-        <MSPageTitle sub={`${duplicates.length} card${duplicates.length !== 1 ? "s" : ""} available to trade`}>
-          {isOwnPage ? "Your duplicates" : `@${handle}'s duplicates`}
+        <MSPageTitle sub={isOwnPage ? null : `@${handle}`}>
+          {isOwnPage ? "Your Duplicates" : "Duplicates"}
         </MSPageTitle>
 
         {/* Hunting-match banner — friend view only */}
@@ -173,6 +205,71 @@ export default function DuplicatesPage() {
           </div>
         )}
 
+        {/* Sort pills */}
+        {duplicates.length > 0 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 mb-3" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            <button
+              onClick={() => setSortBy(sortBy === "price-desc" ? "price-asc" : "price-desc")}
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                sortBy === "price-desc" || sortBy === "price-asc"
+                  ? "bg-[var(--po-green)] text-black font-bold"
+                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              }`}
+            >
+              {sortBy === "price-asc" ? "Price ↑" : "Price ↓"}
+            </button>
+            <button
+              onClick={() => setSortBy("name")}
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                sortBy === "name"
+                  ? "bg-[var(--po-green)] text-black font-bold"
+                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              }`}
+            >
+              Name
+            </button>
+            <button
+              onClick={() => setSortBy("rarity")}
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                sortBy === "rarity"
+                  ? "bg-[var(--po-green)] text-black font-bold"
+                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              }`}
+            >
+              Rarity
+            </button>
+          </div>
+        )}
+
+        {/* Set filter chips — only when dupes span multiple sets */}
+        {availableSets.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 mb-3" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            <button
+              onClick={() => setSetFilter(null)}
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                setFilter === null
+                  ? "bg-[var(--po-green)] text-black font-bold"
+                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              }`}
+            >
+              All
+            </button>
+            {availableSets.map(({ set_id, set_name }) => (
+              <button
+                key={set_id}
+                onClick={() => setSetFilter(set_id)}
+                className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                  setFilter === set_id
+                    ? "bg-[var(--po-green)] text-black font-bold"
+                    : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+                }`}
+              >
+                {set_name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Card grid */}
         {duplicates.length > 0 && (
           <div style={{
@@ -180,7 +277,7 @@ export default function DuplicatesPage() {
             gridTemplateColumns: "1fr 1fr",
             gap: 10,
           }}>
-            {duplicates.map((card) => (
+            {sortedDuplicates.map((card) => (
               <div
                 key={card.printing_id}
                 onClick={() => !isOwnPage && toggleSelect(card.printing_id)}
@@ -219,14 +316,24 @@ export default function DuplicatesPage() {
                   position: "absolute", inset: "auto 0 0",
                   padding: "20px 6px 6px",
                   background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)",
+                  display: "flex", alignItems: "flex-end", gap: 4,
                 }}>
-                  <div style={{ fontSize: 7, color: "rgba(255,255,255,0.55)", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {card.set_name} · #{card.card_number}
-                  </div>
-                  {card.price_usd > 0 && (
-                    <div style={{ fontSize: 9, fontWeight: 900, color: "var(--po-green)" }}>
-                      {fmtMoney(Number(card.price_usd), currency)}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 7, color: "rgba(255,255,255,0.55)", marginBottom: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {card.set_name} · #{card.card_number}
                     </div>
+                    {card.price_usd > 0 && (
+                      <div style={{ fontSize: 9, fontWeight: 900, color: "var(--po-green)" }}>
+                        {fmtMoney(Number(card.price_usd), currency)}
+                      </div>
+                    )}
+                  </div>
+                  {card.set_logo_url && (
+                    <img
+                      src={card.set_logo_url}
+                      alt={card.set_name}
+                      style={{ height: 22, width: "auto", objectFit: "contain", flexShrink: 0, opacity: 0.8 }}
+                    />
                   )}
                 </div>
 
