@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, ArrowLeftRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -33,7 +32,16 @@ export default function DuplicatesPage() {
   const [viewerHandle, setViewerHandle] = useState(null);
   const [targetProfile, setTargetProfile] = useState(null);
   const [duplicates, setDuplicates] = useState([]);
+  const [selected, setSelected] = useState(new Set());
   const currency = "AUD";
+
+  const toggleSelect = (printingId) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(printingId) ? next.delete(printingId) : next.add(printingId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +136,7 @@ export default function DuplicatesPage() {
   const huntCount = duplicates.filter((d) => d.hunted_by_viewer).length;
 
   return (
-    <MSShell>
+    <MSShell hideTabBar={!isOwnPage && selected.size > 0}>
       <div style={{ padding: "0 16px 32px" }}>
 
         {/* Header */}
@@ -175,14 +183,17 @@ export default function DuplicatesPage() {
             {duplicates.map((card) => (
               <div
                 key={card.printing_id}
+                onClick={() => !isOwnPage && toggleSelect(card.printing_id)}
                 style={{
                   position: "relative",
                   borderRadius: "var(--border-radius-md)",
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.4)",
                   aspectRatio: "2.5/3.5",
-                  outline: !isOwnPage && card.hunted_by_viewer ? "2px solid var(--po-green)" : "none",
+                  cursor: isOwnPage ? "default" : "pointer",
+                  outline: !isOwnPage && selected.has(card.printing_id) ? "2px solid var(--po-green)" : "none",
                   outlineOffset: 2,
+                  boxShadow: !isOwnPage && card.hunted_by_viewer ? "0 0 16px 2px rgba(255,184,48,0.55)" : "none",
                 }}
               >
                 {/* Card image */}
@@ -234,30 +245,52 @@ export default function DuplicatesPage() {
                   ×{card.duplicate_count}
                 </div>
 
-                {/* Hunting star badge — friend view only */}
-                {!isOwnPage && card.hunted_by_viewer && (
-                  <div style={{
-                    position: "absolute", top: 5, right: 5,
-                    width: 20, height: 20,
-                    borderRadius: "50%",
-                    background: "var(--po-green)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <Star size={11} color="#050507" fill="#050507" strokeWidth={0} />
-                  </div>
-                )}
               </div>
             ))}
           </div>
         )}
 
-        {/* Propose Trade button — friend view only */}
-        {!isOwnPage && duplicates.length > 0 && (
-          <div style={{ marginTop: 24 }}>
-            <Link
-              href={`/trade/new?with=${handle}`}
+      </div>
+
+      {/* Fixed bottom selection bar — friend view only */}
+      {!isOwnPage && selected.size > 0 && (
+        <div style={{
+          position: "fixed",
+          bottom: 0, left: 0, right: 0,
+          borderTop: "0.5px solid rgba(244,244,246,0.1)",
+          background: "rgba(5,5,7,0.95)",
+          backdropFilter: "blur(12px)",
+          padding: "12px 16px",
+          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        }}>
+          <div style={{ maxWidth: 384, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: "var(--po-text-dim)" }}>
+                {selected.size} card{selected.size !== 1 ? "s" : ""} selected
+              </span>
+              <button
+                onClick={() => setSelected(new Set())}
+                style={{ fontSize: 12, fontWeight: 700, color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer" }}
+              >
+                Clear
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                const selectedCards = duplicates.filter(c => selected.has(c.printing_id));
+                const requests = encodeURIComponent(JSON.stringify(
+                  selectedCards.map(c => ({
+                    printingId: c.printing_id,
+                    cardName: c.card_name,
+                    setName: c.set_name,
+                    setId: c.set_id,
+                    imageUrl: c.image_url,
+                    priceUsd: c.price_usd,
+                  }))
+                ));
+                router.push(`/trade/new?with=${handle}&requests=${requests}`);
+              }}
               style={{
-                display: "block",
                 width: "100%",
                 padding: "15px",
                 background: "var(--po-green)",
@@ -265,16 +298,21 @@ export default function DuplicatesPage() {
                 color: "#050507",
                 fontWeight: 700,
                 fontSize: 15,
-                textAlign: "center",
-                textDecoration: "none",
                 letterSpacing: "-0.01em",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
               }}
             >
-              Propose Trade
-            </Link>
+              <ArrowLeftRight size={15} />
+              Propose Trade · {selected.size} card{selected.size !== 1 ? "s" : ""}
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </MSShell>
   );
 }

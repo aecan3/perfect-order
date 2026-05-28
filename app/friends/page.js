@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { UserPlus, Check, X, Eye } from "lucide-react";
+import { UserPlus, Check, X, Eye, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import BackButton from "@/components/BackButton";
 import { getBlockIds } from "@/lib/queries/blocks";
@@ -367,6 +367,13 @@ export default function FriendsPage() {
                       >
                         <Eye size={12} />
                         View
+                      </Link>
+                      <Link
+                        href={`/messages/${p.handle}`}
+                        className="w-8 h-8 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg flex items-center justify-center hover:border-[var(--po-green)] hover:text-[var(--po-green)]"
+                        aria-label={`Message ${p.handle}`}
+                      >
+                        <MessageCircle size={14} />
                       </Link>
                       <button
                         onClick={() => { if (confirm(`Unfriend ${p.handle}?`)) remove(f.id); }}

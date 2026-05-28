@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, Settings, LogOut, ChevronRight } from "lucide-react";
+import { Camera } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 
 export function ProfileView({
@@ -10,11 +10,9 @@ export function ProfileView({
   profile,
   stats,
   favourites,
-  friends,
-  onProposeTrade,
-  onMessage,
+  headerAction,     // React node — top-right of identity header (gear, overflow, etc.)
+  footer,           // React node — rendered below Hunting strip
   onChangePhoto,
-  onSignOut,
 }) {
   const displayName = profile?.display_name || handle;
 
@@ -62,15 +60,11 @@ export function ProfileView({
           </div>
         </div>
 
-        {/* Gear → /settings (own view only) */}
-        {isOwnProfile && (
-          <Link
-            href="/settings"
-            aria-label="Settings"
-            style={{ color: "var(--po-text-dim)", paddingTop: 6, flexShrink: 0 }}
-          >
-            <Settings size={20} />
-          </Link>
+        {/* Top-right slot: gear (own view), overflow (friend view), etc. */}
+        {headerAction && (
+          <div style={{ paddingTop: 6, flexShrink: 0 }}>
+            {headerAction}
+          </div>
         )}
       </div>
 
@@ -130,42 +124,6 @@ export function ProfileView({
           </div>
         </Link>
       </div>
-
-      {/* ── Friend-view action buttons (Stage 2 exercises these) ─── */}
-      {!isOwnProfile && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
-          <button
-            onClick={onProposeTrade}
-            style={{
-              flex: 1, padding: "12px",
-              background: "var(--po-green)",
-              border: "none",
-              borderRadius: "var(--border-radius-md)",
-              color: "#050507",
-              fontWeight: 700, fontSize: 14,
-              cursor: "pointer",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Propose Trade
-          </button>
-          <button
-            onClick={onMessage}
-            style={{
-              flex: 1, padding: "12px",
-              background: "transparent",
-              border: "0.5px solid rgba(244,244,246,0.2)",
-              borderRadius: "var(--border-radius-md)",
-              color: "var(--po-text)",
-              fontWeight: 600, fontSize: 14,
-              cursor: "pointer",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Message
-          </button>
-        </div>
-      )}
 
       {/* ── Hunting (hero) ────────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
@@ -236,110 +194,9 @@ export function ProfileView({
         )}
       </div>
 
-      {/* ── Friends ───────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          marginBottom: 12,
-        }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700,
-            color: "var(--po-text-dim)",
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-          }}>
-            Friends
-          </span>
-          <Link
-            href="/friends"
-            style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
-          >
-            {friends.count} ›
-          </Link>
-        </div>
-
-        {friends.count === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
-            No friends yet.{" "}
-            {isOwnProfile && (
-              <Link href="/friends" style={{ color: "var(--po-green)", textDecoration: "none" }}>
-                Find some ›
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {friends.sample.map((f, i) => (
-              <div
-                key={f.handle ?? i}
-                style={{
-                  marginLeft: i === 0 ? 0 : -10,
-                  position: "relative",
-                  zIndex: friends.sample.length - i,
-                  borderRadius: "50%",
-                  border: "2px solid var(--po-bg)",
-                  lineHeight: 0,
-                  flexShrink: 0,
-                }}
-              >
-                <Avatar profile={f} size={38} />
-              </div>
-            ))}
-            {friends.count > 5 && (
-              <div style={{
-                marginLeft: -10,
-                width: 38, height: 38,
-                borderRadius: "50%",
-                background: "rgba(244,244,246,0.1)",
-                border: "2px solid var(--po-bg)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700,
-                color: "var(--po-text-dim)",
-                position: "relative",
-                zIndex: 0,
-                flexShrink: 0,
-              }}>
-                +{friends.count - 5}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Account menu (own view only) ─────────────────────────── */}
-      {isOwnProfile && (
-        <div style={{ borderTop: "0.5px solid rgba(244,244,246,0.08)", paddingTop: 20 }}>
-          <Link
-            href="/settings"
-            style={{
-              display: "flex", alignItems: "center", gap: 14,
-              padding: "14px 0",
-              textDecoration: "none",
-              borderBottom: "0.5px solid rgba(244,244,246,0.06)",
-            }}
-          >
-            <Settings size={18} style={{ color: "var(--po-text-dim)", flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--po-text)" }}>
-              Settings
-            </span>
-            <ChevronRight size={16} style={{ color: "var(--po-text-faint)", flexShrink: 0 }} />
-          </Link>
-          <button
-            onClick={onSignOut}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 14,
-              padding: "14px 0",
-              background: "none", border: "none",
-              cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <LogOut size={18} style={{ color: "var(--ms-danger)", flexShrink: 0 }} />
-            <span style={{ fontSize: 15, fontWeight: 500, color: "var(--ms-danger)" }}>
-              Sign out
-            </span>
-          </button>
-        </div>
-      )}
+      {/* ── Footer slot (friends + account menu for /you; mutual friends +
+           set list for /friend) ──────────────────────────────────── */}
+      {footer}
 
     </div>
   );
