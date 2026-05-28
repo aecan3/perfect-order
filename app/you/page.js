@@ -1,59 +1,128 @@
 // HIDDEN FOR LAUNCH: Grand Master stat cell deliberately disabled in this file.
-// Stats sub-line restructured from 3 stats to 2 while GM is hidden.
-// To re-enable: restore · {stats.grandMasters} ... between SETS and CARDS.
-// See handover for re-enable steps.
+// To re-enable: add stats.grandMasters to the stats row in ProfileView.
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { User, Star, Users, Settings, LogOut, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
-import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { ProfileView } from "@/components/profile/ProfileView";
+import { uploadAvatar } from "@/lib/avatar";
+import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 
 export default function YouPage() {
   const router = useRouter();
   const supabase = createClient();
+  const fileInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [stats, setStats] = useState({ sets: 0, grandMasters: 0, cards: 0, favs: 0 });
+  const [stats, setStats] = useState({ sets: 0, cards: 0, duplicates: 0 });
+  const [favourites, setFavourites] = useState([]);
+  const [friends, setFriends] = useState({ count: 0, sample: [] });
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/welcome"); return; }
 
+      const uid = user.id;
+
       const [
         { data: profileData },
         { count: setCount },
-        { count: gmCount },
         { count: cardsCount },
-        { count: favsCount },
+        duplicatesData,
+        { data: favData },
+        { data: friendshipRows },
       ] = await Promise.all([
-        supabase.from("profiles").select("handle, display_name").eq("id", user.id).maybeSingle(),
-        supabase.from("user_sets").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-        supabase.from("grand_master_completions").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+        supabase
+          .from("profiles")
+          .select("handle, display_name, avatar_url")
+          .eq("id", uid)
+          .maybeSingle(),
+        supabase
+          .from("user_sets")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", uid),
         supabase
           .from("collection_entries")
           .select("printing:printings!inner(collection_tier)", { count: "exact", head: true })
-          .eq("user_id", user.id)
+          .eq("user_id", uid)
           .eq("checked", true)
           .eq("printing.collection_tier", "master"),
-        supabase.from("favourites").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+        fetchUserDuplicates(supabase, uid, uid),
+        supabase
+          .from("favourites")
+          .select("printing_id, printing:printings!inner(price_usd, card:cards!printings_card_id_fkey(name, image_large))")
+          .eq("user_id", uid)
+          .limit(50),
+        supabase
+          .from("friendships")
+          .select("user_a, user_b")
+          .or(`user_a.eq.${uid},user_b.eq.${uid}`)
+          .eq("status", "accepted"),
       ]);
 
+      if (cancelled) return;
+
+      // Sort favourites by price DESC (nulls last), take top 6
+      const sortedFavs = [...(favData || [])]
+        .sort((a, b) => (Number(b.printing?.price_usd) || 0) - (Number(a.printing?.price_usd) || 0))
+        .slice(0, 6);
+
+      // Resolve friend profiles for the face-pile (up to 5)
+      const friendIds = (friendshipRows || []).map(f => f.user_a === uid ? f.user_b : f.user_a);
+      let sampleProfiles = [];
+      if (friendIds.length > 0) {
+        const { data: profData } = await supabase
+          .from("profiles")
+          .select("handle, avatar_url")
+          .in("id", friendIds.slice(0, 5));
+        if (!cancelled) sampleProfiles = profData || [];
+      }
+
+      if (cancelled) return;
+
+      setUserId(uid);
       setProfile(profileData);
       setStats({
         sets: setCount || 0,
-        grandMasters: gmCount || 0,
         cards: cardsCount || 0,
-        favs: favsCount || 0,
+        duplicates: duplicatesData.length,
       });
+      setFavourites(sortedFavs);
+      setFriends({ count: friendIds.length, sample: sampleProfiles });
       setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [router, supabase]);
+
+  const handleChangePhoto = () => {
+    if (photoUploading) return;
+    setPhotoError(null);
+    fileInputRef.current.value = "";
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setPhotoError(null);
+    try {
+      const newUrl = await uploadAvatar(file, userId);
+      setProfile(prev => ({ ...prev, avatar_url: newUrl }));
+    } catch (err) {
+      setPhotoError(err.message || "Upload failed.");
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -62,199 +131,49 @@ export default function YouPage() {
 
   if (loading) {
     return (
-      <MSShell>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
+      <MSShell activeTab="you">
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          minHeight: 200, color: "var(--ms-dim)",
+        }}>
           Loading…
         </div>
       </MSShell>
     );
   }
 
-  const handle = profile?.handle || "";
-  const displayName = profile?.display_name || handle;
-  const initials = handle.slice(0, 2).toUpperCase() || "??";
-
-  const menuRows = [
-    { Icon: User, label: "Profile", href: "/settings", hint: null },
-    { Icon: Star, label: "Favourites", href: "/favourites", hint: `${stats.favs} / 6`, iconColor: "var(--ms-gold)" },
-    { Icon: Users, label: "Friends", href: "/friends", hint: null },
-    { Icon: Settings, label: "Settings", href: "/settings", hint: null },
-  ];
-
   return (
-    <MSShell>
-      <div style={{ padding: "0 16px 32px" }}>
-        <MSPageTitle sub={`@${handle}`}>You</MSPageTitle>
-
-        {/* Profile card */}
+    <MSShell activeTab="you">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+      />
+      {photoError && (
         <div style={{
-          marginTop: 12,
-          padding: 16,
-          borderRadius: 4,
-          background: "var(--ms-bg-elev)",
-          border: "1px solid var(--ms-rule)",
-          position: "relative",
-          overflow: "hidden",
+          margin: "8px 16px 0",
+          padding: "8px 12px",
+          background: "rgba(255,90,106,0.1)",
+          border: "0.5px solid rgba(255,90,106,0.3)",
+          borderRadius: "var(--border-radius-md)",
+          fontSize: 13,
+          color: "var(--ms-danger)",
         }}>
-          {/* Accent top glow */}
-          <div aria-hidden="true" style={{
-            position: "absolute",
-            top: 0, left: 0, right: 0,
-            height: 1,
-            background: "var(--ms-accent)",
-            boxShadow: "0 0 14px var(--ms-accent)",
-          }} />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {/* Avatar */}
-            <div style={{
-              width: 52,
-              height: 52,
-              borderRadius: 4,
-              background: "var(--ms-accent)",
-              color: "var(--ms-accent-ink)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: '"IBM Plex Sans", sans-serif',
-              fontWeight: 700,
-              fontSize: 22,
-              letterSpacing: "-0.02em",
-              flexShrink: 0,
-            }}>
-              {initials}
-            </div>
-
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, justifyContent: "space-between" }}>
-                <span style={{
-                  fontFamily: '"IBM Plex Sans", sans-serif',
-                  fontWeight: 700,
-                  fontSize: 18,
-                  color: "var(--ms-ink)",
-                  letterSpacing: "-0.01em",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}>
-                  @{handle}
-                </span>
-                <Link href="/settings" style={{
-                  fontFamily: '"IBM Plex Mono", monospace',
-                  fontSize: 10,
-                  color: "var(--ms-accent)",
-                  letterSpacing: "0.18em",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  textDecoration: "none",
-                  flexShrink: 0,
-                }}>
-                  EDIT
-                </Link>
-              </div>
-              <div style={{
-                marginTop: 4,
-                fontFamily: '"IBM Plex Mono", monospace',
-                fontSize: 10,
-                color: "var(--ms-dim)",
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}>
-                {stats.sets} {stats.sets === 1 ? "SET" : "SETS"} · {stats.cards} {stats.cards === 1 ? "CARD" : "CARDS"}
-              </div>
-            </div>
-          </div>
+          {photoError}
         </div>
-
-        {/* Section label */}
-        <div style={{
-          fontFamily: '"IBM Plex Mono", monospace',
-          fontSize: 11,
-          color: "var(--ms-faint)",
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          margin: "24px 0 8px 0",
-        }}>
-          Account
-        </div>
-
-        {/* Menu rows */}
-        <div style={{ borderRadius: 4, overflow: "hidden", border: "1px solid var(--ms-rule)" }}>
-          {menuRows.map(({ Icon, label, href, hint, iconColor }, i) => (
-            <Link
-              key={label}
-              href={href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "16px 16px",
-                background: "var(--ms-bg-elev)",
-                textDecoration: "none",
-                borderBottom: i < menuRows.length - 1 ? "1px solid var(--ms-rule-soft)" : "none",
-              }}
-            >
-              <span style={{ display: "inline-flex", color: iconColor || "var(--ms-dim)", flexShrink: 0 }}>
-                <Icon size={22} strokeWidth={2} />
-              </span>
-              <span style={{
-                flex: 1,
-                fontFamily: '"IBM Plex Sans", sans-serif',
-                fontWeight: 500,
-                fontSize: 15,
-                color: "var(--ms-ink)",
-                letterSpacing: "-0.005em",
-              }}>
-                {label}
-              </span>
-              {hint && (
-                <span style={{
-                  fontFamily: '"IBM Plex Mono", monospace',
-                  fontSize: 12,
-                  color: "var(--ms-faint)",
-                  fontVariantNumeric: "tabular-nums",
-                }}>
-                  {hint}
-                </span>
-              )}
-              <span style={{ display: "inline-flex", color: "var(--ms-faint)", flexShrink: 0 }}>
-                <ChevronRight size={18} strokeWidth={2} />
-              </span>
-            </Link>
-          ))}
-
-          {/* Sign out — button, not link, no chevron */}
-          <button
-            onClick={handleSignOut}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              padding: "16px 16px",
-              background: "var(--ms-bg-elev)",
-              border: "none",
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ display: "inline-flex", color: "var(--ms-danger)", flexShrink: 0 }}>
-              <LogOut size={22} strokeWidth={2} />
-            </span>
-            <span style={{
-              flex: 1,
-              fontFamily: '"IBM Plex Sans", sans-serif',
-              fontWeight: 500,
-              fontSize: 15,
-              color: "var(--ms-danger)",
-              letterSpacing: "-0.005em",
-            }}>
-              Sign out
-            </span>
-          </button>
-        </div>
-      </div>
+      )}
+      <ProfileView
+        isOwnProfile={true}
+        handle={profile?.handle || ""}
+        profile={profile}
+        stats={stats}
+        favourites={favourites}
+        friends={friends}
+        onChangePhoto={handleChangePhoto}
+        onSignOut={handleSignOut}
+      />
     </MSShell>
   );
 }
