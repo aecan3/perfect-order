@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { Star, ArrowLeftRight } from "lucide-react";
+import { Star, ArrowLeftRight, X, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
@@ -15,6 +16,33 @@ const rarityRankOf = (rarity) => {
   const bucket = rarityBucket(rarity, [], 0, 0);
   const idx = BUCKET_ORDER.indexOf(bucket);
   return idx === -1 ? 999 : idx;
+};
+
+const SORT_OPTIONS = [
+  { value: "price-desc", label: "Price ↓" },
+  { value: "price-asc",  label: "Price ↑" },
+  { value: "name-asc",   label: "Name A–Z" },
+  { value: "name-desc",  label: "Name Z–A" },
+];
+
+function priceBucketOf(priceUsd) {
+  const p = Number(priceUsd) || 0;
+  if (p < 1)   return "0-1";
+  if (p < 5)   return "1-5";
+  if (p < 15)  return "5-15";
+  if (p < 50)  return "15-50";
+  if (p < 150) return "50-150";
+  return "150+";
+}
+
+const PRICE_BUCKET_ORDER  = ["0-1", "1-5", "5-15", "15-50", "50-150", "150+"];
+const PRICE_BUCKET_LABELS = {
+  "0-1":    "$0–1",
+  "1-5":    "$1–5",
+  "5-15":   "$5–15",
+  "15-50":  "$15–50",
+  "50-150": "$50–150",
+  "150+":   "$150+",
 };
 
 const RATES = {
@@ -41,31 +69,78 @@ export default function DuplicatesPage() {
   const [duplicates, setDuplicates] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [sortBy, setSortBy] = useState("price-desc");
-  const [setFilter, setSetFilter] = useState(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen]     = useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [setFilter, setSetFilter]       = useState(new Set());
+  const [rarityFilter, setRarityFilter] = useState(new Set());
+  const [priceFilter, setPriceFilter]   = useState(new Set());
+  const [sectionsOpen, setSectionsOpen] = useState({ set: true, rarity: true, price: true });
+  const [mounted, setMounted]           = useState(false);
   const currency = "AUD";
 
-  const availableSets = useMemo(() => {
+  // ── Faceted options ─────────────────────────────────────────────────────────
+  // Each section ignores ITS OWN filter when computing which options to show,
+  // so multi-select within a section doesn't hide its siblings.
+
+  const setOptions = useMemo(() => {
+    const relevant = duplicates.filter(d => {
+      const rarityOk = rarityFilter.size === 0 || rarityFilter.has(d.rarity);
+      const priceOk  = priceFilter.size  === 0 || priceFilter.has(priceBucketOf(d.price_usd));
+      return rarityOk && priceOk;
+    });
     const seen = new Map();
-    for (const d of duplicates) {
+    for (const d of relevant) {
       if (!seen.has(d.set_id)) seen.set(d.set_id, d.set_name);
     }
     return [...seen.entries()].map(([set_id, set_name]) => ({ set_id, set_name }));
-  }, [duplicates]);
+  }, [duplicates, rarityFilter, priceFilter]);
+
+  const rarityOptions = useMemo(() => {
+    const relevant = duplicates.filter(d => {
+      const setOk   = setFilter.size   === 0 || setFilter.has(d.set_id);
+      const priceOk = priceFilter.size === 0 || priceFilter.has(priceBucketOf(d.price_usd));
+      return setOk && priceOk;
+    });
+    const seen = new Set();
+    for (const d of relevant) seen.add(d.rarity);
+    return [...seen].sort((a, b) => rarityRankOf(a) - rarityRankOf(b));
+  }, [duplicates, setFilter, priceFilter]);
+
+  const priceOptions = useMemo(() => {
+    const relevant = duplicates.filter(d => {
+      const setOk    = setFilter.size    === 0 || setFilter.has(d.set_id);
+      const rarityOk = rarityFilter.size === 0 || rarityFilter.has(d.rarity);
+      return setOk && rarityOk;
+    });
+    const seen = new Set();
+    for (const d of relevant) seen.add(priceBucketOf(d.price_usd));
+    return PRICE_BUCKET_ORDER.filter(b => seen.has(b));
+  }, [duplicates, setFilter, rarityFilter]);
+
+  // ── Displayed duplicates = all three filters AND'd ───────────────────────
+  const filteredDuplicates = useMemo(() => {
+    return duplicates.filter(d => {
+      const setOk    = setFilter.size    === 0 || setFilter.has(d.set_id);
+      const rarityOk = rarityFilter.size === 0 || rarityFilter.has(d.rarity);
+      const priceOk  = priceFilter.size  === 0 || priceFilter.has(priceBucketOf(d.price_usd));
+      return setOk && rarityOk && priceOk;
+    });
+  }, [duplicates, setFilter, rarityFilter, priceFilter]);
 
   const sortedDuplicates = useMemo(() => {
-    const filtered = setFilter ? duplicates.filter(d => d.set_id === setFilter) : duplicates;
-    const arr = [...filtered];
+    const arr = [...filteredDuplicates];
     if (sortBy === "price-desc") {
       arr.sort((a, b) => (Number(b.price_usd) || 0) - (Number(a.price_usd) || 0));
     } else if (sortBy === "price-asc") {
       arr.sort((a, b) => (Number(a.price_usd) || 0) - (Number(b.price_usd) || 0));
-    } else if (sortBy === "name") {
+    } else if (sortBy === "name-asc") {
       arr.sort((a, b) => (a.card_name || "").localeCompare(b.card_name || ""));
-    } else if (sortBy === "rarity") {
-      arr.sort((a, b) => rarityRankOf(b.rarity) - rarityRankOf(a.rarity));
+    } else if (sortBy === "name-desc") {
+      arr.sort((a, b) => (b.card_name || "").localeCompare(a.card_name || ""));
     }
     return arr;
-  }, [duplicates, sortBy, setFilter]);
+  }, [filteredDuplicates, sortBy]);
 
   const toggleSelect = (printingId) => {
     setSelected(prev => {
@@ -74,6 +149,30 @@ export default function DuplicatesPage() {
       return next;
     });
   };
+
+  useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const fn = (e) => { if (e.key === "Escape") closeFilter(); };
+    document.addEventListener("keydown", fn);
+    return () => document.removeEventListener("keydown", fn);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterOpen]);
+
+  const openFilter = () => {
+    setFilterOpen(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setFilterVisible(true)));
+  };
+  const closeFilter = () => {
+    setFilterVisible(false);
+    setTimeout(() => setFilterOpen(false), 260);
+  };
+  const toggleSetFilter    = (v) => setSetFilter(s    => { const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const toggleRarityFilter = (v) => setRarityFilter(s => { const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const togglePriceFilter  = (v) => setPriceFilter(s  => { const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n; });
+  const clearFilters = () => { setSetFilter(new Set()); setRarityFilter(new Set()); setPriceFilter(new Set()); };
+  const activeFilterCount = setFilter.size + rarityFilter.size + priceFilter.size;
 
   useEffect(() => {
     let cancelled = false;
@@ -205,73 +304,103 @@ export default function DuplicatesPage() {
           </div>
         )}
 
-        {/* Sort pills */}
+        {/* Sort + Filter control row */}
         {duplicates.length > 0 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 mb-3" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+
+            {/* Sort dropdown */}
+            <div style={{ position: "relative" }}>
+              {sortOpen && (
+                <div onClick={() => setSortOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+              )}
+              <button
+                onClick={() => setSortOpen(o => !o)}
+                style={{ position: "relative", zIndex: 50 }}
+                className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              >
+                Sort: {SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? "Price ↓"}
+              </button>
+              {sortOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50,
+                  background: "var(--po-bg-soft)",
+                  border: "1px solid var(--po-border)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  minWidth: 148,
+                }}>
+                  {SORT_OPTIONS.map((opt, i) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setSortBy(opt.value); setSortOpen(false); }}
+                      style={{
+                        width: "100%", display: "block",
+                        padding: "11px 16px",
+                        background: sortBy === opt.value ? "rgba(200,255,74,0.1)" : "none",
+                        color: sortBy === opt.value ? "var(--po-green)" : "var(--po-text)",
+                        fontWeight: sortBy === opt.value ? 700 : 400,
+                        fontSize: 13,
+                        border: "none",
+                        borderBottom: i < SORT_OPTIONS.length - 1 ? "1px solid var(--po-border)" : "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      {sortBy === opt.value && "✓ "}{opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Filter button */}
             <button
-              onClick={() => setSortBy(sortBy === "price-desc" ? "price-asc" : "price-desc")}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                sortBy === "price-desc" || sortBy === "price-asc"
-                  ? "bg-[var(--po-green)] text-black font-bold"
-                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+              onClick={openFilter}
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap border ${
+                activeFilterCount > 0
+                  ? "bg-[var(--po-green)] text-black font-bold border-[var(--po-green)]"
+                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border-[var(--po-border)]"
               }`}
             >
-              {sortBy === "price-asc" ? "Price ↑" : "Price ↓"}
+              {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}
             </button>
-            <button
-              onClick={() => setSortBy("name")}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                sortBy === "name"
-                  ? "bg-[var(--po-green)] text-black font-bold"
-                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
-              }`}
-            >
-              Name
-            </button>
-            <button
-              onClick={() => setSortBy("rarity")}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                sortBy === "rarity"
-                  ? "bg-[var(--po-green)] text-black font-bold"
-                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
-              }`}
-            >
-              Rarity
-            </button>
+
           </div>
         )}
 
-        {/* Set filter chips — only when dupes span multiple sets */}
-        {availableSets.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 mb-3" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        {/* N-of-M context when filters are active */}
+        {duplicates.length > 0 && activeFilterCount > 0 && (
+          <p style={{ fontSize: 11, color: "var(--po-text-dim)", marginTop: -6, marginBottom: 10 }}>
+            Showing {filteredDuplicates.length} of {duplicates.length}
+          </p>
+        )}
+
+        {/* Filtered-empty state */}
+        {duplicates.length > 0 && filteredDuplicates.length === 0 && (
+          <div style={{ padding: "3rem 0", textAlign: "center" }}>
+            <p style={{ color: "var(--po-text-dim)", fontSize: 14, marginBottom: 14 }}>
+              No cards match these filters.
+            </p>
             <button
-              onClick={() => setSetFilter(null)}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                setFilter === null
-                  ? "bg-[var(--po-green)] text-black font-bold"
-                  : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
-              }`}
+              onClick={clearFilters}
+              style={{
+                background: "none",
+                border: "1px solid var(--po-border)",
+                borderRadius: 999,
+                padding: "7px 16px",
+                color: "var(--po-text-dim)",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
             >
-              All
+              Clear filters
             </button>
-            {availableSets.map(({ set_id, set_name }) => (
-              <button
-                key={set_id}
-                onClick={() => setSetFilter(set_id)}
-                className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                  setFilter === set_id
-                    ? "bg-[var(--po-green)] text-black font-bold"
-                    : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
-                }`}
-              >
-                {set_name}
-              </button>
-            ))}
           </div>
         )}
 
         {/* Card grid */}
-        {duplicates.length > 0 && (
+        {duplicates.length > 0 && filteredDuplicates.length > 0 && (
           <div style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -358,6 +487,195 @@ export default function DuplicatesPage() {
         )}
 
       </div>
+
+      {/* Filter panel — slide in from right */}
+      {filterOpen && mounted && createPortal(
+        <div>
+          {/* Backdrop */}
+          <div
+            onClick={closeFilter}
+            style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.6)" }}
+          />
+          {/* Panel */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Filter duplicates"
+            style={{
+              position: "fixed", right: 0, top: 0, bottom: 0,
+              width: "85vw", maxWidth: 360,
+              background: "var(--po-bg-soft)",
+              zIndex: 101,
+              display: "flex", flexDirection: "column",
+              transform: filterVisible ? "translateX(0)" : "translateX(100%)",
+              transition: "transform 0.25s ease",
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "16px 20px", borderBottom: "1px solid var(--po-border)", flexShrink: 0,
+            }}>
+              <span style={{ fontWeight: 700, fontSize: 16, color: "var(--po-text)" }}>Filters</span>
+              <button
+                onClick={closeFilter}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--po-text-dim)", display: "flex", alignItems: "center", padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Sections */}
+            <div style={{ flex: 1, overflowY: "auto" }}>
+
+              {/* ── Set ── */}
+              <div style={{ borderBottom: "1px solid var(--po-border)" }}>
+                <button
+                  onClick={() => setSectionsOpen(s => ({ ...s, set: !s.set }))}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "var(--po-text)" }}>Set</span>
+                  <ChevronDown size={16} style={{ color: "var(--po-text-dim)", transform: sectionsOpen.set ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+                </button>
+                {sectionsOpen.set && setOptions.map(({ set_id, set_name }) => (
+                  <button
+                    key={set_id}
+                    onClick={() => toggleSetFilter(set_id)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 12,
+                      padding: "11px 20px", background: "none", border: "none",
+                      borderTop: "0.5px solid var(--po-border)", cursor: "pointer",
+                    }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: setFilter.has(set_id) ? "none" : "1.5px solid var(--po-border)",
+                      background: setFilter.has(set_id) ? "var(--po-green)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {setFilter.has(set_id) && <span style={{ color: "#050507", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize: 14, color: "var(--po-text)", textAlign: "left" }}>{set_name}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Rarity ── */}
+              <div style={{ borderBottom: "1px solid var(--po-border)" }}>
+                <button
+                  onClick={() => setSectionsOpen(s => ({ ...s, rarity: !s.rarity }))}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "var(--po-text)" }}>Rarity</span>
+                  <ChevronDown size={16} style={{ color: "var(--po-text-dim)", transform: sectionsOpen.rarity ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+                </button>
+                {sectionsOpen.rarity && rarityOptions.map((rarity) => (
+                  <button
+                    key={rarity}
+                    onClick={() => toggleRarityFilter(rarity)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 12,
+                      padding: "11px 20px", background: "none", border: "none",
+                      borderTop: "0.5px solid var(--po-border)", cursor: "pointer",
+                    }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: rarityFilter.has(rarity) ? "none" : "1.5px solid var(--po-border)",
+                      background: rarityFilter.has(rarity) ? "var(--po-green)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {rarityFilter.has(rarity) && <span style={{ color: "#050507", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize: 14, color: "var(--po-text)", textAlign: "left" }}>{rarity}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* ── Price ── */}
+              <div>
+                <button
+                  onClick={() => setSectionsOpen(s => ({ ...s, price: !s.price }))}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "var(--po-text)" }}>Price</span>
+                  <ChevronDown size={16} style={{ color: "var(--po-text-dim)", transform: sectionsOpen.price ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+                </button>
+                {sectionsOpen.price && priceOptions.map((bucket) => (
+                  <button
+                    key={bucket}
+                    onClick={() => togglePriceFilter(bucket)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 12,
+                      padding: "11px 20px", background: "none", border: "none",
+                      borderTop: "0.5px solid var(--po-border)", cursor: "pointer",
+                    }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: priceFilter.has(bucket) ? "none" : "1.5px solid var(--po-border)",
+                      background: priceFilter.has(bucket) ? "var(--po-green)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {priceFilter.has(bucket) && <span style={{ color: "#050507", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize: 14, color: "var(--po-text)", textAlign: "left" }}>{PRICE_BUCKET_LABELS[bucket]}</span>
+                  </button>
+                ))}
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              display: "flex", gap: 10, padding: "16px 20px", flexShrink: 0,
+              borderTop: "1px solid var(--po-border)",
+              paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+            }}>
+              <button
+                onClick={clearFilters}
+                style={{
+                  padding: "13px 16px",
+                  background: "none",
+                  border: "1px solid var(--po-border)",
+                  borderRadius: "var(--border-radius-md)",
+                  color: "var(--po-text-dim)",
+                  fontSize: 14, fontWeight: 600,
+                  cursor: "pointer", whiteSpace: "nowrap",
+                }}
+              >
+                Clear all
+              </button>
+              <button
+                onClick={closeFilter}
+                style={{
+                  flex: 1,
+                  padding: "13px 16px",
+                  background: "var(--po-green)",
+                  border: "none",
+                  borderRadius: "var(--border-radius-md)",
+                  color: "#050507",
+                  fontSize: 14, fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Show {filteredDuplicates.length} result{filteredDuplicates.length !== 1 ? "s" : ""}
+              </button>
+            </div>
+
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Fixed bottom selection bar — friend view only */}
       {!isOwnPage && selected.size > 0 && (
