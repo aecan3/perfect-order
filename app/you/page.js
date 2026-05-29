@@ -4,9 +4,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Settings, LogOut, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { ProfileView } from "@/components/profile/ProfileView";
+import { Avatar } from "@/components/Avatar";
 import { uploadAvatar } from "@/lib/avatar";
 import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 
@@ -142,6 +145,123 @@ export default function YouPage() {
     );
   }
 
+  // ── Slots passed into ProfileView ────────────────────────────────────────
+
+  const headerAction = (
+    <Link
+      href="/settings"
+      aria-label="Settings"
+      style={{ color: "var(--po-text-dim)" }}
+    >
+      <Settings size={20} />
+    </Link>
+  );
+
+  const footer = (
+    <>
+      {/* Friends face-pile */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          marginBottom: 12,
+        }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            color: "var(--po-text-dim)",
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+          }}>
+            Friends
+          </span>
+          <Link
+            href="/friends"
+            style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
+          >
+            {friends.count} ›
+          </Link>
+        </div>
+
+        {friends.count === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
+            No friends yet.{" "}
+            <Link href="/friends" style={{ color: "var(--po-green)", textDecoration: "none" }}>
+              Find some ›
+            </Link>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {friends.sample.map((f, i) => (
+              <div
+                key={f.handle ?? i}
+                style={{
+                  marginLeft: i === 0 ? 0 : -10,
+                  position: "relative",
+                  zIndex: friends.sample.length - i,
+                  borderRadius: "50%",
+                  border: "2px solid var(--po-bg)",
+                  lineHeight: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Avatar profile={f} size={38} />
+              </div>
+            ))}
+            {friends.count > 5 && (
+              <div style={{
+                marginLeft: -10,
+                width: 38, height: 38,
+                borderRadius: "50%",
+                background: "rgba(244,244,246,0.1)",
+                border: "2px solid var(--po-bg)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 700,
+                color: "var(--po-text-dim)",
+                position: "relative",
+                zIndex: 0,
+                flexShrink: 0,
+              }}>
+                +{friends.count - 5}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Account menu */}
+      <div style={{ borderTop: "0.5px solid rgba(244,244,246,0.08)", paddingTop: 20 }}>
+        <Link
+          href="/settings"
+          style={{
+            display: "flex", alignItems: "center", gap: 14,
+            padding: "14px 0",
+            textDecoration: "none",
+            borderBottom: "0.5px solid rgba(244,244,246,0.06)",
+          }}
+        >
+          <Settings size={18} style={{ color: "var(--po-text-dim)", flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--po-text)" }}>
+            Settings
+          </span>
+          <ChevronRight size={16} style={{ color: "var(--po-text-faint)", flexShrink: 0 }} />
+        </Link>
+        <button
+          onClick={handleSignOut}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 14,
+            padding: "14px 0",
+            background: "none", border: "none",
+            cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <LogOut size={18} style={{ color: "var(--ms-danger)", flexShrink: 0 }} />
+          <span style={{ fontSize: 15, fontWeight: 500, color: "var(--ms-danger)" }}>
+            Sign out
+          </span>
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <MSShell activeTab="you">
       <input
@@ -170,9 +290,9 @@ export default function YouPage() {
         profile={profile}
         stats={stats}
         favourites={favourites}
-        friends={friends}
+        headerAction={headerAction}
+        footer={footer}
         onChangePhoto={handleChangePhoto}
-        onSignOut={handleSignOut}
       />
     </MSShell>
   );
