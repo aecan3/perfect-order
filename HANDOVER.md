@@ -1071,6 +1071,16 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Faceted filter narrowing pattern:** when building a multi-select filter where options narrow dynamically, each section's available options must be computed from the data filtered by the OTHER sections only — never its own selection. Computing a section's options including its own filter collapses it to the selected value(s) and breaks multi-select within that section. Implemented on the duplicates filter panel (`setOptions`/`rarityOptions`/`priceOptions` each exclude their own filter from the deps). Reusable if faceted filtering appears elsewhere.
 
+- **eBay OAuth tokens are 7200s — refresh at ~6300s (105 min).** The Client Credentials grant (`POST /identity/v1/oauth2/token`) returns `expires_in: 7200`. Cache the token in a module-scope Map keyed by app:cert pair (dev/prod safe). Refresh before the 7200s expiry; 6300s leaves a comfortable margin. Implemented in `lib/ebay/auth.js`.
+
+- **eBay Browse API returns `itemAffiliateWebUrl` pre-tagged — no manual `mkrid` mapping needed.** Pass `X-EBAY-C-ENDUSERCTX: affiliateCampaignId=YOUR_ID` as a request header; the API includes `itemAffiliateWebUrl` in the response with all EPN params already injected (correct `mkrid` for the marketplace, `mkevt`, `mkcid`, etc.). Use `item.itemAffiliateWebUrl ?? item.itemWebUrl` as `listingUrl`. When `EBAY_EPN_CAMPAIGN_ID` is not set, omit the header, log a one-time warning, and fall back to bare `itemWebUrl`. Never manually construct EPN URLs from a `mkrid` table.
+
+- **eBay Browse API default quota is 5,000 calls/day for new production apps.** Newly approved production applications start at 5k calls/day. Can be increased substantially after passing eBay's Application Growth Check. The 1h cache TTL (PART 2 data model) is what keeps usage well under this limit — do not bypass the cache for freshness without doing the maths first. Quota is visible in the eBay Developer Portal → Analytics API (`GET /developer/analytics/v1_beta/rate_limit`).
+
+- **Real eBay search results include non-card items — matching logic must denylist.** A search for "Charizard 4/102 Pokemon TCG" returns posters, pins, metal cards, binder pages, and other merchandise alongside actual cards. PART 2 matching logic must drop any result whose title doesn't parse to a confident (set_id, card_number) pair that resolves to a real printing in our DB. Better to show zero listings than wrong ones.
+
+- **The same card_number can exist in multiple sets — matching must resolve set explicitly.** Example: card number 4/102 exists in both Base Set and Celebrations Classic Collection (reprint). A search returning "4/102" with no set context would be ambiguous. The matching query (card_name + set_name + card_number) must constrain to a specific set, and the match must confirm the resolved printing_id belongs to the requested set. Never match on card_number alone.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1110,7 +1120,7 @@ When picking this back up, suggested sequence:
 - **Refresh-prices UX:** The user-triggered refresh job runs 15–20s with no progress indication. A silent long-running operation looks like a broken feature to a beta tester. Three options: (A) fire-and-forget background job with a completion notification (~3 hours); (B) persistent progress bar or spinner during the wait (~1 hour); (C) a brief warning message before the request fires ("This takes up to 20 seconds…", ~15 min). Option C is the cheapest and ships the right signal immediately. Option A is the correct long-term fix. Do not leave this as-is once beta testers are using the refresh button regularly.
 - **Sentry walkthrough session:** When accumulated production traffic gives meaningful Performance and Issues data (a few days of real beta traffic), do a guided tour of the Sentry dashboard — check for recurring errors, slow transactions, and any surprises from the first real users. ~30 min, low-stakes, schedule opportunistically.
 - **Discover page performance:** Structurally constrained — the 3 remaining serial barriers are all genuinely dependent (auth → user ID → discovery query). No quick wins left. Skip unless usage patterns reveal a specific bottleneck users are hitting.
-- **eBay Discover build** — still blocked on production keyset approval from eBay. No action until approved.
+- **Marketplace PART 2 (data model + matching + cache)** — next eBay piece. Migration for `marketplace_listings` table, `lib/marketplace/match.js` (title → confident printing_id), `lib/marketplace/refresh.js` (fetch + upsert pipeline), `lib/marketplace/fetch.js` (1h cache check). EPN enrolment is Alex's parallel admin task (not blocking — bare `itemWebUrl` is the fallback until `EBAY_EPN_CAMPAIGN_ID` is set). See §17 for matching gotchas (non-card items, duplicate card numbers across sets).
 - **Nav-bug pass:** three known highlights issues — `/duplicates` dead tab-highlight (no tab is active); friend-set page tab mis-highlight; Profile→Settings highlight mystery (needs device repro to diagnose). Group into a single nav-polish pass.
 - **`/friend/[handle]/favourites` route is now orphaned** — the Hunting strip on the ProfileView replaced the link that pointed here. The page still works by URL. Either wire it back in somewhere (e.g. a "See all" link from the Hunting strip) or accept reachable-by-URL-only for now.
 - **Remove /settings avatar test UI** once a real `/profile` edit page exists. The avatar upload currently lives in /settings as a test surface. The permanent home is a dedicated profile-edit page; strip the settings route once that lands.
@@ -1119,6 +1129,12 @@ When picking this back up, suggested sequence:
 
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
+
+**Done since last handover (29 May 2026, session 15):**
+
+- **eBay production keyset approved** via eBay's exemption path (no eBay user data persisted — app only reads public listing data). Cert ID / Dev ID swap in the env file corrected. Production Browse API confirmed working end-to-end.
+
+- **Marketplace listings PART 1** (commit `01f1c06`): eBay API client foundation. `lib/ebay/auth.js` — Client Credentials OAuth, module-scope token cache, 105-min refresh. `lib/ebay/browse.js` — `searchBuyItNow({ query, marketplaceId, limit })`, filters to `FIXED_PRICE`, passes `X-EBAY-C-ENDUSERCTX` for EPN when `EBAY_EPN_CAMPAIGN_ID` is set, returns normalised source-agnostic shape (`sourceListingId`, `title`, `price`, `imageUrl`, `listingUrl`, `seller`, `condition`), `listingUrl` is `itemAffiliateWebUrl ?? itemWebUrl`. `app/api/marketplace/search/route.js` — auth-gated GET handler, 400/401/502 handling. Smoke-tested through the auth-gated route: real eBay AU listings returned, prices in AUD, correct normalised shape. EPN not yet enrolled — `listingUrl` is bare `itemWebUrl` as expected.
 
 **Done since last handover (28 May 2026, session 14):**
 
