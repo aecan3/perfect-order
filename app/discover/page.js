@@ -63,25 +63,68 @@ export default function DiscoverPage() {
     enabled: !!userId,
   });
 
-  // Merge all friend dupes + marketplace listings, Fisher-Yates shuffle once
-  // per data change. Memoised so overlay open/close doesn't reshuffle.
+  // Round-robin by printing: groups all tiles by printingId, then walks
+  // through groups taking one tile per pass. First N tiles (where N =
+  // unique printings) are all different cards; repeats only appear after
+  // every unique card has been shown. Within a group, friend dupes come
+  // before marketplace listings, and marketplace listings are sorted
+  // cheapest-first. Memoised so overlay open/close doesn't reshuffle.
   const mergedTiles = useMemo(() => {
     const friendItems = (cards || []).map((d) => ({
       kind: "friend",
       payload: d,
       key: `friend-${d.printingId}-${d.friendHandle}`,
+      printingId: d.printingId,
     }));
     const marketItems = marketplaceListings.map((l) => ({
       kind: "marketplace",
       payload: l,
       key: `market-${l.source}-${l.source_listing_id}`,
+      printingId: l.printing_id,
     }));
-    const all = [...friendItems, ...marketItems];
-    for (let i = all.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [all[i], all[j]] = [all[j], all[i]];
+
+    // Group by printingId
+    const groups = new Map();
+    for (const item of [...friendItems, ...marketItems]) {
+      if (!groups.has(item.printingId)) groups.set(item.printingId, []);
+      groups.get(item.printingId).push(item);
     }
-    return all;
+
+    // Sort within each group: friend dupes first, then marketplace cheapest-first
+    for (const [, items] of groups) {
+      items.sort((a, b) => {
+        if (a.kind === "friend" && b.kind === "marketplace") return -1;
+        if (a.kind === "marketplace" && b.kind === "friend") return 1;
+        if (a.kind === "marketplace" && b.kind === "marketplace") {
+          return Number(a.payload.price_amount) - Number(b.payload.price_amount);
+        }
+        return 0;
+      });
+    }
+
+    // Shuffle the ORDER of groups (Fisher-Yates on group array)
+    const groupArrays = [...groups.values()];
+    for (let i = groupArrays.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [groupArrays[i], groupArrays[j]] = [groupArrays[j], groupArrays[i]];
+    }
+
+    // Round-robin: one item per group per pass until exhausted
+    const result = [];
+    let pass = 0;
+    let stillHasItems = true;
+    while (stillHasItems) {
+      stillHasItems = false;
+      for (const group of groupArrays) {
+        if (group[pass] !== undefined) {
+          result.push(group[pass]);
+          stillHasItems = true;
+        }
+      }
+      pass++;
+    }
+
+    return result;
   }, [cards, marketplaceListings]);
 
   return (
