@@ -30,6 +30,34 @@ export function MarketplaceTile({ listing, onTap }) {
         <div className="absolute inset-0 bg-zinc-900" />
       )}
 
+      {/* Set logo — top left */}
+      <div
+        style={{
+          position: "absolute",
+          top: "6px",
+          left: "6px",
+          background: "rgba(7,7,10,0.75)",
+          backdropFilter: "blur(4px)",
+          borderRadius: "4px",
+          padding: "3px 5px",
+          maxWidth: "56px",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        {listing.set_logo_url ? (
+          <img
+            src={listing.set_logo_url}
+            alt={listing.set_name || "Set"}
+            style={{ height: "18px", width: "auto", maxWidth: "48px", display: "block" }}
+          />
+        ) : (
+          <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.7)", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {listing.set_name || ""}
+          </span>
+        )}
+      </div>
+
       {/* eBay badge — official wordmark from eBay's creative pack */}
       <img
         src="/marketplace/ebay-logo.png"

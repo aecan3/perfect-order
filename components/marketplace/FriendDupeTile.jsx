@@ -27,6 +27,34 @@ export function FriendDupeTile({ dupe, onTap }) {
         </div>
       )}
 
+      {/* Set logo — top left */}
+      <div
+        style={{
+          position: "absolute",
+          top: "6px",
+          left: "6px",
+          background: "rgba(7,7,10,0.75)",
+          backdropFilter: "blur(4px)",
+          borderRadius: "4px",
+          padding: "3px 5px",
+          maxWidth: "56px",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        {dupe.setLogoUrl ? (
+          <img
+            src={dupe.setLogoUrl}
+            alt={dupe.setName || "Set"}
+            style={{ height: "18px", width: "auto", maxWidth: "48px", display: "block" }}
+          />
+        ) : (
+          <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.7)", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {dupe.setName || ""}
+          </span>
+        )}
+      </div>
+
       {/* Trade badge — top right, mirrors eBay badge position */}
       <span
         className="absolute top-1.5 right-1.5 inline-flex items-center rounded px-1.5 py-0.5"
@@ -34,14 +62,6 @@ export function FriendDupeTile({ dupe, onTap }) {
       >
         <ArrowLeftRight size={10} color="#050507" strokeWidth={2.5} />
       </span>
-
-      {/* Set name + price — bottom gradient */}
-      <div
-        className="absolute inset-x-0 bottom-0 px-1.5 py-1"
-        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0))" }}
-      >
-        <div className="truncate text-[7px] text-white/60">{dupe.setName}</div>
-      </div>
     </button>
   );
 }
