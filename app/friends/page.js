@@ -20,6 +20,8 @@ export default function FriendsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [blockIds, setBlockIds] = useState(new Set());
   const [authChecked, setAuthChecked] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [sentOpen, setSentOpen] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedResult, setSelectedResult] = useState(null);
@@ -298,44 +300,91 @@ export default function FriendsPage() {
           )}
         </section>
 
-        {/* Incoming requests */}
+        {/* Incoming requests — collapsible, hidden when empty */}
         {incoming.length > 0 && (
           <section>
-            <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
-              Requests for you
-            </h2>
-            <div className="space-y-2">
-              {incoming.map((f) => {
-                const p = profilesById[otherOf(f)];
-                return (
-                  <div
-                    key={f.id}
-                    className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
-                  >
-                    <div>
-                      <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
-                      <div className="text-xs text-[var(--po-text-dim)]">@{p?.handle}</div>
+            <button
+              type="button"
+              onClick={() => setRequestsOpen((v) => !v)}
+              aria-expanded={requestsOpen}
+              className="w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
+            >
+              {requestsOpen ? "▾" : "▸"} Friend requests ({incoming.length})
+            </button>
+            {requestsOpen && (
+              <div className="space-y-2">
+                {incoming.map((f) => {
+                  const p = profilesById[otherOf(f)];
+                  return (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
+                    >
+                      <div>
+                        <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
+                        <div className="text-xs text-[var(--po-text-dim)]">@{p?.handle}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => accept(f.id)}
+                          className="w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"
+                          aria-label="Accept"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={() => remove(f.id)}
+                          className="w-8 h-8 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center hover:border-rose-700 hover:text-rose-400"
+                          aria-label="Reject"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => accept(f.id)}
-                        className="w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"
-                        aria-label="Accept"
-                      >
-                        <Check size={16} />
-                      </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Outgoing requests — collapsible, hidden when empty */}
+        {outgoing.length > 0 && (
+          <section>
+            <button
+              type="button"
+              onClick={() => setSentOpen((v) => !v)}
+              aria-expanded={sentOpen}
+              className="w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
+            >
+              {sentOpen ? "▾" : "▸"} Pending sent ({outgoing.length})
+            </button>
+            {sentOpen && (
+              <div className="space-y-2">
+                {outgoing.map((f) => {
+                  const p = profilesById[otherOf(f)];
+                  return (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3 opacity-60"
+                    >
+                      <div>
+                        <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
+                        <div className="text-xs text-[var(--po-text-dim)]">
+                          @{p?.handle} · awaiting response
+                        </div>
+                      </div>
                       <button
                         onClick={() => remove(f.id)}
-                        className="w-8 h-8 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center hover:border-rose-700 hover:text-rose-400"
-                        aria-label="Reject"
+                        className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
                       >
-                        <X size={16} />
+                        Cancel
                       </button>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
 
@@ -388,39 +437,6 @@ export default function FriendsPage() {
             </div>
           )}
         </section>
-
-        {/* Outgoing requests */}
-        {outgoing.length > 0 && (
-          <section>
-            <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
-              Pending (sent)
-            </h2>
-            <div className="space-y-2">
-              {outgoing.map((f) => {
-                const p = profilesById[otherOf(f)];
-                return (
-                  <div
-                    key={f.id}
-                    className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3 opacity-60"
-                  >
-                    <div>
-                      <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
-                      <div className="text-xs text-[var(--po-text-dim)]">
-                        @{p?.handle} · awaiting response
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => remove(f.id)}
-                      className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </main>
     </div>
   );
