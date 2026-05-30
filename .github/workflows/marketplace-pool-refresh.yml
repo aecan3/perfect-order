@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Call marketplace-pool-refresh
         run: |
-          curl -sf \
+          curl -sfL \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.SITE_URL }}/api/cron/marketplace-pool-refresh" \
             -w "\nHTTP %{http_code} - %{time_total}s\n" \
