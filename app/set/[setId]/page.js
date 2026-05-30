@@ -987,7 +987,20 @@ export default function SetTrackerPage() {
                     setFavSheet({ targetPrintingId: favPrintId, cardName: card.name });
                   } else {
                     setFavourites((prev) => new Set([...prev, favPrintId]));
-                    supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(() => {});
+                    supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(async () => {
+                      // Enqueue for pool refresh if not already in marketplace_pool
+                      const { data: poolMatch } = await supabase
+                        .from("marketplace_pool")
+                        .select("printing_id")
+                        .eq("printing_id", favPrintId)
+                        .maybeSingle();
+                      if (!poolMatch) {
+                        await supabase.from("pool_requests").upsert(
+                          { printing_id: favPrintId, user_id: user.id },
+                          { onConflict: "printing_id,user_id", ignoreDuplicates: true }
+                        );
+                      }
+                    });
                     clearTimeout(favToastTimerRef.current);
                     setFavToast(true);
                     favToastTimerRef.current = setTimeout(() => setFavToast(false), 2000);
@@ -1487,7 +1500,21 @@ export default function SetTrackerPage() {
                         await supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", printId);
                         if (favSheet.targetPrintingId) {
                           setFavourites((prev) => new Set([...prev, favSheet.targetPrintingId]));
-                          supabase.from("favourites").insert({ user_id: user.id, printing_id: favSheet.targetPrintingId }).then(() => {});
+                          const swapPrintId = favSheet.targetPrintingId;
+                          supabase.from("favourites").insert({ user_id: user.id, printing_id: swapPrintId }).then(async () => {
+                            // Enqueue for pool refresh if not already in marketplace_pool
+                            const { data: poolMatch } = await supabase
+                              .from("marketplace_pool")
+                              .select("printing_id")
+                              .eq("printing_id", swapPrintId)
+                              .maybeSingle();
+                            if (!poolMatch) {
+                              await supabase.from("pool_requests").upsert(
+                                { printing_id: swapPrintId, user_id: user.id },
+                                { onConflict: "printing_id,user_id", ignoreDuplicates: true }
+                              );
+                            }
+                          });
                         }
                         setFavSheet(null);
                       }}

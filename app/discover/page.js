@@ -14,6 +14,7 @@ import { MarketplaceDetailOverlay } from "@/components/marketplace/MarketplaceDe
 import { FriendDupeTile } from "@/components/marketplace/FriendDupeTile";
 import { FriendDupeActionSheet } from "@/components/marketplace/FriendDupeActionSheet";
 import { getUserMarketplaceId } from "@/lib/marketplace/currency-to-marketplace";
+import { fetchMarketplaceListings } from "@/lib/marketplace/client-fetch";
 
 export default function DiscoverPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function DiscoverPage() {
   const [userId, setUserId] = useState(null);
   const [cards, setCards] = useState(null);
   const [marketplaceListings, setMarketplaceListings] = useState([]);
+  const [marketplaceSettled, setMarketplaceSettled] = useState(false);
   const [activeMarketplaceListing, setActiveMarketplaceListing] = useState(null);
   const [activeFriendDupe, setActiveFriendDupe] = useState(null);
 
@@ -42,15 +44,22 @@ export default function DiscoverPage() {
     loadDiscover();
   }, [router, supabase]);
 
-  // Marketplace fetch runs in parallel with friend-dupe fetch — doesn't block
-  // friend-dupe render. Uses the user's currency-derived marketplaceId for
-  // multi-region support (AUD→EBAY_AU, USD→EBAY_US, etc.).
+  // Marketplace fetch runs in parallel with friend-dupe fetch.
+  // Uses the user's currency-derived marketplaceId for multi-region support.
+  // Sets marketplaceSettled on both success and failure so the unified
+  // loading state doesn't wait forever on a failed fetch.
   useEffect(() => {
     const marketplaceId = getUserMarketplaceId();
-    fetch(`/api/marketplace/listings?marketplaceId=${marketplaceId}`)
-      .then((r) => r.json())
-      .then((data) => setMarketplaceListings(data.listings || []))
-      .catch((err) => console.error("[Discover] marketplace fetch failed:", err.message));
+    fetchMarketplaceListings(marketplaceId)
+      .then((data) => setMarketplaceListings(data.listings))
+      .catch((err) => console.error("[Discover] marketplace fetch failed:", err.message))
+      .finally(() => setMarketplaceSettled(true));
+  }, []);
+
+  // 5s hard ceiling — if marketplace fetch hangs, render whatever we have
+  useEffect(() => {
+    const t = setTimeout(() => setMarketplaceSettled(true), 5000);
+    return () => clearTimeout(t);
   }, []);
 
   useTableRefetch({
@@ -135,18 +144,18 @@ export default function DiscoverPage() {
         </MSPageTitle>
 
         <div className="px-4 py-4 max-w-md mx-auto space-y-4">
-          {cards === null && (
+          {(cards === null || !marketplaceSettled) && (
             <div className="text-center text-[var(--po-text-dim)] text-sm py-16">Loading...</div>
           )}
 
-          {cards !== null && cards.length === 0 && marketplaceListings.length === 0 && (
+          {cards !== null && marketplaceSettled && cards.length === 0 && marketplaceListings.length === 0 && (
             <div className="text-center text-[var(--po-text-dim)] text-sm py-16">
               No matches yet — add friends and start collecting!
             </div>
           )}
 
           {/* Flat interleaved grid — friend-dupe tiles and marketplace tiles shuffled together */}
-          {mergedTiles.length > 0 && (
+          {cards !== null && marketplaceSettled && mergedTiles.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
               {mergedTiles.map((item) =>
                 item.kind === "friend" ? (

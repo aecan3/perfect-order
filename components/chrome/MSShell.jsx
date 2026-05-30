@@ -6,6 +6,8 @@ import { MSHeader } from "./MSHeader";
 import { MSTabBar } from "./MSTabBar";
 import { createClient } from "@/lib/supabase";
 import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
+import { getUserMarketplaceId } from "@/lib/marketplace/currency-to-marketplace";
+import { fetchMarketplaceListings } from "@/lib/marketplace/client-fetch";
 import { RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 
@@ -104,6 +106,20 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+      const marketplaceId = getUserMarketplaceId();
+      // Fire-and-forget — warm the marketplace cache for upcoming
+      // navigation to /discover. Server-side refreshStaleForUser
+      // populates the DB cache; we discard the response here.
+      fetchMarketplaceListings(marketplaceId).catch(() => {});
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const onScroll = (e) => {

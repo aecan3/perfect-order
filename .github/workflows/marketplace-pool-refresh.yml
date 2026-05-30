@@ -1,0 +1,19 @@
+name: Marketplace Pool Refresh
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call marketplace-pool-refresh
+        run: |
+          curl -sf \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/marketplace-pool-refresh" \
+            -w "\nHTTP %{http_code} - %{time_total}s\n" \
+            || echo "Request failed"

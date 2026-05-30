@@ -20,14 +20,16 @@ async function getSupabase() {
 
 export async function GET(request) {
   const supabase = await getSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   const { searchParams } = new URL(request.url);
   const marketplaceId = searchParams.get("marketplaceId")?.trim() || "EBAY_AU";
 
   try {
-    const { mode, targetPrintingIds } = await refreshStaleForUser(user.id, {
+    const { mode, targetPrintingIds, refreshed, skipped, errors } = await refreshStaleForUser(user.id, {
       marketplaceId,
     });
 
