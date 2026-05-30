@@ -159,8 +159,8 @@ export default function YouPage() {
 
   const footer = (
     <>
-      {/* Friends face-pile */}
-      <div style={{ marginBottom: 24 }}>
+      {/* Friends face-pile — whole card taps to /friends */}
+      <Link href="/friends" style={{ marginBottom: 24, display: "block", textDecoration: "none", color: "inherit" }}>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           marginBottom: 12,
@@ -173,20 +173,15 @@ export default function YouPage() {
           }}>
             Friends
           </span>
-          <Link
-            href="/friends"
-            style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
-          >
+          <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
             {friends.count} ›
-          </Link>
+          </span>
         </div>
 
         {friends.count === 0 ? (
           <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
             No friends yet.{" "}
-            <Link href="/friends" style={{ color: "var(--po-green)", textDecoration: "none" }}>
-              Find some ›
-            </Link>
+            <span style={{ color: "var(--po-green)" }}>Find some ›</span>
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center" }}>
@@ -225,7 +220,7 @@ export default function YouPage() {
             )}
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Account menu */}
       <div style={{ borderTop: "0.5px solid rgba(244,244,246,0.08)", paddingTop: 20 }}>

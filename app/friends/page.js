@@ -221,7 +221,7 @@ export default function FriendsPage() {
   return (
     <div className="min-h-screen bg-[var(--po-bg)] text-[var(--po-text)]">
       <header className="sticky top-0 z-10 bg-[var(--po-bg)]/90 backdrop-blur border-b border-[var(--po-border)] px-4 py-3 flex items-center gap-3">
-        <BackButton href="/" />
+        <BackButton href="/you" />
         <h1 className="text-lg font-bold">Friends</h1>
       </header>
 

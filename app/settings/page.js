@@ -8,6 +8,7 @@ import { BlockConfirmModal } from "@/components/BlockConfirmModal";
 import { Avatar } from "@/components/Avatar";
 import { createClient } from "@/lib/supabase";
 import { uploadAvatar } from "@/lib/avatar";
+import BackButton from "@/components/BackButton";
 
 export default function SettingsPage() {
   const supabase = createClient();
@@ -84,7 +85,10 @@ export default function SettingsPage() {
     : null;
 
   return (
-    <MSShell>
+    <MSShell activeTab="you">
+      <div style={{ padding: "8px 12px 0" }}>
+        <BackButton href="/you" />
+      </div>
       <MSPageTitle>Settings</MSPageTitle>
 
       <div style={{ padding: "24px 18px", fontFamily: '"IBM Plex Sans", sans-serif' }}>

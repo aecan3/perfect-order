@@ -13,7 +13,7 @@ import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 
 function deriveTab(pathname) {
   if (!pathname) return null;
-  if (pathname === "/" || pathname.startsWith("/set") || pathname.startsWith("/sets")) return "sets";
+  if (pathname === "/" || pathname.startsWith("/sets") || pathname.startsWith("/set/")) return "sets";
   if (pathname.startsWith("/discover")) return "discover";
   if (pathname.startsWith("/feed")) return "feed";
   if (pathname.startsWith("/messages")) return "messages";
