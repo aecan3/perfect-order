@@ -13,8 +13,9 @@ export function ProfileView({
   headerAction,     // React node — top-right of identity header (gear, overflow, etc.)
   footer,           // React node — rendered below Hunting strip
   onChangePhoto,
-  isPreview = false, // disables tappable elements (Dupes link, Hunting count link)
-  afterStats,        // React node — inserted between stats row and Hunting strip
+  isPreview = false,       // disables tappable elements (Dupes link, Hunting count link)
+  afterStats,              // React node — inserted between stats row and Hunting strip
+  publicHuntingCount = null, // number from public-stats endpoint; shown in locked placeholder
 }) {
   const displayName = profile?.display_name || handle;
 
@@ -150,79 +151,109 @@ export function ProfileView({
       {afterStats}
 
       {/* ── Hunting (hero) ────────────────────────────────────────── */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          marginBottom: 12,
-        }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700,
-            color: "var(--po-green)",
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
+      {isPreview ? (
+        // Preview: locked placeholder, only when count > 0
+        publicHuntingCount > 0 ? (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              marginBottom: 12,
+            }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700,
+                color: "var(--po-green)",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+              }}>
+                Hunting
+              </span>
+              <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
+                {publicHuntingCount} / 6
+              </span>
+            </div>
+            <div style={{
+              fontSize: 13,
+              color: "var(--po-text-dim)",
+              lineHeight: 1.5,
+              padding: "12px",
+              background: "rgba(244,244,246,0.03)",
+              border: "0.5px solid rgba(244,244,246,0.08)",
+              borderRadius: "var(--border-radius-md)",
+            }}>
+              🔒 @{handle} has {publicHuntingCount} cards they&apos;re hunting — add them as a friend to see what.
+            </div>
+          </div>
+        ) : null
+      ) : (
+        // Full view: live card strip
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 12,
           }}>
-            Hunting
-          </span>
-          {isPreview ? (
-            <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
-              {favourites.length} / 6
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: "var(--po-green)",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}>
+              Hunting
             </span>
-          ) : (
             <Link
               href="/favourites"
               style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
             >
               {favourites.length} / 6 ›
             </Link>
+          </div>
+
+          {favourites.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "8px 0" }}>
+              {isOwnProfile ? "No favourites yet." : "Not hunting anything yet."}
+            </div>
+          ) : (
+            <div style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              paddingBottom: 4,
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}>
+              {favourites.map((fav) => (
+                <div
+                  key={fav.printing_id}
+                  style={{
+                    flexShrink: 0,
+                    width: 72,
+                    aspectRatio: "2.5/3.5",
+                    borderRadius: "var(--border-radius-md)",
+                    overflow: "hidden",
+                    background: "rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {fav.printing?.card?.image_large ? (
+                    <img
+                      src={fav.printing.card.image_large}
+                      alt={fav.printing?.card?.name || ""}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "100%", height: "100%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: 6, textAlign: "center",
+                      fontSize: 7, color: "var(--po-text-faint)", lineHeight: 1.3,
+                    }}>
+                      {fav.printing?.card?.name}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
-
-        {favourites.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "8px 0" }}>
-            {isOwnProfile ? "No favourites yet." : "Not hunting anything yet."}
-          </div>
-        ) : (
-          <div style={{
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            paddingBottom: 4,
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-          }}>
-            {favourites.map((fav) => (
-              <div
-                key={fav.printing_id}
-                style={{
-                  flexShrink: 0,
-                  width: 72,
-                  aspectRatio: "2.5/3.5",
-                  borderRadius: "var(--border-radius-md)",
-                  overflow: "hidden",
-                  background: "rgba(0,0,0,0.4)",
-                }}
-              >
-                {fav.printing?.card?.image_large ? (
-                  <img
-                    src={fav.printing.card.image_large}
-                    alt={fav.printing?.card?.name || ""}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                ) : (
-                  <div style={{
-                    width: "100%", height: "100%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    padding: 6, textAlign: "center",
-                    fontSize: 7, color: "var(--po-text-faint)", lineHeight: 1.3,
-                  }}>
-                    {fav.printing?.card?.name}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ── Footer slot (friends + account menu for /you; mutual friends +
            set list for /friend) ──────────────────────────────────── */}

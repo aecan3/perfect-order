@@ -50,11 +50,32 @@ export default function FriendOverviewPage() {
   const [isFriend, setIsFriend] = useState(false);
   const [isPendingFromMe, setIsPendingFromMe] = useState(false);
   const [localPendingFromMe, setLocalPendingFromMe] = useState(false);
+  const [publicHuntingCount, setPublicHuntingCount] = useState(null);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
   }, []);
+
+  // Fetch real counts from service-role endpoint when in preview mode.
+  // RLS blocks non-friends from reading collection data directly, so the
+  // main useEffect produces zeros. This overrides those zeros with real counts.
+  useEffect(() => {
+    if (status !== "ok") return;
+    if (isFriend || isPendingFromMe || localPendingFromMe) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/profile/${handle}/public-stats`);
+        if (!res.ok) return;
+        const { stats: publicStats, hunting_count, mutual_count } = await res.json();
+        setStats(publicStats);
+        setMutualCount(mutual_count);
+        setPublicHuntingCount(hunting_count);
+      } catch {
+        // silently fail — preview keeps zeros rather than erroring out
+      }
+    })();
+  }, [status, isFriend, isPendingFromMe, localPendingFromMe, handle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,10 +308,9 @@ export default function FriendOverviewPage() {
 
   const afterStats = (isPreview || showPending) ? (
     <div style={{ marginBottom: 16 }}>
-      {isPreview && mutualNames.length > 0 && (
+      {isPreview && mutualCount > 0 && (
         <div style={{ fontSize: 12, color: "var(--po-text-dim)", marginBottom: 10 }}>
-          Mutual: {mutualNames.join(", ")}
-          {remainingMutuals > 0 && ` and ${remainingMutuals} other${remainingMutuals !== 1 ? "s" : ""}`}
+          {mutualCount} mutual {mutualCount === 1 ? "friend" : "friends"}
         </div>
       )}
       {isPreview && (
@@ -335,6 +355,9 @@ export default function FriendOverviewPage() {
   const footer = (
     <>
       {/* ── Mutual friends ─────────────────────────────────────── */}
+      {/* In preview: hidden when 0, count-only text when >0 (names require
+          service-role queries that belong in the endpoint, not client-side) */}
+      {(!isPreview || mutualCount > 0) && (
       <div style={{ marginBottom: 24 }}>
         <div style={{
           display: "flex", alignItems: "center",
@@ -350,17 +373,10 @@ export default function FriendOverviewPage() {
           </span>
         </div>
         {isPreview ? (
-          // Preview: static text, no face-pile
-          mutualNames.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
-              No mutual friends.
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: "var(--po-text-dim)", padding: "4px 0" }}>
-              {mutualNames.join(", ")}
-              {remainingMutuals > 0 && ` and ${remainingMutuals} other${remainingMutuals !== 1 ? "s" : ""}`}
-            </div>
-          )
+          // Preview: count only — names not surfaced (friendships are friend-readable only)
+          <div style={{ fontSize: 13, color: "var(--po-text-dim)", padding: "4px 0" }}>
+            {mutualCount} mutual {mutualCount === 1 ? "friend" : "friends"}
+          </div>
         ) : (
           // Friends: avatar face-pile
           mutualFriends.length === 0 ? (
@@ -406,6 +422,7 @@ export default function FriendOverviewPage() {
           )
         )}
       </div>
+      )} {/* end (!isPreview || mutualCount > 0) */}
 
       {/* ── Collection (set list) ───────────────────────────────── */}
       <div>
@@ -418,7 +435,11 @@ export default function FriendOverviewPage() {
         }}>
           Collection
         </div>
-        {friendSets.length === 0 ? (
+        {isPreview ? (
+          <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
+            🔒 @{friend.handle}&apos;s sets are visible only to their friends.
+          </div>
+        ) : friendSets.length === 0 ? (
           <div className="text-center text-[var(--po-text-dim)] text-sm py-8">
             {friend.handle} hasn&apos;t added any sets yet.
           </div>
@@ -514,6 +535,7 @@ export default function FriendOverviewPage() {
           footer={footer}
           isPreview={isPreview}
           afterStats={afterStats}
+          publicHuntingCount={publicHuntingCount}
         />
       </MSShell>
       <ReportUserForm
