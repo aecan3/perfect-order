@@ -13,6 +13,8 @@ export function ProfileView({
   headerAction,     // React node — top-right of identity header (gear, overflow, etc.)
   footer,           // React node — rendered below Hunting strip
   onChangePhoto,
+  isPreview = false, // disables tappable elements (Dupes link, Hunting count link)
+  afterStats,        // React node — inserted between stats row and Hunting strip
 }) {
   const displayName = profile?.display_name || handle;
 
@@ -103,27 +105,49 @@ export function ProfileView({
           </div>
         </div>
 
-        {/* Duplicates — lime, tappable → /duplicates/[handle] */}
-        <Link
-          href={`/duplicates/${handle}`}
-          style={{
-            flex: 1, padding: "12px 8px",
-            background: "rgba(200,255,74,0.08)",
-            border: "0.5px solid rgba(200,255,74,0.25)",
-            borderRadius: "var(--border-radius-md)",
-            textAlign: "center",
-            textDecoration: "none",
-            display: "block",
-          }}
-        >
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
-            {stats.duplicates}
+        {/* Duplicates — lime; tappable in full view, static in preview */}
+        {isPreview ? (
+          <div
+            style={{
+              flex: 1, padding: "12px 8px",
+              background: "rgba(200,255,74,0.08)",
+              border: "0.5px solid rgba(200,255,74,0.25)",
+              borderRadius: "var(--border-radius-md)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
+              {stats.duplicates}
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
+              Dupes
+            </div>
           </div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
-            Dupes ›
-          </div>
-        </Link>
+        ) : (
+          <Link
+            href={`/duplicates/${handle}`}
+            style={{
+              flex: 1, padding: "12px 8px",
+              background: "rgba(200,255,74,0.08)",
+              border: "0.5px solid rgba(200,255,74,0.25)",
+              borderRadius: "var(--border-radius-md)",
+              textAlign: "center",
+              textDecoration: "none",
+              display: "block",
+            }}
+          >
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
+              {stats.duplicates}
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
+              Dupes ›
+            </div>
+          </Link>
+        )}
       </div>
+
+      {/* ── afterStats slot (Add Friend CTA, pending UI, etc.) ──── */}
+      {afterStats}
 
       {/* ── Hunting (hero) ────────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
@@ -139,12 +163,18 @@ export function ProfileView({
           }}>
             Hunting
           </span>
-          <Link
-            href="/favourites"
-            style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
-          >
-            {favourites.length} / 6 ›
-          </Link>
+          {isPreview ? (
+            <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
+              {favourites.length} / 6
+            </span>
+          ) : (
+            <Link
+              href="/favourites"
+              style={{ fontSize: 13, color: "var(--po-text-dim)", textDecoration: "none" }}
+            >
+              {favourites.length} / 6 ›
+            </Link>
+          )}
         </div>
 
         {favourites.length === 0 ? (

@@ -38,12 +38,18 @@ export default function FriendOverviewPage() {
   const [currency, setCurrency] = useState("AUD");
   const [status, setStatus] = useState("loading");
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const [reportFormOpen, setReportFormOpen] = useState(false);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [stats, setStats] = useState({ sets: 0, cards: 0, duplicates: 0 });
   const [favourites, setFavourites] = useState([]);
   const [mutualFriends, setMutualFriends] = useState([]);
   const [mutualCount, setMutualCount] = useState(0);
+  const [mutualNames, setMutualNames] = useState([]);
+  const [remainingMutuals, setRemainingMutuals] = useState(0);
+  const [isFriend, setIsFriend] = useState(false);
+  const [isPendingFromMe, setIsPendingFromMe] = useState(false);
+  const [localPendingFromMe, setLocalPendingFromMe] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -59,12 +65,11 @@ export default function FriendOverviewPage() {
       const viewerId = user.id;
       setCurrentUserId(viewerId);
 
-      // ── Gate 2: profile lookup ────────────────────────────────────
-      const { data: friendProfile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("handle", handle)
-        .maybeSingle();
+      // ── Gate 2: profile lookup + viewer's own profile ─────────────
+      const [{ data: friendProfile }, { data: viewerProfile }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("handle", handle).maybeSingle(),
+        supabase.from("profiles").select("handle, display_name").eq("id", viewerId).maybeSingle(),
+      ]);
 
       if (!friendProfile) { setStatus("not-found"); return; }
 
@@ -76,16 +81,19 @@ export default function FriendOverviewPage() {
       if (blocked) { setStatus("not-found"); return; }
 
       setFriend(friendProfile);
+      setCurrentUserProfile(viewerProfile);
 
-      // ── Gate 4: friendship check ──────────────────────────────────
+      // ── Gate 4: friendship row (any status) ───────────────────────
+      // No .eq("status", "accepted") — we need pending rows too for preview mode.
       const { data: friendship } = await supabase
         .from("friendships")
         .select("*")
         .or(`and(user_a.eq.${viewerId},user_b.eq.${friendProfile.id}),and(user_a.eq.${friendProfile.id},user_b.eq.${viewerId})`)
-        .eq("status", "accepted")
         .maybeSingle();
 
-      if (!friendship) { setStatus("not-friends"); return; }
+      const friendshipAccepted = friendship?.status === "accepted";
+      const friendshipPendingFromMe = friendship?.status === "pending" && friendship?.user_a === viewerId;
+
       if (cancelled) return;
 
       // ── Paginated collection entries (handles large collections) ──
@@ -109,7 +117,7 @@ export default function FriendOverviewPage() {
         return rows;
       };
 
-      // ── Parallel data fetches ─────────────────────────────────────
+      // ── Parallel data fetches (runs for all visitors, enables preview) ──
       const [
         { data: userSetsRows },
         entries,
@@ -177,7 +185,7 @@ export default function FriendOverviewPage() {
       if (mutualIds.length > 0) {
         const { data: mutualProfs } = await supabase
           .from("profiles")
-          .select("handle, avatar_url")
+          .select("handle, display_name, avatar_url")
           .in("id", mutualIds.slice(0, 6));
         if (!cancelled) mutualFriendsData = mutualProfs || [];
       }
@@ -196,6 +204,12 @@ export default function FriendOverviewPage() {
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
 
+      // Mutual names for preview-mode text (first 3)
+      const names = mutualFriendsData.slice(0, 3).map(p => p.display_name || p.handle);
+      const remaining = mutualIds.length - names.length;
+
+      setIsFriend(friendshipAccepted);
+      setIsPendingFromMe(friendshipPendingFromMe);
       setStats({
         sets: (userSetsRows || []).length,
         cards: cardsCount || 0,
@@ -204,6 +218,8 @@ export default function FriendOverviewPage() {
       setFavourites(sortedFavs);
       setMutualFriends(mutualFriendsData);
       setMutualCount(mutualIds.length);
+      setMutualNames(names);
+      setRemainingMutuals(remaining);
       setFriendSets(
         (userSetsRows || [])
           .map(row => {
@@ -223,7 +239,7 @@ export default function FriendOverviewPage() {
     return () => { cancelled = true; };
   }, [handle, router, supabase]);
 
-  // ── Gate renders (unchanged) ──────────────────────────────────────
+  // ── Gate renders ──────────────────────────────────────────────────
   if (status === "loading") {
     return (
       <MSShell>
@@ -245,18 +261,10 @@ export default function FriendOverviewPage() {
     );
   }
 
-  if (status === "not-friends") {
-    return (
-      <MSShell>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
-          <p className="text-[var(--po-text)] mb-3">You're not friends with @{handle} yet.</p>
-          <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Send them a request</Link>
-        </div>
-      </MSShell>
-    );
-  }
-
   // ── ok: build slots then render ───────────────────────────────────
+  const showPending = isPendingFromMe || localPendingFromMe;
+  const isPreview = !isFriend && !showPending;
+
   const overflowItems = [
     { icon: Flag, label: "Report user", onClick: () => setReportFormOpen(true) },
     { icon: ShieldOff, label: "Block user", destructive: true, onClick: () => setBlockModalOpen(true) },
@@ -277,6 +285,53 @@ export default function FriendOverviewPage() {
     )
     : null;
 
+  const afterStats = (isPreview || showPending) ? (
+    <div style={{ marginBottom: 16 }}>
+      {isPreview && mutualNames.length > 0 && (
+        <div style={{ fontSize: 12, color: "var(--po-text-dim)", marginBottom: 10 }}>
+          Mutual: {mutualNames.join(", ")}
+          {remainingMutuals > 0 && ` and ${remainingMutuals} other${remainingMutuals !== 1 ? "s" : ""}`}
+        </div>
+      )}
+      {isPreview && (
+        <button
+          type="button"
+          onClick={async () => {
+            const { error: insErr } = await supabase
+              .from("friendships")
+              .insert({ user_a: currentUserId, user_b: friend.id, status: "pending" });
+            if (insErr) { console.error("Failed to send friend request:", insErr.message); return; }
+            const senderName = currentUserProfile?.display_name || `@${currentUserProfile?.handle}` || "Someone";
+            await supabase.from("notifications").insert({
+              user_id: friend.id,
+              type: "friend_request",
+              title: "New friend request",
+              body: `${senderName} sent you a friend request.`,
+              link: "/friends",
+            });
+            setLocalPendingFromMe(true);
+          }}
+          className="w-full px-4 py-3 bg-[var(--po-green)] text-black font-bold rounded-lg po-glow-green"
+        >
+          Add @{friend.handle} as a friend
+        </button>
+      )}
+      {showPending && (
+        <div style={{
+          padding: "12px 16px",
+          background: "rgba(244,244,246,0.04)",
+          border: "0.5px solid rgba(244,244,246,0.08)",
+          borderRadius: 10,
+          textAlign: "center",
+          fontSize: 13,
+          color: "var(--po-text-dim)",
+        }}>
+          Request sent · awaiting response
+        </div>
+      )}
+    </div>
+  ) : null;
+
   const footer = (
     <>
       {/* ── Mutual friends ─────────────────────────────────────── */}
@@ -294,50 +349,65 @@ export default function FriendOverviewPage() {
             Mutual Friends
           </span>
         </div>
-        {mutualFriends.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
-            No mutual friends.
-          </div>
+        {isPreview ? (
+          // Preview: static text, no face-pile
+          mutualNames.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
+              No mutual friends.
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--po-text-dim)", padding: "4px 0" }}>
+              {mutualNames.join(", ")}
+              {remainingMutuals > 0 && ` and ${remainingMutuals} other${remainingMutuals !== 1 ? "s" : ""}`}
+            </div>
+          )
         ) : (
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {mutualFriends.map((f, i) => (
-              <div
-                key={f.handle ?? i}
-                style={{
-                  marginLeft: i === 0 ? 0 : -10,
-                  position: "relative",
-                  zIndex: mutualFriends.length - i,
+          // Friends: avatar face-pile
+          mutualFriends.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
+              No mutual friends.
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {mutualFriends.map((f, i) => (
+                <div
+                  key={f.handle ?? i}
+                  style={{
+                    marginLeft: i === 0 ? 0 : -10,
+                    position: "relative",
+                    zIndex: mutualFriends.length - i,
+                    borderRadius: "50%",
+                    border: "2px solid var(--po-bg)",
+                    lineHeight: 0,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Avatar profile={f} size={38} />
+                </div>
+              ))}
+              {mutualCount > 6 && (
+                <div style={{
+                  marginLeft: -10,
+                  width: 38, height: 38,
                   borderRadius: "50%",
+                  background: "rgba(244,244,246,0.1)",
                   border: "2px solid var(--po-bg)",
-                  lineHeight: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700,
+                  color: "var(--po-text-dim)",
+                  position: "relative",
+                  zIndex: 0,
                   flexShrink: 0,
-                }}
-              >
-                <Avatar profile={f} size={38} />
-              </div>
-            ))}
-            {mutualCount > 6 && (
-              <div style={{
-                marginLeft: -10,
-                width: 38, height: 38,
-                borderRadius: "50%",
-                background: "rgba(244,244,246,0.1)",
-                border: "2px solid var(--po-bg)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700,
-                color: "var(--po-text-dim)",
-                position: "relative",
-                zIndex: 0,
-                flexShrink: 0,
-              }}>
-                +{mutualCount - 6}
-              </div>
-            )}
-          </div>
+                }}>
+                  +{mutualCount - 6}
+                </div>
+              )}
+            </div>
+          )
         )}
       </div>
 
-      {/* ── Collection (set list — existing rich row rendering) ─── */}
+      {/* ── Collection (set list) ───────────────────────────────── */}
       <div>
         <div style={{
           fontSize: 11, fontWeight: 700,
@@ -361,52 +431,63 @@ export default function FriendOverviewPage() {
               const secondary = set.theme_secondary || "#c084fc";
               const bg = set.theme_bg || "#050507";
               const val = (set.collectionValue || 0) * (RATES[currency]?.rate || 1);
-              return (
+              const inner = (
+                <div className="p-4 flex items-center gap-3">
+                  {set.logo_url ? (
+                    <img src={set.logo_url} alt={set.name} className="w-20 h-20 object-contain flex-shrink-0" />
+                  ) : (
+                    <div
+                      className="w-20 h-20 rounded-lg flex items-center justify-center font-black text-2xl flex-shrink-0"
+                      style={{ background: primary, color: bg }}
+                    >
+                      {set.code}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-extrabold text-base leading-tight truncate" style={{ color: primary }}>
+                      {set.name}
+                    </div>
+                    {set.series && (
+                      <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
+                        {set.series}
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
+                        <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
+                      </div>
+                      {val > 0 && (
+                        <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color: primary }}>
+                          {fmtMoney(val, currency)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
+                      <div
+                        className="h-full transition-all"
+                        style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primary}, ${secondary})` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+              return isPreview ? (
+                <div
+                  key={set.id}
+                  className="block rounded-2xl overflow-hidden border border-[var(--po-border)]"
+                  style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
+                >
+                  {inner}
+                </div>
+              ) : (
                 <Link
                   key={set.id}
                   href={`/friend/${handle}/${set.id}`}
                   className="block rounded-2xl overflow-hidden border border-[var(--po-border)] active:scale-[0.99] transition-transform"
                   style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
                 >
-                  <div className="p-4 flex items-center gap-3">
-                    {set.logo_url ? (
-                      <img src={set.logo_url} alt={set.name} className="w-20 h-20 object-contain flex-shrink-0" />
-                    ) : (
-                      <div
-                        className="w-20 h-20 rounded-lg flex items-center justify-center font-black text-2xl flex-shrink-0"
-                        style={{ background: primary, color: bg }}
-                      >
-                        {set.code}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-extrabold text-base leading-tight truncate" style={{ color: primary }}>
-                        {set.name}
-                      </div>
-                      {set.series && (
-                        <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5 truncate">
-                          {set.series}
-                        </div>
-                      )}
-                      <div className="mt-2 flex items-center justify-between">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-2xl font-black tabular-nums">{set.checkedCount}</span>
-                          <span className="text-xs text-[var(--po-text-dim)]">/ {total} · {pct}%</span>
-                        </div>
-                        {val > 0 && (
-                          <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color: primary }}>
-                            {fmtMoney(val, currency)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 h-1 w-full bg-[var(--po-border)] rounded-full overflow-hidden">
-                        <div
-                          className="h-full transition-all"
-                          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${primary}, ${secondary})` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  {inner}
                 </Link>
               );
             })}
@@ -431,6 +512,8 @@ export default function FriendOverviewPage() {
           favourites={favourites}
           headerAction={headerAction}
           footer={footer}
+          isPreview={isPreview}
+          afterStats={afterStats}
         />
       </MSShell>
       <ReportUserForm

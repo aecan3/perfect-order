@@ -1,12 +1,13 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { UserPlus, Check, X, Eye, MessageCircle } from "lucide-react";
+import { Check, X, Eye, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import BackButton from "@/components/BackButton";
 import { getBlockIds } from "@/lib/queries/blocks";
+import { Avatar } from "@/components/Avatar";
 
 export default function FriendsPage() {
   const router = useRouter();
@@ -15,18 +16,15 @@ export default function FriendsPage() {
   const [profile, setProfile] = useState(null);
   const [friendships, setFriendships] = useState([]);
   const [profilesById, setProfilesById] = useState({});
-  const [searchHandle, setSearchHandle] = useState("");
-  const [searchError, setSearchError] = useState(null);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [blockIds, setBlockIds] = useState(new Set());
   const [authChecked, setAuthChecked] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [sentOpen, setSentOpen] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedResult, setSelectedResult] = useState(null);
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const searchRef = useRef(null);
 
   const loadFriendships = useCallback(async (uid) => {
     const [{ data: rows }, ids] = await Promise.all([
@@ -77,124 +75,41 @@ export default function FriendsPage() {
     })();
   }, [router, supabase, loadFriendships]);
 
-  // Debounced search
+  // Debounced suggestion fetch
   useEffect(() => {
-    if (selectedResult) return; // don't search if user picked a result
     clearTimeout(debounceRef.current);
-    if (!searchHandle.trim()) {
-      setSearchResults([]);
-      setShowDropdown(false);
+    const q = query.trim();
+    if (!q) {
+      setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
     debounceRef.current = setTimeout(async () => {
-      const q = searchHandle.trim().toLowerCase();
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, handle, display_name, avatar_url")
-        .or(`handle.ilike.%${q}%,display_name.ilike.%${q}%`)
-        .limit(8);
-      const friendAndSelfIds = new Set([
-        user?.id,
-        ...friendships.map((f) => f.user_a),
-        ...friendships.map((f) => f.user_b),
-      ]);
-      const filtered = (data || []).filter((p) => !friendAndSelfIds.has(p.id) && !blockIds.has(p.id));
-      setSearchResults(filtered);
-      setShowDropdown(true);
+      const res = await fetch(`/api/friends/search?q=${encodeURIComponent(q)}&limit=8`);
+      if (!res.ok) return;
+      const { results } = await res.json();
+      setSuggestions(results || []);
+      setShowSuggestions(true);
     }, 300);
-  }, [searchHandle, selectedResult]);
+  }, [query]);
 
-  // Close dropdown on outside click
+  // Close suggestions on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false);
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSuggestions(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const pickResult = (p) => {
-    setSelectedResult(p);
-    setSearchHandle(p.handle);
-    setShowDropdown(false);
-    setSearchResults([]);
-    setSearchError(null);
-  };
-
-  const sendRequest = async (e) => {
+  const handleSearch = (e) => {
     e.preventDefault();
-    setSearchError(null);
-    setSearchLoading(true);
-
-    const handle = (selectedResult?.handle || searchHandle).trim().toLowerCase();
-    if (!handle) { setSearchLoading(false); return; }
-    if (handle === profile?.handle) {
-      setSearchError("That's you!");
-      setSearchLoading(false);
-      return;
-    }
-
-    const target = selectedResult || await (async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, handle, display_name")
-        .eq("handle", handle)
-        .maybeSingle();
-      return data;
-    })();
-
-    if (!target) {
-      setSearchError("No one found with that handle.");
-      setSearchLoading(false);
-      return;
-    }
-
-    const existing = friendships.find(
-      (f) =>
-        (f.user_a === user.id && f.user_b === target.id) ||
-        (f.user_a === target.id && f.user_b === user.id)
-    );
-    if (existing) {
-      setSearchError(
-        existing.status === "accepted" ? "You're already friends." : "A request already exists."
-      );
-      setSearchLoading(false);
-      return;
-    }
-
-    const { data: blocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: target.id });
-    if (blocked) {
-      setSearchError("Couldn't send a request to this user.");
-      setSearchLoading(false);
-      return;
-    }
-
-    const { error: insErr } = await supabase.from("friendships").insert({
-      user_a: user.id,
-      user_b: target.id,
-      status: "pending",
-    });
-    if (insErr) {
-      setSearchError(insErr.message);
-      setSearchLoading(false);
-      return;
-    }
-
-    const senderName = profile?.display_name || `@${profile?.handle}` || "Someone";
-    await supabase.from("notifications").insert({
-      user_id: target.id,
-      type: "friend_request",
-      title: "New friend request",
-      body: `${senderName} sent you a friend request.`,
-      link: "/friends",
-    });
-
-    setSearchHandle("");
-    setSelectedResult(null);
-    setSearchLoading(false);
-    await loadFriendships(user.id);
+    const q = query.trim();
+    if (!q) return;
+    setShowSuggestions(false);
+    router.push(`/friends/search?q=${encodeURIComponent(q)}`);
   };
 
   const accept = async (friendshipId) => {
@@ -239,47 +154,47 @@ export default function FriendsPage() {
           </p>
         </section>
 
-        {/* Add friend */}
+        {/* Find a friend */}
         <section>
           <h2 className="text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2">
-            Add a friend
+            Find a friend
           </h2>
-          <form onSubmit={sendRequest} className="flex gap-2">
-            <div className="flex-1 relative" ref={dropdownRef}>
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="flex-1 relative" ref={searchRef}>
               <input
                 type="text"
-                value={searchHandle}
-                onChange={(e) => {
-                  setSearchHandle(e.target.value.toLowerCase());
-                  setSelectedResult(null);
-                  if (!e.target.value.trim()) setShowDropdown(false);
-                }}
-                onFocus={() => { if (searchResults.length > 0) setShowDropdown(true); }}
-                placeholder="search by handle or name"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                placeholder="Search by handle or name"
                 className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)] placeholder:text-[var(--po-text-dim)]"
               />
-              {showDropdown && (
+              {showSuggestions && (
                 <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg overflow-hidden shadow-lg">
-                  {searchResults.length === 0 ? (
+                  {suggestions.length === 0 ? (
                     <div className="px-3 py-2.5 text-sm text-[var(--po-text-dim)]">No users found</div>
                   ) : (
-                    searchResults.map((p) => (
+                    suggestions.map((s) => (
                       <button
-                        key={p.id}
+                        key={s.id}
                         type="button"
-                        onMouseDown={() => pickResult(p)}
+                        onMouseDown={() => {
+                          setShowSuggestions(false);
+                          router.push(`/friend/${s.handle}`);
+                        }}
                         className="w-full text-left px-3 py-2.5 hover:bg-[var(--po-bg)] transition-colors flex items-center gap-2"
                       >
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0"
-                          style={{ background: "var(--po-bg)", border: "1px solid var(--po-border)", color: "var(--po-green)" }}
-                        >
-                          {(p.handle || "?")[0].toUpperCase()}
+                        <Avatar profile={s} size={28} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-bold truncate">{s.display_name || s.handle}</div>
+                          <div className="text-[10px] text-[var(--po-text-dim)]">@{s.handle}</div>
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold truncate">{p.display_name || p.handle}</div>
-                          <div className="text-[10px] text-[var(--po-text-dim)]">@{p.handle}</div>
-                        </div>
+                        {s.friendship_status === "friends" && (
+                          <span className="text-[10px] text-[var(--po-green)] uppercase tracking-widest flex-shrink-0">Friends</span>
+                        )}
+                        {s.friendship_status === "pending_received" && (
+                          <span className="text-[10px] text-[var(--po-text-dim)] uppercase tracking-widest flex-shrink-0">Wants to add you</span>
+                        )}
                       </button>
                     ))
                   )}
@@ -288,16 +203,12 @@ export default function FriendsPage() {
             </div>
             <button
               type="submit"
-              disabled={searchLoading || !searchHandle.trim()}
-              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
+              disabled={!query.trim()}
+              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex-shrink-0"
             >
-              <UserPlus size={14} />
-              Add
+              Search
             </button>
           </form>
-          {searchError && (
-            <div className="mt-2 text-sm text-rose-300">{searchError}</div>
-          )}
         </section>
 
         {/* Incoming requests — collapsible, hidden when empty */}
@@ -441,4 +352,3 @@ export default function FriendsPage() {
     </div>
   );
 }
-
