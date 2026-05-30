@@ -72,83 +72,105 @@ export function ProfileView({
       </div>
 
       {/* ── Stats row ────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-
-        {/* Sets */}
-        <div style={{
-          flex: 1, padding: "12px 8px",
-          background: "rgba(244,244,246,0.04)",
-          border: "0.5px solid rgba(244,244,246,0.08)",
-          borderRadius: "var(--border-radius-md)",
-          textAlign: "center",
-        }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", letterSpacing: "-0.02em" }}>
-            {stats.sets}
-          </div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-text-faint)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3 }}>
-            Sets
-          </div>
-        </div>
-
-        {/* Cards */}
-        <div style={{
-          flex: 1, padding: "12px 8px",
-          background: "rgba(244,244,246,0.04)",
-          border: "0.5px solid rgba(244,244,246,0.08)",
-          borderRadius: "var(--border-radius-md)",
-          textAlign: "center",
-        }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", letterSpacing: "-0.02em" }}>
-            {stats.cards}
-          </div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-text-faint)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3 }}>
-            Cards
-          </div>
-        </div>
-
-        {/* Duplicates — lime; tappable in full view, static in preview */}
-        {isPreview ? (
-          <div
-            style={{
+      {/* In preview mode, hide until public-stats resolves to avoid the
+          flicker from RLS-zeroed main-useEffect values → real counts.
+          Ghost skeleton preserves exact height so nothing below shifts. */}
+      {isPreview && publicHuntingCount === null ? (
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {["s", "c", "d"].map((k) => (
+            <div key={k} style={{
               flex: 1, padding: "12px 8px",
-              background: "rgba(200,255,74,0.08)",
-              border: "0.5px solid rgba(200,255,74,0.25)",
+              background: "rgba(244,244,246,0.04)",
+              border: "0.5px solid rgba(244,244,246,0.08)",
               borderRadius: "var(--border-radius-md)",
               textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
-              {stats.duplicates}
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "transparent", letterSpacing: "-0.02em" }}>0</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "transparent", letterSpacing: "0.12em", marginTop: 3 }}>·</div>
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
-              Dupes
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+
+          {/* Sets */}
+          <div style={{
+            flex: 1, padding: "12px 8px",
+            background: "rgba(244,244,246,0.04)",
+            border: "0.5px solid rgba(244,244,246,0.08)",
+            borderRadius: "var(--border-radius-md)",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", letterSpacing: "-0.02em" }}>
+              {stats.sets}
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-text-faint)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3 }}>
+              Sets
             </div>
           </div>
-        ) : (
-          <Link
-            href={`/duplicates/${handle}`}
-            style={{
-              flex: 1, padding: "12px 8px",
-              background: "rgba(200,255,74,0.08)",
-              border: "0.5px solid rgba(200,255,74,0.25)",
-              borderRadius: "var(--border-radius-md)",
-              textAlign: "center",
-              textDecoration: "none",
-              display: "block",
-            }}
-          >
-            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
-              {stats.duplicates}
+
+          {/* Cards */}
+          <div style={{
+            flex: 1, padding: "12px 8px",
+            background: "rgba(244,244,246,0.04)",
+            border: "0.5px solid rgba(244,244,246,0.08)",
+            borderRadius: "var(--border-radius-md)",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", letterSpacing: "-0.02em" }}>
+              {stats.cards}
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
-              Dupes ›
+            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-text-faint)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3 }}>
+              Cards
             </div>
-          </Link>
-        )}
-      </div>
+          </div>
+
+          {/* Duplicates — lime; tappable in full view, static in preview */}
+          {isPreview ? (
+            <div
+              style={{
+                flex: 1, padding: "12px 8px",
+                background: "rgba(200,255,74,0.08)",
+                border: "0.5px solid rgba(200,255,74,0.25)",
+                borderRadius: "var(--border-radius-md)",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
+                {stats.duplicates}
+              </div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
+                Dupes
+              </div>
+            </div>
+          ) : (
+            <Link
+              href={`/duplicates/${handle}`}
+              style={{
+                flex: 1, padding: "12px 8px",
+                background: "rgba(200,255,74,0.08)",
+                border: "0.5px solid rgba(200,255,74,0.25)",
+                borderRadius: "var(--border-radius-md)",
+                textAlign: "center",
+                textDecoration: "none",
+                display: "block",
+              }}
+            >
+              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
+                {stats.duplicates}
+              </div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
+                Dupes ›
+              </div>
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* ── afterStats slot (Add Friend CTA, pending UI, etc.) ──── */}
-      {afterStats}
+      {/* Hidden in preview until public-stats resolves — avoids showing
+          mutual count or action buttons before real data is available. */}
+      {isPreview && publicHuntingCount === null ? null : afterStats}
 
       {/* ── Hunting (hero) ────────────────────────────────────────── */}
       {isPreview ? (
