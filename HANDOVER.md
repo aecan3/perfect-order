@@ -1109,6 +1109,10 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **App-wide back button convention is hardcoded destinations, not `router.back()`.** Verified via git grep in session 18: every BackButton in the app passes a hardcoded `href="/..."` except one outlier in `/trade/new`. For new pages needing a back button, match the dominant pattern (hardcoded `href`) for predictable navigation regardless of how the user arrived. `router.back()` is error-prone for PWAs because deep-links and tab-switches break the history stack.
 
+- **Supabase RLS silently returns zero rows; queries succeed with empty data.** When a user runs a `select` against a table where RLS doesn't grant them access, the query does NOT error — it returns an empty result set as if no matching rows exist. This is indistinguishable client-side from "the user genuinely has no data." Caught in session 18 when non-friend preview profiles showed 0 sets / 0 cards / 0 dupes for users who clearly had 1606+ checked entries. Fix pattern: a service-role API endpoint that bypasses RLS and returns aggregated counts only (never raw rows), called explicitly when the client knows it's in a restricted-access state. See `/api/profile/[handle]/public-stats` for the canonical example.
+
+- **Service-role endpoints must return COUNTS or curated fields only — never pass through raw rows.** The service role bypasses all RLS, so anything in the response is exposed regardless of what the requester's auth would normally allow. The public-stats endpoint queries with `count: "exact"` and returns integers only, no row data. If a future endpoint needs to expose derived data (e.g. set names a user owns), explicitly select only the public-safe fields and document why.
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1154,9 +1158,16 @@ When picking this back up, suggested sequence:
 - **Remove /settings avatar test UI** once a real `/profile` edit page exists. The avatar upload currently lives in /settings as a test surface. The permanent home is a dedicated profile-edit page; strip the settings route once that lands.
 - **Empty Hunting strip nudge** — new users with no starred cards see a blank strip with no call-to-action. Add a "Star cards you're chasing" prompt when `favourites.length === 0`.
 - **DUPES vs DUPLICATES stat label** — the stats row on the dashboard shows "DUPES" (lime, taps to /duplicates). Kept as-is. Revisit the label only if users find it unclear.
+- **Trade Binder** — a "bring-your-binder" flow for in-person events: user marks a subset of their collection as "in binder", shares a binder link or QR code, other users can browse it. Deferred to a dedicated session. No code started.
 
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
+
+**Done since last handover (30 May 2026, session 18):**
+
+- **Collapsible Pending Sent + Friend Requests at top of /friends** (commit `8f090db`): The /friends page now shows two collapsible sections at the top — one for pending requests you've sent and one for incoming requests — instead of the previous flat list. Both sections are hidden when empty. Improves legibility when a user has multiple outstanding requests in either direction.
+
+- **Friends search redesign + preview profile mode** (commits `05fda1c`, `d185df5`): Four-part feature. (1) New `GET /api/friends/search` endpoint: auth-gated, sanitises the `q` param, queries profiles via ILIKE, excludes self and blocked users, enriches each result with `friendship_status` (`friends | pending_received | not-friends`), omits `pending_sent` users from results entirely. (2) `/friends` search bar redesigned: debounced dropdown calls the new endpoint, each suggestion navigates to `/friend/[handle]`, "Search" button routes to `/friends/search?q=…`. (3) New `/friends/search` page: full-page results up to 50, Avatar + status badges, auto-runs on mount when `q` param is present, required Suspense boundary for `useSearchParams()`. (4) `/friend/[handle]` preview mode: removed the "not-friends" hard wall — non-friends now see a preview with real stats (via service-role `GET /api/profile/[handle]/public-stats`), locked Hunting strip placeholder showing count only, Add Friend CTA in the `afterStats` slot with optimistic `localPendingFromMe` state, mutual-friends count (no names, service-role computed). `ProfileView` extended with `isPreview`, `afterStats`, and `publicHuntingCount` props. Root cause of the prior 0/0/0 stats: Supabase RLS silently returns empty rows for non-friends; fixed by the service-role endpoint which returns aggregate counts only, never raw rows.
 
 **Done since last handover (30 May 2026, session 17):**
 
