@@ -229,13 +229,17 @@ export default function FriendsPage() {
                   return (
                     <div
                       key={f.id}
-                      className="flex items-center justify-between bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
+                      className="flex items-center gap-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg p-3"
                     >
-                      <div>
-                        <div className="font-bold">{p?.display_name || p?.handle || "Someone"}</div>
-                        <div className="text-xs text-[var(--po-text-dim)]">@{p?.handle}</div>
-                      </div>
-                      <div className="flex gap-2">
+                      <Link
+                        href={`/friend/${p?.handle}`}
+                        className="flex-1 min-w-0"
+                        style={{ textDecoration: "none", color: "inherit" }}
+                      >
+                        <div className="font-bold truncate">{p?.display_name || p?.handle || "Someone"}</div>
+                        <div className="text-xs text-[var(--po-text-dim)] truncate">@{p?.handle}</div>
+                      </Link>
+                      <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => accept(f.id)}
                           className="w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"

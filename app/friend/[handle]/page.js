@@ -49,6 +49,7 @@ export default function FriendOverviewPage() {
   const [remainingMutuals, setRemainingMutuals] = useState(0);
   const [isFriend, setIsFriend] = useState(false);
   const [isPendingFromMe, setIsPendingFromMe] = useState(false);
+  const [isPendingFromThem, setIsPendingFromThem] = useState(false);
   const [localPendingFromMe, setLocalPendingFromMe] = useState(false);
   const [publicHuntingCount, setPublicHuntingCount] = useState(null);
 
@@ -114,6 +115,7 @@ export default function FriendOverviewPage() {
 
       const friendshipAccepted = friendship?.status === "accepted";
       const friendshipPendingFromMe = friendship?.status === "pending" && friendship?.user_a === viewerId;
+      const friendshipPendingFromThem = friendship?.status === "pending" && friendship?.user_b === viewerId;
 
       if (cancelled) return;
 
@@ -231,6 +233,7 @@ export default function FriendOverviewPage() {
 
       setIsFriend(friendshipAccepted);
       setIsPendingFromMe(friendshipPendingFromMe);
+      setIsPendingFromThem(friendshipPendingFromThem);
       setStats({
         sets: (userSetsRows || []).length,
         cards: cardsCount || 0,
@@ -313,7 +316,7 @@ export default function FriendOverviewPage() {
           {mutualCount} mutual {mutualCount === 1 ? "friend" : "friends"}
         </div>
       )}
-      {isPreview && (
+      {isPreview && !isPendingFromThem && (
         <button
           type="button"
           onClick={async () => {
@@ -327,7 +330,9 @@ export default function FriendOverviewPage() {
               type: "friend_request",
               title: "New friend request",
               body: `${senderName} sent you a friend request.`,
-              link: "/friends",
+              link: currentUserProfile?.handle
+                ? `/friend/${currentUserProfile.handle}`
+                : "/friends",
             });
             setLocalPendingFromMe(true);
           }}
@@ -335,6 +340,58 @@ export default function FriendOverviewPage() {
         >
           Add @{friend.handle} as a friend
         </button>
+      )}
+      {isPendingFromThem && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={async () => {
+              const { error } = await supabase
+                .from("friendships")
+                .update({ status: "accepted" })
+                .eq("user_a", friend.id)
+                .eq("user_b", currentUserId);
+              if (error) { console.error("Failed to accept friend request:", error.message); return; }
+              window.location.reload();
+            }}
+            style={{
+              flex: 1,
+              padding: "12px",
+              background: "var(--po-green)",
+              color: "black",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const { error } = await supabase
+                .from("friendships")
+                .delete()
+                .eq("user_a", friend.id)
+                .eq("user_b", currentUserId);
+              if (error) { console.error("Failed to decline friend request:", error.message); return; }
+              router.push("/friends");
+            }}
+            style={{
+              flex: 1,
+              padding: "12px",
+              background: "var(--po-bg-soft)",
+              color: "var(--po-text-dim)",
+              border: "0.5px solid var(--po-border)",
+              borderRadius: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Decline
+          </button>
+        </div>
       )}
       {showPending && (
         <div style={{
