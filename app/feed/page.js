@@ -71,6 +71,18 @@ export default function FeedPage() {
     enabled: !!userId,
   });
 
+  // Anchor scroll: on mount after events load, scroll to #event-<uuid> if present
+  useEffect(() => {
+    if (!events || events.length === 0) return;
+    const hash = window.location.hash;
+    if (!hash || !hash.startsWith("#event-")) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(hash.substring(1));
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [events]);
+
   return (
     <MSShell activeTab="feed">
       <MSPageTitle title="Feed" />

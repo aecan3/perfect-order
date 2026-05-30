@@ -352,6 +352,16 @@ export default function FriendOverviewPage() {
                 .eq("user_a", friend.id)
                 .eq("user_b", currentUserId);
               if (error) { console.error("Failed to accept friend request:", error.message); return; }
+              const acceptorName = currentUserProfile?.display_name || `@${currentUserProfile?.handle}` || "Someone";
+              if (currentUserProfile?.handle) {
+                await supabase.from("notifications").insert({
+                  user_id: friend.id,
+                  type: "friend_accepted",
+                  title: "Friend request accepted",
+                  body: `${acceptorName} accepted your friend request.`,
+                  link: `/friend/${currentUserProfile.handle}`,
+                });
+              }
               window.location.reload();
             }}
             style={{

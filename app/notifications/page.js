@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import {
   Bell, UserPlus, UserCheck, ArrowLeftRight,
   CheckCircle2, XCircle, Camera, Award, Crown,
+  Heart, MessageCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -21,6 +22,8 @@ const TYPE_ICON = {
   trade_declined:           { Icon: XCircle,          color: "var(--ms-dim)" },
   trade_verification:       { Icon: Camera,           color: "var(--ms-dim)" },
   master_completion:        { Icon: Award,            color: "var(--ms-dim)" },
+  feed_like:                { Icon: Heart,            color: "var(--ms-dim)" },
+  feed_comment:             { Icon: MessageCircle,    color: "var(--ms-dim)" },
   // HIDDEN FOR LAUNCH: grand_master_completion: { Icon: Crown, color: "var(--ms-gold)" },
 };
 
@@ -92,6 +95,21 @@ export default function NotificationsPage() {
       .eq("user_a", sender.id)
       .eq("user_b", user.id)
       .eq("status", "pending");
+    const { data: acceptorProfile } = await supabase
+      .from("profiles")
+      .select("display_name, handle")
+      .eq("id", user.id)
+      .maybeSingle();
+    const acceptorName = acceptorProfile?.display_name || `@${acceptorProfile?.handle}` || "Someone";
+    if (acceptorProfile?.handle) {
+      await supabase.from("notifications").insert({
+        user_id: sender.id,
+        type: "friend_accepted",
+        title: "Friend request accepted",
+        body: `${acceptorName} accepted your friend request.`,
+        link: `/friend/${acceptorProfile.handle}`,
+      });
+    }
     await supabase.from("notifications").update({ read: true }).eq("id", notif.id);
     setResolvedRequests((prev) => ({ ...prev, [notif.id]: "accepted" }));
     setNotifications((prev) => prev.map((n) => n.id === notif.id ? { ...n, read: true } : n));

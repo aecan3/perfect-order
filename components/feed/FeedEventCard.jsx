@@ -137,6 +137,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
 
   return (
     <article
+      id={`event-${event.id}`}
       style={{
         background: "rgba(244,244,246,0.02)",
         border: "0.5px solid rgba(244,244,246,0.08)",

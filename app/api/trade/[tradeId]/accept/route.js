@@ -174,6 +174,29 @@ export async function POST(req, { params }) {
     } catch (err) {
       console.error("Photo cleanup failed (non-fatal):", err);
     }
+
+    const [{ data: proposerProf }, { data: recipientProf }] = await Promise.all([
+      supabase.from("profiles").select("handle").eq("id", trade.proposer_id).maybeSingle(),
+      supabase.from("profiles").select("handle").eq("id", trade.recipient_id).maybeSingle(),
+    ]);
+
+    await supabase.from("notifications").insert([
+      {
+        user_id: trade.proposer_id,
+        type: "trade_accepted",
+        title: "Trade fully accepted",
+        body: "Both parties have accepted. Ready for handover.",
+        link: `/messages/${recipientProf?.handle || ""}`,
+      },
+      {
+        user_id: trade.recipient_id,
+        type: "trade_accepted",
+        title: "Trade fully accepted",
+        body: "Both parties have accepted. Ready for handover.",
+        link: `/messages/${proposerProf?.handle || ""}`,
+      },
+    ]);
+
     return NextResponse.json({ bothAccepted: true });
   }
 

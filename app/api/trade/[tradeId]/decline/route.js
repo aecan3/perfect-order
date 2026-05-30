@@ -40,6 +40,21 @@ export async function POST(req, { params }) {
     detail: {},
   });
 
+  const { data: declinerProfile } = await supabase
+    .from("profiles")
+    .select("display_name, handle")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const declinerName = declinerProfile?.display_name || `@${declinerProfile?.handle}` || "Someone";
+  await supabase.from("notifications").insert({
+    user_id: trade.proposer_id,
+    type: "trade_declined",
+    title: "Trade declined",
+    body: `${declinerName} declined your trade proposal.`,
+    link: `/messages/${declinerProfile?.handle || ""}`,
+  });
+
   try {
     const { data: files } = await supabase.storage.from("Card Photos").list(`verification/${tradeId}`);
     if (files?.length) {

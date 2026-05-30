@@ -113,7 +113,30 @@ export default function FriendsPage() {
   };
 
   const accept = async (friendshipId) => {
+    const { data: friendshipRow } = await supabase
+      .from("friendships")
+      .select("user_a, user_b")
+      .eq("id", friendshipId)
+      .maybeSingle();
+
+    if (!friendshipRow) return;
+
     await supabase.from("friendships").update({ status: "accepted" }).eq("id", friendshipId);
+
+    const requesterId = friendshipRow.user_a;
+    const acceptorName = profile?.display_name || `@${profile?.handle}` || "Someone";
+    const acceptorHandle = profile?.handle;
+
+    if (requesterId && acceptorHandle) {
+      await supabase.from("notifications").insert({
+        user_id: requesterId,
+        type: "friend_accepted",
+        title: "Friend request accepted",
+        body: `${acceptorName} accepted your friend request.`,
+        link: `/friend/${acceptorHandle}`,
+      });
+    }
+
     await loadFriendships(user.id);
   };
 
