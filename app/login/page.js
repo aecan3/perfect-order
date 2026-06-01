@@ -148,7 +148,16 @@ function LoginContent() {
       let intent = null;
       try {
         const raw = sessionStorage.getItem("ms_anon_intent");
-        if (raw) intent = JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const ageMs = Date.now() - (parsed.capturedAt || 0);
+          const THIRTY_MIN = 30 * 60 * 1000;
+          if (ageMs > THIRTY_MIN) {
+            sessionStorage.removeItem("ms_anon_intent");
+          } else {
+            intent = parsed;
+          }
+        }
       } catch (e) { /* ignore */ }
 
       if (!intent) {

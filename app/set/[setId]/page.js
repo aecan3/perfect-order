@@ -17,6 +17,7 @@ import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { ReportCardFAB } from "@/components/ReportCardFAB";
 import BackButton from "@/components/BackButton";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
+import { useCollectionState } from "@/lib/hooks/useCollectionState";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -494,7 +495,7 @@ export default function SetTrackerPage() {
   const [setRow, setSetRow] = useState(null);
   const [cards, setCards] = useState([]);
   const [printingsByCard, setPrintingsByCard] = useState({});
-  const [ownedPrintings, setOwnedPrintings] = useState({});
+  const [ownedPrintingsState, setOwnedPrintings] = useState({});
   const [pickingCard, setPickingCard] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [currency, setCurrency] = useState("AUD");
@@ -521,7 +522,28 @@ export default function SetTrackerPage() {
   const photoTargetRef = useRef(null);
   const dupTimersRef = useRef({});
   const ownedPrintingsRef = useRef({});
-  ownedPrintingsRef.current = ownedPrintings; // always current — set every render
+  const isAnonymous = !user;
+
+  const printingsMap = useMemo(() => {
+    const map = new Map();
+    Object.values(printingsByCard).forEach((prints) => {
+      prints.forEach((p) => map.set(p.id, { card_number: p.card_number, price_usd: p.price_usd }));
+    });
+    return map;
+  }, [printingsByCard]);
+
+  const anonCollection = useCollectionState({ isAnonymous, setId, printingsMap });
+
+  const ownedPrintings = isAnonymous
+    ? Object.fromEntries(
+        anonCollection.collection.entries.map((e) => [
+          e.printingId,
+          { checked: true, duplicate_count: Math.max(0, e.quantity - 1), photo_url: null, card_number: e.cardNumber },
+        ])
+      )
+    : ownedPrintingsState;
+
+  ownedPrintingsRef.current = ownedPrintings;
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -808,8 +830,6 @@ export default function SetTrackerPage() {
     setResetTyped("");
   };
 
-  const isAnonymous = !user;
-
   if (!authChecked) {
     return (
       <MSShell anonymousNav={isAnonymous}>
@@ -918,7 +938,18 @@ export default function SetTrackerPage() {
       <div key={card.id} className="flex flex-col">
         <div
           onClick={() => {
-            if (isAnonymous) return;
+            if (isAnonymous) {
+              if (prints.length === 1) {
+                if (ownedPrintings[prints[0].id]?.checked) {
+                  anonCollection.updateQuantity(prints[0].id, 0);
+                } else {
+                  anonCollection.addPrinting(prints[0].id);
+                }
+              } else {
+                setPickingCard(card);
+              }
+              return;
+            }
             if (prints.length === 1) togglePrinting(prints[0]);
             else setPickingCard(card);
           }}
@@ -1049,7 +1080,16 @@ export default function SetTrackerPage() {
               {(ownedPrintings[prints[0].id]?.duplicate_count || 0) > 0 && (
                 <>
                   <button
-                    onClick={() => handleDupChange(prints[0].id, -1)}
+                    onClick={() => {
+                      if (isAnonymous) {
+                        const currentQty = ownedPrintings[prints[0].id]?.checked
+                          ? (ownedPrintings[prints[0].id]?.duplicate_count || 0) + 1
+                          : 0;
+                        anonCollection.updateQuantity(prints[0].id, Math.max(0, currentQty - 1));
+                      } else {
+                        handleDupChange(prints[0].id, -1);
+                      }
+                    }}
                     className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
                   >
                     −
@@ -1063,7 +1103,16 @@ export default function SetTrackerPage() {
                 </>
               )}
               <button
-                onClick={() => handleDupChange(prints[0].id, 1)}
+                onClick={() => {
+                  if (isAnonymous) {
+                    const currentQty = ownedPrintings[prints[0].id]?.checked
+                      ? (ownedPrintings[prints[0].id]?.duplicate_count || 0) + 1
+                      : 0;
+                    anonCollection.updateQuantity(prints[0].id, currentQty + 1);
+                  } else {
+                    handleDupChange(prints[0].id, 1);
+                  }
+                }}
                 className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
               >
                 +
@@ -1565,13 +1614,46 @@ export default function SetTrackerPage() {
                     key={p.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => togglePrinting(p)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePrinting(p); } }}
+                    onClick={() => {
+                      if (isAnonymous) {
+                        if (ownedPrintings[p.id]?.checked) {
+                          anonCollection.updateQuantity(p.id, 0);
+                        } else {
+                          anonCollection.addPrinting(p.id);
+                        }
+                      } else {
+                        togglePrinting(p);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (isAnonymous) {
+                          if (ownedPrintings[p.id]?.checked) {
+                            anonCollection.updateQuantity(p.id, 0);
+                          } else {
+                            anonCollection.addPrinting(p.id);
+                          }
+                        } else {
+                          togglePrinting(p);
+                        }
+                      }
+                    }}
                     className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0 cursor-pointer"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
-                        onClick={() => togglePrinting(p)}
+                        onClick={() => {
+                          if (isAnonymous) {
+                            if (ownedPrintings[p.id]?.checked) {
+                              anonCollection.updateQuantity(p.id, 0);
+                            } else {
+                              anonCollection.addPrinting(p.id);
+                            }
+                          } else {
+                            togglePrinting(p);
+                          }
+                        }}
                         className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition cursor-pointer"
                         style={{
                           background: isOwned ? themePrimary : "transparent",
@@ -1589,7 +1671,17 @@ export default function SetTrackerPage() {
                       {isOwned && (
                         <>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDupChange(p.id, -1); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isAnonymous) {
+                                const currentQty = ownedPrintings[p.id]?.checked
+                                  ? (ownedPrintings[p.id]?.duplicate_count || 0) + 1
+                                  : 0;
+                                anonCollection.updateQuantity(p.id, Math.max(0, currentQty - 1));
+                              } else {
+                                handleDupChange(p.id, -1);
+                              }
+                            }}
                             disabled={dc === 0}
                             className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center disabled:opacity-30"
                           >
@@ -1599,7 +1691,17 @@ export default function SetTrackerPage() {
                             {dc}
                           </span>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDupChange(p.id, 1); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isAnonymous) {
+                                const currentQty = ownedPrintings[p.id]?.checked
+                                  ? (ownedPrintings[p.id]?.duplicate_count || 0) + 1
+                                  : 0;
+                                anonCollection.updateQuantity(p.id, currentQty + 1);
+                              } else {
+                                handleDupChange(p.id, 1);
+                              }
+                            }}
                             className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center"
                           >
                             +
