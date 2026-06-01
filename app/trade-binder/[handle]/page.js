@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Star, ArrowLeftRight, X, ChevronDown } from "lucide-react";
+import { AnonymousBinderActionSheet } from "@/components/marketplace/AnonymousBinderActionSheet";
+import { AnonymousSignupConfirm } from "@/components/AnonymousSignupConfirm";
 import { createClient } from "@/lib/supabase";
 import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
@@ -77,6 +79,8 @@ export default function TradeBinderPage() {
   const [priceFilter, setPriceFilter]   = useState(new Set());
   const [sectionsOpen, setSectionsOpen] = useState({ set: true, rarity: true, price: true });
   const [mounted, setMounted]           = useState(false);
+  const [anonSelectedCard, setAnonSelectedCard] = useState(null);
+  const [confirmIntent, setConfirmIntent] = useState(null);
   const currency = "AUD";
 
   // ── Faceted options ─────────────────────────────────────────────────────────
@@ -150,10 +154,11 @@ export default function TradeBinderPage() {
     });
   };
 
-  const captureIntentAndGoToSignup = (card) => {
+  const captureIntentAndGoToSignup = (card, intentSubType = "message") => {
     const params = new URLSearchParams({
       returnTo: `/trade-binder/${handle}`,
       intentType: "propose_trade",
+      intentSubType,
       sharerHandle: handle,
       targetPrintingId: card.printing_id,
     });
@@ -162,6 +167,7 @@ export default function TradeBinderPage() {
     try {
       sessionStorage.setItem("ms_anon_intent", JSON.stringify({
         type: "propose_trade",
+        intentSubType,
         sharerHandle: handle,
         targetPrintingId: card.printing_id,
         targetCardName: card.card_name || null,
@@ -172,6 +178,28 @@ export default function TradeBinderPage() {
     }
 
     router.push(`/welcome?${params.toString()}`);
+  };
+
+  const handleAnonMessage = () => {
+    const card = anonSelectedCard;
+    setAnonSelectedCard(null);
+    setConfirmIntent({ type: "message", card });
+  };
+
+  const handleAnonTrade = () => {
+    const card = anonSelectedCard;
+    setAnonSelectedCard(null);
+    setConfirmIntent({ type: "trade", card });
+  };
+
+  const handleConfirm = () => {
+    const { type, card } = confirmIntent;
+    setConfirmIntent(null);
+    captureIntentAndGoToSignup(card, type);
+  };
+
+  const handleConfirmCancel = () => {
+    setConfirmIntent(null);
   };
 
   useEffect(() => { setMounted(true); }, []);
@@ -409,7 +437,7 @@ export default function TradeBinderPage() {
               <div
                 key={card.printing_id}
                 onClick={() => {
-                  if (isAnonymous) captureIntentAndGoToSignup(card);
+                  if (isAnonymous) setAnonSelectedCard(card);
                   else if (!isOwnPage) toggleSelect(card.printing_id);
                 }}
                 style={{
@@ -419,7 +447,11 @@ export default function TradeBinderPage() {
                   background: "rgba(0,0,0,0.4)",
                   aspectRatio: "2.5/3.5",
                   cursor: isOwnPage ? "default" : "pointer",
-                  outline: !isAnonymous && !isOwnPage && selected.has(card.printing_id) ? "2px solid var(--po-green)" : "none",
+                  outline:
+                    (!isAnonymous && !isOwnPage && selected.has(card.printing_id)) ||
+                    (isAnonymous && anonSelectedCard?.printing_id === card.printing_id)
+                      ? "2px solid var(--po-green)"
+                      : "none",
                   outlineOffset: 2,
                   boxShadow: !isAnonymous && !isOwnPage && card.hunted_by_viewer ? "0 0 16px 2px rgba(255,184,48,0.55)" : "none",
                 }}
@@ -677,6 +709,28 @@ export default function TradeBinderPage() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Anonymous action sheet — opens when anon taps a card */}
+      {isAnonymous && anonSelectedCard && (
+        <AnonymousBinderActionSheet
+          card={anonSelectedCard}
+          sharerHandle={handle}
+          onClose={() => setAnonSelectedCard(null)}
+          onMessage={handleAnonMessage}
+          onTrade={handleAnonTrade}
+        />
+      )}
+
+      {/* Signup confirmation dialog — shown after choosing an action from the sheet */}
+      {confirmIntent && (
+        <AnonymousSignupConfirm
+          open={true}
+          intentType={confirmIntent.type}
+          sharerHandle={handle}
+          onConfirm={handleConfirm}
+          onCancel={handleConfirmCancel}
+        />
       )}
 
       {/* Fixed bottom bar — sign in CTA for anonymous visitors */}

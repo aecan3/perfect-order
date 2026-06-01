@@ -100,12 +100,17 @@ function ConfirmContent() {
         const intentType = searchParams.get("intentType");
         const sharerHandle = searchParams.get("sharerHandle");
         const targetCardName = searchParams.get("targetCardName");
+        const intentSubType = searchParams.get("intentSubType");
 
         if (intentType === "propose_trade" && sharerHandle) {
-          const cardRef = targetCardName
-            ? ` about your "${targetCardName}"`
-            : " about a card from your Trade Binder";
-          const messageBody = `Hi! I'm interested in trading${cardRef}. Want to chat?`;
+          const subType = intentSubType || "message";
+          const messageBody = subType === "trade"
+            ? (targetCardName
+                ? `Hi! I'm interested in trading for your "${targetCardName}". I'm building my own binder — let's chat!`
+                : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
+            : (targetCardName
+                ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
+                : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
           router.refresh();
         } else {

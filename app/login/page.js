@@ -155,16 +155,22 @@ function LoginContent() {
         const intentType = searchParams.get("intentType");
         const sharerHandle = searchParams.get("sharerHandle");
         const targetCardName = searchParams.get("targetCardName");
+        const intentSubType = searchParams.get("intentSubType");
         if (intentType === "propose_trade" && sharerHandle) {
-          intent = { type: "propose_trade", sharerHandle, targetCardName };
+          intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName };
         }
       }
 
       if (intent?.type === "propose_trade" && intent.sharerHandle) {
-        const cardRef = intent.targetCardName
-          ? ` about your "${intent.targetCardName}"`
-          : " about a card from your Trade Binder";
-        const messageBody = `Hi! I'm interested in trading${cardRef}. Want to chat?`;
+        const subType = intent.intentSubType || "message";
+        const cardName = intent.targetCardName;
+        const messageBody = subType === "trade"
+          ? (cardName
+              ? `Hi! I'm interested in trading for your "${cardName}". I'm building my own binder — let's chat!`
+              : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
+          : (cardName
+              ? `Hi! I'd love to chat about your "${cardName}". Are you open to a trade or sale?`
+              : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
         try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
         router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
         router.refresh();
