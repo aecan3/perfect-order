@@ -538,23 +538,25 @@ export default function SetTrackerPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/welcome");
-        return;
-      }
-      setUser(user);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) setUser(authUser);
 
-      const [{ data: prof }, { data: setData }, { data: cardData }, { data: printingData }, { data: gmPrintingData }, { data: entriesData }, { data: userSetData }, { data: favsData }] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      const [{ data: setData }, { data: cardData }, { data: printingData }, { data: gmPrintingData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
         supabase.from("printings").select("*, card:cards(id,name,rarity,supertype,image_large,image_small,number)").eq("set_id", setId).eq("collection_tier", "grand_master").order("display_order", { ascending: true }),
-        supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count").eq("user_id", user.id).eq("set_id", setId),
-        supabase.from("user_sets").select("prices_updated_at").eq("user_id", user.id).eq("set_id", setId).maybeSingle(),
-        supabase.from("favourites").select("printing_id").eq("user_id", user.id),
       ]);
+
+      let prof = null, entriesData = [], userSetData = null, favsData = [];
+      if (authUser) {
+        [{ data: prof }, { data: entriesData }, { data: userSetData }, { data: favsData }] = await Promise.all([
+          supabase.from("profiles").select("*").eq("id", authUser.id).maybeSingle(),
+          supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count").eq("user_id", authUser.id).eq("set_id", setId),
+          supabase.from("user_sets").select("prices_updated_at").eq("user_id", authUser.id).eq("set_id", setId).maybeSingle(),
+          supabase.from("favourites").select("printing_id").eq("user_id", authUser.id),
+        ]);
+      }
 
       setProfile(prof);
       setSetRow(setData);
@@ -806,9 +808,11 @@ export default function SetTrackerPage() {
     setResetTyped("");
   };
 
+  const isAnonymous = !user;
+
   if (!authChecked) {
     return (
-      <MSShell>
+      <MSShell anonymousNav={isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>Loading…</div>
       </MSShell>
     );
@@ -913,7 +917,11 @@ export default function SetTrackerPage() {
     return (
       <div key={card.id} className="flex flex-col">
         <div
-          onClick={() => prints.length === 1 ? togglePrinting(prints[0]) : setPickingCard(card)}
+          onClick={() => {
+            if (isAnonymous) return;
+            if (prints.length === 1) togglePrinting(prints[0]);
+            else setPickingCard(card);
+          }}
           className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
           style={{
             boxShadow: isJustCollected
@@ -980,6 +988,7 @@ export default function SetTrackerPage() {
                 onClick={async (e) => {
                   e.stopPropagation();
                   e.preventDefault();
+                  if (!user) return;
                   if (isFav) {
                     setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
                     supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
@@ -1101,7 +1110,7 @@ export default function SetTrackerPage() {
   };
 
   return (
-    <MSShell>
+    <MSShell anonymousNav={isAnonymous}>
       {celebration && (
         <AchievementCelebration
           type={celebration.type}
@@ -1153,13 +1162,15 @@ export default function SetTrackerPage() {
             <option value="USD">USD</option>
             <option value="GBP">GBP</option>
           </select>
-          <button
-            onClick={() => setResetConfirm(true)}
-            className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
-            style={{ color: "var(--po-text-dim)" }}
-          >
-            Reset
-          </button>
+          {!isAnonymous && (
+            <button
+              onClick={() => setResetConfirm(true)}
+              className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
+              style={{ color: "var(--po-text-dim)" }}
+            >
+              Reset
+            </button>
+          )}
         </div>
 
         {/* Set hero: logo + name + series */}

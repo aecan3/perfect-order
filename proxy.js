@@ -75,7 +75,15 @@ const PUBLIC_PATHS = new Set([
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/icons/") || pathname.startsWith("/brand/") || pathname.startsWith("/trade-binder/")) {
+  if (
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/icons/") ||
+    pathname.startsWith("/brand/") ||
+    pathname.startsWith("/trade-binder/") ||
+    pathname.startsWith("/sets") ||    // set catalog (/sets)
+    pathname.startsWith("/set/") ||    // per-set view — trailing slash is essential: without it /settings would match
+    pathname.startsWith("/friend/")    // friend profile previews
+  ) {
     return NextResponse.next();
   }
 

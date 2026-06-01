@@ -83,7 +83,18 @@ export default function FriendOverviewPage() {
     (async () => {
       // ── Gate 1: auth ──────────────────────────────────────────────
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/welcome"); return; }
+
+      if (!user) {
+        // Anonymous path — fetch public profile only; skip blocked check + friendship queries
+        const { data: friendProfile } = await supabase.from("profiles")
+          .select("*").eq("handle", handle).maybeSingle();
+        if (!friendProfile) { setStatus("not-found"); return; }
+        if (cancelled) return;
+        setFriend(friendProfile);
+        setStatus("ok");
+        return;
+      }
+
       const viewerId = user.id;
       setCurrentUserId(viewerId);
 
@@ -263,10 +274,12 @@ export default function FriendOverviewPage() {
     return () => { cancelled = true; };
   }, [handle, router, supabase]);
 
+  const isAnonymous = !currentUserId;
+
   // ── Gate renders ──────────────────────────────────────────────────
   if (status === "loading") {
     return (
-      <MSShell>
+      <MSShell anonymousNav={isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading…
         </div>
@@ -276,7 +289,7 @@ export default function FriendOverviewPage() {
 
   if (status === "not-found") {
     return (
-      <MSShell>
+      <MSShell anonymousNav={isAnonymous}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
           <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
           <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
@@ -316,7 +329,7 @@ export default function FriendOverviewPage() {
           {mutualCount} mutual {mutualCount === 1 ? "friend" : "friends"}
         </div>
       )}
-      {isPreview && !isPendingFromThem && (
+      {isPreview && !isPendingFromThem && !isAnonymous && (
         <button
           type="button"
           onClick={async () => {
@@ -587,7 +600,7 @@ export default function FriendOverviewPage() {
 
   return (
     <>
-      <MSShell>
+      <MSShell anonymousNav={isAnonymous}>
         {/* BackButton above ProfileView */}
         <div style={{ padding: "8px 16px 0" }}>
           <BackButton />

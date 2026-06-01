@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
+import { Layers } from "lucide-react";
 import { MSHeader } from "./MSHeader";
 import { MSTabBar } from "./MSTabBar";
 import { createClient } from "@/lib/supabase";
@@ -9,6 +11,73 @@ import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { getUserMarketplaceId } from "@/lib/marketplace/currency-to-marketplace";
 import { fetchMarketplaceListings } from "@/lib/marketplace/client-fetch";
 import { RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+
+function AnonymousTabBar() {
+  return (
+    <nav
+      aria-label="Primary"
+      style={{
+        flexShrink: 0,
+        height: "calc(64px + env(safe-area-inset-bottom, 0px))",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: 16,
+        paddingRight: 16,
+        borderTop: "1px solid var(--ms-rule)",
+        background: "var(--ms-bg)",
+        backdropFilter: "saturate(140%) blur(12px)",
+        WebkitBackdropFilter: "saturate(140%) blur(12px)",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      <Link
+        href="/sets"
+        style={{
+          flex: 1,
+          height: 64,
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          color: "var(--ms-dim)",
+          textDecoration: "none",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <Layers size={22} strokeWidth={2} />
+        <span style={{
+          fontFamily: '"IBM Plex Mono", monospace',
+          fontSize: 9,
+          fontWeight: 500,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}>Sets</span>
+      </Link>
+      <Link
+        href="/welcome"
+        style={{
+          flex: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 44,
+          background: "var(--po-green)",
+          color: "#050507",
+          borderRadius: 12,
+          fontWeight: 700,
+          fontSize: 13,
+          textDecoration: "none",
+          letterSpacing: "0.04em",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        Sign Up Free
+      </Link>
+    </nav>
+  );
+}
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 
 function deriveTab(pathname) {
@@ -29,7 +98,7 @@ function deriveTab(pathname) {
   return null;
 }
 
-export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount, hideTabBar = false, children }) {
+export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount, hideTabBar = false, anonymousNav = false, children }) {
   const supabase = createClient();
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
@@ -138,7 +207,7 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
         fontFamily: '"IBM Plex Sans", system-ui, sans-serif',
       }}
     >
-      <MSHeader unreadCount={unreadCount} scrolled={scrolled} />
+      <MSHeader unreadCount={unreadCount} scrolled={scrolled} anonymous={anonymousNav} />
       {indicatorVisible && (
         <button
           type="button"
@@ -244,12 +313,16 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
           overflowY: "auto",
           overscrollBehaviorY: "contain",
           minHeight: 0,
-          paddingBottom: hideTabBar ? "env(safe-area-inset-bottom, 0px)" : undefined,
+          paddingBottom: (hideTabBar && !anonymousNav) ? "env(safe-area-inset-bottom, 0px)" : undefined,
         }}
       >
         {children}
       </main>
-      {!hideTabBar && <MSTabBar active={resolvedTab} unreadMessages={unreadMessages} />}
+      {anonymousNav ? (
+        <AnonymousTabBar />
+      ) : !hideTabBar ? (
+        <MSTabBar active={resolvedTab} unreadMessages={unreadMessages} />
+      ) : null}
     </div>
   );
 }

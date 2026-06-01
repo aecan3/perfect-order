@@ -162,26 +162,27 @@ export default function SetBrowserPage() {
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/welcome"); return; }
-      setUser(user);
+      if (user) setUser(user);
 
-      const [{ data: sets }, { data: userSets }] = await Promise.all([
-        supabase
-          .from("sets")
-          .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
-          .order("release_date", { ascending: false }),
-        supabase.from("user_sets").select("set_id, hidden_at").eq("user_id", user.id),
-      ]);
+      const { data: sets } = await supabase
+        .from("sets")
+        .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
+        .order("release_date", { ascending: false });
 
       setAllSets(sets || []);
-      const active = new Set();
-      const hidden = new Set();
-      for (const row of userSets || []) {
-        if (row.hidden_at) hidden.add(row.set_id);
-        else active.add(row.set_id);
+
+      if (user) {
+        const { data: userSets } = await supabase.from("user_sets").select("set_id, hidden_at").eq("user_id", user.id);
+        const active = new Set();
+        const hidden = new Set();
+        for (const row of userSets || []) {
+          if (row.hidden_at) hidden.add(row.set_id);
+          else active.add(row.set_id);
+        }
+        setActiveSetIds(active);
+        setHiddenSetIds(hidden);
       }
-      setActiveSetIds(active);
-      setHiddenSetIds(hidden);
+
       setLoading(false);
     })();
   }, [router, supabase]);
@@ -239,6 +240,7 @@ export default function SetBrowserPage() {
   // â"€â"€ Wizard actions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   const handleAddTap = async (set) => {
+    if (!user) return;
     // Case 2: set is hidden â†' unhide and navigate, no wizard
     if (hiddenSetIds.has(set.id)) {
       await supabase.from("user_sets")
@@ -419,9 +421,11 @@ export default function SetBrowserPage() {
 
   // â"€â"€ Render â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+  const isAnonymous = !user;
+
   if (loading) {
     return (
-      <MSShell>
+      <MSShell anonymousNav={isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading...
         </div>
@@ -439,8 +443,8 @@ export default function SetBrowserPage() {
     "Done!";
 
   return (
-    <MSShell>
-      <MSPageTitle>ADD A SET</MSPageTitle>
+    <MSShell anonymousNav={isAnonymous}>
+      <MSPageTitle>{isAnonymous ? "BROWSE SETS" : "ADD A SET"}</MSPageTitle>
 
       <div className="px-4 pb-3 max-w-md mx-auto">
         <div className="relative mb-2">
@@ -510,7 +514,14 @@ export default function SetBrowserPage() {
                     {set.series || "—"} · {total} cards
                   </div>
                 </div>
-                {isActive ? (
+                {isAnonymous ? (
+                  <Link
+                    href={`/set/${set.id}`}
+                    className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)]"
+                  >
+                    View
+                  </Link>
+                ) : isActive ? (
                   <Link
                     href={`/set/${set.id}`}
                     className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold flex items-center gap-1"
