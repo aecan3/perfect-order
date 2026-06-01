@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { getFriendIds } from "@/lib/queries/friends";
 import { getBlockIds } from "@/lib/queries/blocks";
@@ -14,7 +15,10 @@ import { MarketplaceDetailOverlay } from "@/components/marketplace/MarketplaceDe
 import { FriendDupeTile } from "@/components/marketplace/FriendDupeTile";
 import { FriendDupeActionSheet } from "@/components/marketplace/FriendDupeActionSheet";
 import { getUserMarketplaceId } from "@/lib/marketplace/currency-to-marketplace";
-import { fetchMarketplaceListings } from "@/lib/marketplace/client-fetch";
+import { fetchMarketplaceListings, clearMarketplaceCache } from "@/lib/marketplace/client-fetch";
+
+const PULL_THRESHOLD_PX = 80;
+const SEEN_ID_CAP = 200;
 
 export default function DiscoverPage() {
   const router = useRouter();
@@ -24,6 +28,13 @@ export default function DiscoverPage() {
   const [marketplaceListings, setMarketplaceListings] = useState([]);
   const [activeMarketplaceListing, setActiveMarketplaceListing] = useState(null);
   const [activeFriendDupe, setActiveFriendDupe] = useState(null);
+
+  // Pull-to-refresh state
+  const [pullProgress, setPullProgress] = useState(0); // 0–1
+  const [refreshing, setRefreshing] = useState(false);
+  const touchStartY = useRef(null);
+  const seenPrintingIds = useRef(new Set());
+  const containerRef = useRef(null);
 
   const loadDiscover = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -49,6 +60,75 @@ export default function DiscoverPage() {
       .then((data) => setMarketplaceListings(data.listings))
       .catch((err) => console.error("[Discover] marketplace fetch failed:", err.message));
   }, []);
+
+  // Non-passive touchmove listener so we can call preventDefault and prevent
+  // native scroll while the user is pulling down from the top.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => {
+      if (touchStartY.current === null || refreshing) return;
+      const delta = e.touches[0].clientY - touchStartY.current;
+      if (delta > 0) {
+        e.preventDefault();
+        setPullProgress(Math.min(delta / PULL_THRESHOLD_PX, 1));
+      } else {
+        // Scrolling upward — cancel pull gesture
+        touchStartY.current = null;
+        setPullProgress(0);
+      }
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, [refreshing]);
+
+  const handleTouchStart = (e) => {
+    const scrollContainer = document.querySelector("[data-scroll-container]");
+    if (scrollContainer && scrollContainer.scrollTop === 0) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (touchStartY.current === null) return;
+    const triggered = pullProgress >= 1;
+    touchStartY.current = null;
+    setPullProgress(0);
+    if (!triggered || refreshing) return;
+
+    setRefreshing(true);
+
+    // Accumulate seen IDs so each refresh surfaces new cards
+    marketplaceListings.forEach((l) => seenPrintingIds.current.add(l.printing_id));
+    let excludeArray = Array.from(seenPrintingIds.current);
+    if (excludeArray.length > SEEN_ID_CAP) {
+      excludeArray = excludeArray.slice(-SEEN_ID_CAP);
+      seenPrintingIds.current = new Set(excludeArray);
+    }
+
+    const marketplaceId = getUserMarketplaceId();
+    // Invalidate GET cache so re-navigation to Discover also fetches fresh data
+    clearMarketplaceCache(marketplaceId);
+
+    try {
+      const res = await fetch("/api/marketplace/listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          marketplaceId,
+          excludeIds: excludeArray,
+          tradeCount: cards ? cards.length : 0,
+        }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      setMarketplaceListings(data.listings || []);
+    } catch (err) {
+      console.error("[Discover] pull-to-refresh failed:", err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useTableRefetch({
     supabase,
@@ -126,7 +206,35 @@ export default function DiscoverPage() {
 
   return (
     <MSShell>
-      <div className="pb-32">
+      <div
+        ref={containerRef}
+        className="pb-32"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Pull-to-refresh indicator */}
+        <div
+          style={{
+            overflow: "hidden",
+            height: refreshing ? 44 : `${pullProgress * 44}px`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: pullProgress === 0 && !refreshing ? "height 0.2s ease" : "none",
+          }}
+        >
+          <RefreshCw
+            size={18}
+            className={refreshing ? "animate-spin" : ""}
+            style={{
+              color: "var(--po-green)",
+              opacity: refreshing ? 1 : pullProgress,
+              transform: refreshing ? undefined : `rotate(${pullProgress * 180}deg)`,
+              transition: refreshing ? undefined : "transform 0.05s linear",
+            }}
+          />
+        </div>
+
         <MSPageTitle sub="Possible trades — cards your friends have as duplicates">
           Discover
         </MSPageTitle>

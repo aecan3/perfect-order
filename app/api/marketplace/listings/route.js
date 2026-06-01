@@ -5,74 +5,101 @@ import { getServiceClient } from "@/lib/supabase/service";
 import { getListingsForUser } from "@/lib/marketplace/listings-for-user";
 
 const MIN_PRICE_USD = 5;
-const RANDOM_FILL_COUNT = 20;
+const MAX_FAV_LIMIT = 6;
+const VARIETY_MAX_AGE_MINUTES = 2880; // 2 days — wider window for variety pool coverage
 
 async function getSupabase() {
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {},
-      },
-    }
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
   );
 }
 
-export async function GET(request) {
+async function handleListings(request, { excludeIds = [], tradeCount = 0, marketplaceId: bodyMarketplaceId } = {}) {
   const supabase = await getSupabase();
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  if (authErr || !user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const marketplaceId = searchParams.get("marketplaceId")?.trim() || "EBAY_AU";
+  const marketplaceId = bodyMarketplaceId || searchParams.get("marketplaceId")?.trim() || "EBAY_AU";
 
   try {
     const service = getServiceClient();
 
-    // Determine which printings to show: favourites (price-filtered) or random pool sample.
-    const { data: favRows } = await service
-      .from("favourites")
-      .select("printing_id")
-      .eq("user_id", user.id)
-      .limit(6);
+    // Tile count scales with friend trade density: new users get 36 tiles,
+    // power users with many friend dupes get fewer (min 8).
+    const desiredEbayCount = Math.max(8, Math.round(36 - tradeCount * 1.5));
+    const favouriteQuotaCount = Math.floor(desiredEbayCount * 0.2);
 
-    const rawFavIds = (favRows || []).map((r) => r.printing_id).filter(Boolean);
-
-    let targetPrintingIds;
-    let mode;
-
-    if (rawFavIds.length > 0) {
-      const { data: priceRows } = await service
-        .from("printings")
-        .select("id")
-        .in("id", rawFavIds)
-        .gte("price_usd", MIN_PRICE_USD);
-      targetPrintingIds = (priceRows || []).map((r) => r.id);
-      mode = "favourites";
-    } else {
-      const { data: pool } = await service
-        .from("marketplace_pool")
+    // Favourites get up to 20% of eBay tile slots (price-filtered, not already seen).
+    // Unused favourite slots roll into variety.
+    let favouriteIds = [];
+    if (favouriteQuotaCount > 0) {
+      const { data: favRows } = await service
+        .from("favourites")
         .select("printing_id")
-        .eq("enabled", true)
-        .not("last_refreshed_at", "is", null);
-      const shuffled = (pool || []).slice().sort(() => Math.random() - 0.5);
-      targetPrintingIds = shuffled.slice(0, RANDOM_FILL_COUNT).map((r) => r.printing_id);
-      mode = "random";
+        .eq("user_id", user.id)
+        .limit(MAX_FAV_LIMIT);
+
+      const rawFavIds = (favRows || []).map((r) => r.printing_id).filter(Boolean);
+
+      if (rawFavIds.length > 0) {
+        const { data: priceRows } = await service
+          .from("printings")
+          .select("id")
+          .in("id", rawFavIds)
+          .gte("price_usd", MIN_PRICE_USD);
+
+        favouriteIds = (priceRows || [])
+          .map((r) => r.id)
+          .filter((id) => !excludeIds.includes(id))
+          .slice(0, favouriteQuotaCount);
+      }
     }
 
-    const { listings } = await getListingsForUser(targetPrintingIds, { marketplaceId });
+    // Remaining slots filled from variety pool: cards in user's active sets
+    // they don't own, with a warmed marketplace_pool entry.
+    const varietyCount = desiredEbayCount - favouriteIds.length;
+    const excludeForRpc = [...excludeIds, ...favouriteIds];
 
-    return NextResponse.json({ mode, listings });
+    const { data: varietyRows, error: rpcErr } = await service.rpc(
+      "get_marketplace_variety_for_user",
+      {
+        viewer: user.id,
+        marketplace_id_param: marketplaceId,
+        exclude_printing_ids: excludeForRpc,
+        limit_count: varietyCount,
+      }
+    );
+
+    if (rpcErr) throw new Error(`variety RPC failed: ${rpcErr.message}`);
+
+    const varietyIds = (varietyRows || []).map((r) => r.printing_id);
+    const targetPrintingIds = [...favouriteIds, ...varietyIds];
+
+    const { listings } = await getListingsForUser(targetPrintingIds, {
+      marketplaceId,
+      maxAgeMinutes: VARIETY_MAX_AGE_MINUTES,
+    });
+
+    return NextResponse.json({ mode: "variety", listings });
   } catch (err) {
     console.error("[marketplace/listings] failed:", err.message);
-    return NextResponse.json(
-      { error: "Failed to load marketplace listings" },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: "Failed to load marketplace listings" }, { status: 502 });
   }
+}
+
+export async function GET(request) {
+  return handleListings(request);
+}
+
+export async function POST(request) {
+  const body = await request.json().catch(() => ({}));
+  return handleListings(request, {
+    excludeIds: Array.isArray(body.excludeIds) ? body.excludeIds : [],
+    tradeCount: typeof body.tradeCount === "number" ? body.tradeCount : 0,
+    marketplaceId: typeof body.marketplaceId === "string" ? body.marketplaceId : undefined,
+  });
 }

@@ -114,9 +114,9 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
       const { data: { user } } = await supabase.auth.getUser();
       if (cancelled || !user) return;
       const marketplaceId = getUserMarketplaceId();
-      // Fire-and-forget — warm the marketplace cache for upcoming
-      // navigation to /discover. Server-side refreshStaleForUser
-      // populates the DB cache; we discard the response here.
+      // Fire-and-forget — warm the client-side marketplace cache for upcoming
+      // navigation to /discover. Route is a pure cached DB read; we discard
+      // the response here since Discover's own useEffect will consume it.
       fetchMarketplaceListings(marketplaceId).catch(() => {});
     })();
     return () => { cancelled = true; };
@@ -237,10 +237,12 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
         </button>
       )}
       <main
+        data-scroll-container="true"
         onScroll={onScroll}
         style={{
           flex: 1,
           overflowY: "auto",
+          overscrollBehaviorY: "contain",
           minHeight: 0,
           paddingBottom: hideTabBar ? "env(safe-area-inset-bottom, 0px)" : undefined,
         }}
