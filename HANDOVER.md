@@ -1113,6 +1113,10 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Service-role endpoints must return COUNTS or curated fields only — never pass through raw rows.** The service role bypasses all RLS, so anything in the response is exposed regardless of what the requester's auth would normally allow. The public-stats endpoint queries with `count: "exact"` and returns integers only, no row data. If a future endpoint needs to expose derived data (e.g. set names a user owns), explicitly select only the public-safe fields and document why.
 
+- **`CREATE OR REPLACE FUNCTION` does NOT replace across signature changes.** PostgreSQL treats functions with different argument types as DIFFERENT functions, even with the same name. Iterating on an RPC signature creates a new overload alongside the old one — `CREATE OR REPLACE` only updates the matching signature. PostgREST then returns HTTP 300 (Multiple Choices) because it can't pick which overload to call. The user sees an empty result with no error. Fix: explicitly `DROP FUNCTION IF EXISTS function_name(arg_types)` before re-creating with the new signature. Caught in session 19 (commit d59cd33) when `get_marketplace_variety_for_user` had two overloads: one with `exclude_printing_ids uuid[]` and one with `text[]`. Cost: half a day debugging "the RPC works but Discover shows nothing." Always drop explicitly when changing function signatures.
+
+- **`RETURNS TABLE(col_name type)` column names become in-scope variables inside the function body.** When a PL/pgSQL function has `RETURNS TABLE(printing_id text, is_active_set boolean)`, those column names become declared output variables. Any subquery selecting a column of the same name will be ambiguous (`error: column reference "printing_id" is ambiguous`). Fix: alias the subquery column to something distinct. Example: change `SELECT printing_id FROM user_owned` to `SELECT printing_id AS owned_id FROM user_owned`, then use `owned_id` everywhere. Caught in session 19 (commit 812f45b's follow-up).
+
 ---
 
 ## 18. RECOMMENDED NEXT-SESSION ORDER
@@ -1162,12 +1166,48 @@ When picking this back up, suggested sequence:
 
 **Pending minor items (no dedicated session needed — handle when adjacent work touches these files):**
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
+- **`marketplace_pool.printing_id` is TEXT, but most other printing references are UUID.** Inconsistency caught in session 19 during RPC iteration (commit d59cd33). All printing column types should be reviewed and aligned in a single migration. Workaround: when writing RPCs touching `marketplace_pool`, cast `printings.id::text` and use `text[]` parameters. Not blocking but bites future RPC authors.
 
 **Done since last handover (30 May 2026, session 18):**
 
 - **Collapsible Pending Sent + Friend Requests at top of /friends** (commit `8f090db`): The /friends page now shows two collapsible sections at the top — one for pending requests you've sent and one for incoming requests — instead of the previous flat list. Both sections are hidden when empty. Improves legibility when a user has multiple outstanding requests in either direction.
 
 - **Friends search redesign + preview profile mode** (commits `05fda1c`, `d185df5`): Four-part feature. (1) New `GET /api/friends/search` endpoint: auth-gated, sanitises the `q` param, queries profiles via ILIKE, excludes self and blocked users, enriches each result with `friendship_status` (`friends | pending_received | not-friends`), omits `pending_sent` users from results entirely. (2) `/friends` search bar redesigned: debounced dropdown calls the new endpoint, each suggestion navigates to `/friend/[handle]`, "Search" button routes to `/friends/search?q=…`. (3) New `/friends/search` page: full-page results up to 50, Avatar + status badges, auto-runs on mount when `q` param is present, required Suspense boundary for `useSearchParams()`. (4) `/friend/[handle]` preview mode: removed the "not-friends" hard wall — non-friends now see a preview with real stats (via service-role `GET /api/profile/[handle]/public-stats`), locked Hunting strip placeholder showing count only, Add Friend CTA in the `afterStats` slot with optimistic `localPendingFromMe` state, mutual-friends count (no names, service-role computed). `ProfileView` extended with `isPreview`, `afterStats`, and `publicHuntingCount` props. Root cause of the prior 0/0/0 stats: Supabase RLS silently returns empty rows for non-friends; fixed by the service-role endpoint which returns aggregate counts only, never raw rows.
+
+**Done since last handover (1 June 2026, session 19):**
+
+- **Friend request flow polish** (commits `4aceec7` and `96ae29b`): Three related fixes. (1) Friend request notifications now deep-link to `/friend/[senderHandle]` instead of `/friends` — recipient lands on the requester's preview profile where they can see stats, mutual friends, and Accept/Decline inline. (2) Incoming friend request rows in `/friends` now wrap the requester's name in a `<Link>` to their preview profile. Accept/Decline icon buttons remain separately tappable. (3) Preview profile (`/friend/[handle]`) now detects `isPendingFromThem` — friendship row where viewer is `user_b` with `status === "pending"` — and shows Accept/Decline buttons in the `afterStats` slot instead of Add Friend CTA. Accept does `UPDATE friendships SET status='accepted'` then page reload; Decline does `DELETE` then routes to `/friends`. (4) Notifications page friend_request rows restructured into a tappable content area + Accept/Decline action row. Post-action shows `Accepted ✓` (lime) or `Declined` (dim) pill via local `resolvedRequests` state keyed by `notif.id`. (5) Preview-mode stats flicker fixed using PATTERN 1: stats row, mutual line, and `afterStats` slot all gated on `publicHuntingCount !== null` (the public-stats fetch having resolved). Ghost skeleton preserves layout height via `color: transparent` text — no layout shift when real numbers arrive.
+
+- **Comprehensive notification gap closure** (commits `eab939f` and `40f82fb`): Five high/medium gaps identified via a full audit of notification surfaces and closed in one commit. Plus a follow-up that fixed visibility of viewer's own feed posts.
+
+  Schema: added `notifications.metadata JSONB DEFAULT '{}'` for structured notification data (likers list, event references, future use cases).
+
+  App-code notifications added:
+  - Friend-request accepted: all 3 accept handlers (`/friends` list, `/friend/[handle]` preview, `/notifications` inline) now insert `friend_accepted` notification to original requester with `/friend/[acceptorHandle]` deep-link.
+  - Trade declined: `/api/trade/[tradeId]/decline` inserts `trade_declined` notification to proposer.
+  - Trade stage-2 mutual accept: `/api/trade/[tradeId]/accept` inserts `trade_accepted` notifications to both parties when both have completed verification.
+
+  DB triggers (new):
+  - `notify_feed_event_comment`: AFTER INSERT on `feed_event_comments`, inserts `feed_comment` notification to event owner with `/feed#event-[id]` deep-link. Self-comment skipped via guard.
+  - `notify_feed_event_like`: AFTER INSERT on `feed_event_likes`, inserts or STACKS a `feed_like` notification. Stacking rule: if an unread `feed_like` notification for this event exists and is less than 7 days old, UPDATE its metadata to include the new liker and regenerate title/body ("alex and beth liked...", "alex, beth and 3 others liked..."). Otherwise INSERT new. Dedup guard prevents double-stacking on rapid taps. Self-like guard skips owner's own actions.
+
+  UI: `/feed` reads `window.location.hash` on mount, smooth-scrolls to `#event-[uuid]` if present. Each `FeedEventCard` wrapper has `id="event-<uuid>"` for the target.
+
+  Follow-up (`40f82fb`): `get_feed_events` RPC modified to include events where `actor_user_id = viewer` in addition to existing friend-author criteria. Previously the feed was friends-only, so notification deep-links to your OWN post landed on a /feed view that didn't contain that post (impossible to reply to a comment on your own feed). Now /feed is "your network and you." Self-like UX oddity (you can heart your own post) is a separate polish item; the trigger correctly skips self-actions so no notification spam.
+
+- **Discover performance + variety overhaul** (commits `6dfcfff`, `ba2b4ed`, `6edee95`, `d59cd33`, `812f45b`): Five-commit arc addressing eBay marketplace tiles loading 1.5-4s slower than friend trade tiles, plus a fundamental variety pool problem that surfaced once the perf issue was resolved.
+
+  Commit 1 (`6dfcfff`) — Render gate fix: removed `marketplaceSettled` from the page's "show grid" condition. Friend tiles previously held hostage by marketplace fetch — they now paint as soon as `cards` resolves (~300ms). Removed the 5s timeout fallback.
+
+  Commit 2 (`ba2b4ed`) — Cache-only route: deleted `refreshStaleForUser` (~115 lines) which made live eBay Browse API calls inline with user requests. The `/api/marketplace/listings` route is now a pure cached DB read. GitHub Actions cron (every 10 min, 20 cards per batch, ~24h full cycle) remains the sole eBay refresh path. Trade-off: user requests are fast (~200-500ms) but listings can be up to 24h old. Acceptable for MVP given the variety wins.
+
+  Commit 3 (`6edee95`) — Variety + dynamic count + pull-to-refresh: Three intertwined changes. New RPC `get_marketplace_variety_for_user(viewer, marketplace_id, exclude_printing_ids, limit)`. Returns missing-active-set cards with warmed pool entries. Route rewritten to support GET (initial load) AND POST (pull-to-refresh with excludeIds and tradeCount in body). Tile count formula: `max(8, round(36 - tradeCount * 1.5))` — 0 trades → 36 eBay tiles, 10 trades → 21, 20 trades → 8, always min 8. 20% favourite quota max, 80% variety. Client-side pull-to-refresh: container-level touch handlers (non-passive touchmove for `preventDefault`), lime spinner with rotation progress tracking pull distance, 80px threshold to trigger refresh. `seenPrintingIds` ref accumulates across refreshes (capped at 200). MSShell `<main>` got `data-scroll-container="true"` and `overscroll-behavior-y: contain` to suppress iOS native gesture conflict.
+
+  Commit 4 (`d59cd33`) — Fix HTTP 300 from overload collision: see §17 lesson above. Iterating the RPC's signature from `uuid[]` to `text[]` left both overloads in place, causing silent empty responses.
+
+  Commit 5 (`812f45b`) — Widen variety pool + parallelize: Initial variety pool was limited by an "active sets only" restriction, yielding 13 candidates for Alex of which 9 had fresh listings — pull-to-refresh exhausted on first pull. Diagnosis: Alex had 2,533 missing cards WITH fresh listings across all sets (vs 9 in active sets only). RPC rewritten to consider all missing cards, with `is_active_set` boolean as a sort key so active-set cards still appear first within the broader pool. Route's sequential DB queries (auth → favourites → price-filter → variety RPC → listings) parallelized via Promise.all on the favourites and variety flows. ~200-500ms saved.
+
+  End state for Discover: ~24-30 eBay tiles on initial load (was 0-9 before), active-set cards prioritized at top, broader variety fills rest. Pull-to-refresh draws new cards from a pool of 2,533 rather than exhausting after one pull. Initial load is significantly faster.
 
 **Done since last handover (30 May 2026, session 17):**
 
