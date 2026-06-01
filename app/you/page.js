@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Settings, LogOut, ChevronRight } from "lucide-react";
+import { Settings, LogOut, ChevronRight, Share2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { ProfileView } from "@/components/profile/ProfileView";
@@ -26,6 +26,7 @@ export default function YouPage() {
   const [friends, setFriends] = useState({ count: 0, sample: [] });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,6 +128,26 @@ export default function YouPage() {
     }
   };
 
+  const handleShare = async () => {
+    const url = `${window.location.origin}/trade-binder/${profile?.handle}`;
+    const text = `Check out my Pokémon TCG Trade Binder on Master Setter`;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ url, text, title: "My Trade Binder" });
+      } catch (e) {
+        // user cancelled — no-op
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      } catch (e) {
+        console.error("Clipboard write failed:", e);
+      }
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/welcome");
@@ -221,6 +242,28 @@ export default function YouPage() {
           </div>
         )}
       </Link>
+
+      {/* Share Trade Binder */}
+      <div style={{ marginBottom: 24 }}>
+        <button
+          onClick={handleShare}
+          style={{
+            width: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "13px 16px",
+            background: shareCopied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
+            border: "0.5px solid rgba(200,255,74,0.25)",
+            borderRadius: "var(--border-radius-md)",
+            cursor: "pointer",
+            transition: "background 0.15s",
+          }}
+        >
+          <Share2 size={16} style={{ color: "var(--po-green)", flexShrink: 0 }} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--po-green)" }}>
+            {shareCopied ? "Link copied!" : "Share my Trade Binder"}
+          </span>
+        </button>
+      </div>
 
       {/* Account menu */}
       <div style={{ borderTop: "0.5px solid rgba(244,244,246,0.08)", paddingTop: 20 }}>

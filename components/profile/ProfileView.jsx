@@ -125,45 +125,26 @@ export function ProfileView({
             </div>
           </div>
 
-          {/* Duplicates — lime; tappable in full view, static in preview */}
-          {isPreview ? (
-            <div
-              style={{
-                flex: 1, padding: "12px 8px",
-                background: "rgba(200,255,74,0.08)",
-                border: "0.5px solid rgba(200,255,74,0.25)",
-                borderRadius: "var(--border-radius-md)",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
-                {stats.duplicates}
-              </div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
-                Dupes
-              </div>
+          {/* Trade Binder — lime; always tappable since destination is public */}
+          <Link
+            href={`/trade-binder/${handle}`}
+            style={{
+              flex: 1, padding: "12px 8px",
+              background: "rgba(200,255,74,0.08)",
+              border: "0.5px solid rgba(200,255,74,0.25)",
+              borderRadius: "var(--border-radius-md)",
+              textAlign: "center",
+              textDecoration: "none",
+              display: "block",
+            }}
+          >
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
+              {stats.duplicates}
             </div>
-          ) : (
-            <Link
-              href={`/duplicates/${handle}`}
-              style={{
-                flex: 1, padding: "12px 8px",
-                background: "rgba(200,255,74,0.08)",
-                border: "0.5px solid rgba(200,255,74,0.25)",
-                borderRadius: "var(--border-radius-md)",
-                textAlign: "center",
-                textDecoration: "none",
-                display: "block",
-              }}
-            >
-              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--po-green)", letterSpacing: "-0.02em" }}>
-                {stats.duplicates}
-              </div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
-                Dupes ›
-              </div>
-            </Link>
-          )}
+            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--po-green)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 3, opacity: 0.75 }}>
+              Binder ›
+            </div>
+          </Link>
         </div>
       )}
 

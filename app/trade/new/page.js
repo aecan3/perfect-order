@@ -409,7 +409,7 @@ function TradeNewInner() {
                   color: !showAll ? "#050507" : "var(--po-text-dim)",
                 }}
               >
-                Duplicates only
+                Trade Binder only
               </button>
               <button
                 onClick={() => { setShowAll(true); setSelected({}); }}
@@ -446,7 +446,7 @@ function TradeNewInner() {
               <p className="text-sm text-[var(--po-text-dim)] py-8 text-center">
                 {showAll
                   ? "No cards in your collection yet."
-                  : "No duplicates yet — tap 'All cards' to offer any card."}
+                  : "No cards in your Trade Binder yet — tap 'All cards' to offer any card."}
               </p>
             )}
 

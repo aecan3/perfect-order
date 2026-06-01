@@ -213,7 +213,7 @@ export function FeedEventCard({ event, viewerId, viewerCollectsSet }) {
         >
           <Layers size={16} style={{ color: "var(--po-green)", flexShrink: 0, alignSelf: "center" }} />
           <span style={{ color: "var(--po-green)", fontSize: 13, fontWeight: 500, flex: 1, lineHeight: 1.35 }}>
-            Own duplicates for this set? Let people know
+            Want to share cards from this set in your Trade Binder?
           </span>
           <ArrowRight size={14} style={{ color: "var(--po-green)", flexShrink: 0, alignSelf: "center" }} />
         </div>

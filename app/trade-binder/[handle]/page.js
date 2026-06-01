@@ -57,12 +57,12 @@ function fmtMoney(priceUsd, currency) {
   return `${symbol}${val < 10 ? val.toFixed(2) : Math.round(val)}`;
 }
 
-export default function DuplicatesPage() {
+export default function TradeBinderPage() {
   const { handle } = useParams();
   const router = useRouter();
   const supabase = createClient();
 
-  const [status, setStatus] = useState("loading"); // loading | ok | not-found | not-friends
+  const [status, setStatus] = useState("loading"); // loading | ok | not-found
   const [viewerId, setViewerId] = useState(null);
   const [viewerHandle, setViewerHandle] = useState(null);
   const [targetProfile, setTargetProfile] = useState(null);
@@ -178,9 +178,9 @@ export default function DuplicatesPage() {
     let cancelled = false;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/welcome"); return; }
+      const anonymous = !user;
 
-      // Resolve target handle → profile
+      // Resolve target handle → profile (works for anon via RLS)
       const { data: targetProf } = await supabase
         .from("profiles")
         .select("id, handle, display_name")
@@ -190,47 +190,34 @@ export default function DuplicatesPage() {
       if (cancelled) return;
       if (!targetProf) { setStatus("not-found"); return; }
 
-      // Resolve viewer's own handle for isOwnPage check
-      const { data: viewerProf } = await supabase
-        .from("profiles")
-        .select("id, handle")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      const isOwnPage = user.id === targetProf.id;
-
-      if (!isOwnPage) {
-        // Privacy: only friends can view each other's duplicates
-        const { data: friendship } = await supabase
-          .from("friendships")
-          .select("id")
-          .or(`and(user_a.eq.${user.id},user_b.eq.${targetProf.id}),and(user_a.eq.${targetProf.id},user_b.eq.${user.id})`)
-          .eq("status", "accepted")
+      if (!anonymous) {
+        // Resolve viewer's own handle for isOwnPage check and trade proposal
+        const { data: viewerProf } = await supabase
+          .from("profiles")
+          .select("id, handle")
+          .eq("id", user.id)
           .maybeSingle();
 
         if (cancelled) return;
-        if (!friendship) { setStatus("not-friends"); return; }
+        setViewerId(user.id);
+        setViewerHandle(viewerProf?.handle || "");
       }
 
-      setViewerId(user.id);
-      setViewerHandle(viewerProf?.handle || "");
       setTargetProfile(targetProf);
 
-      const data = await fetchUserDuplicates(supabase, targetProf.id, user.id);
+      const data = await fetchUserDuplicates(supabase, targetProf.id, anonymous ? null : user.id);
       if (cancelled) return;
 
       setDuplicates(data);
       setStatus("ok");
     })();
     return () => { cancelled = true; };
-  }, [handle, router, supabase]);
+  }, [handle, supabase]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (status === "loading") {
     return (
-      <MSShell>
+      <MSShell hideTabBar>
         <div style={{ padding: "2rem 1.25rem", color: "var(--po-text-dim)", textAlign: "center" }}>
           Loading…
         </div>
@@ -241,7 +228,7 @@ export default function DuplicatesPage() {
   // ── Not found ────────────────────────────────────────────────────────────
   if (status === "not-found") {
     return (
-      <MSShell>
+      <MSShell hideTabBar>
         <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
           <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>User not found.</p>
         </div>
@@ -249,25 +236,13 @@ export default function DuplicatesPage() {
     );
   }
 
-  // ── Not friends (privacy gate) ───────────────────────────────────────────
-  if (status === "not-friends") {
-    return (
-      <MSShell>
-        <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-          <p style={{ color: "var(--po-text-dim)", fontSize: 14, lineHeight: 1.55 }}>
-            You can only view duplicates from friends.<br />Add @{handle} as a friend first.
-          </p>
-        </div>
-      </MSShell>
-    );
-  }
-
   // ── Resolved ─────────────────────────────────────────────────────────────
-  const isOwnPage = viewerId && targetProfile && viewerId === targetProfile.id;
+  const isAnonymous = !viewerId;
+  const isOwnPage = !isAnonymous && viewerId === targetProfile?.id;
   const huntCount = duplicates.filter((d) => d.hunted_by_viewer).length;
 
   return (
-    <MSShell hideTabBar={!isOwnPage && selected.size > 0}>
+    <MSShell hideTabBar={isAnonymous || (!isOwnPage && selected.size > 0)}>
       <div style={{ padding: "0 16px 32px" }}>
 
         {/* Header */}
@@ -275,11 +250,11 @@ export default function DuplicatesPage() {
           <BackButton />
         </div>
         <MSPageTitle sub={isOwnPage ? null : `@${handle}`}>
-          {isOwnPage ? "Your Duplicates" : "Duplicates"}
+          {isOwnPage ? "Your Trade Binder" : "Trade Binder"}
         </MSPageTitle>
 
-        {/* Hunting-match banner — friend view only */}
-        {!isOwnPage && huntCount > 0 && (
+        {/* Hunting-match banner — logged-in friend view only */}
+        {!isAnonymous && !isOwnPage && huntCount > 0 && (
           <div style={{
             margin: "0 0 16px",
             padding: "10px 14px",
@@ -300,7 +275,7 @@ export default function DuplicatesPage() {
         {/* Empty state */}
         {duplicates.length === 0 && (
           <div style={{ padding: "3rem 0", textAlign: "center" }}>
-            <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>No duplicates available.</p>
+            <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>No cards in your Trade Binder yet.</p>
           </div>
         )}
 
@@ -409,17 +384,17 @@ export default function DuplicatesPage() {
             {sortedDuplicates.map((card) => (
               <div
                 key={card.printing_id}
-                onClick={() => !isOwnPage && toggleSelect(card.printing_id)}
+                onClick={() => !isAnonymous && !isOwnPage && toggleSelect(card.printing_id)}
                 style={{
                   position: "relative",
                   borderRadius: "var(--border-radius-md)",
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.4)",
                   aspectRatio: "2.5/3.5",
-                  cursor: isOwnPage ? "default" : "pointer",
-                  outline: !isOwnPage && selected.has(card.printing_id) ? "2px solid var(--po-green)" : "none",
+                  cursor: isAnonymous || isOwnPage ? "default" : "pointer",
+                  outline: !isAnonymous && !isOwnPage && selected.has(card.printing_id) ? "2px solid var(--po-green)" : "none",
                   outlineOffset: 2,
-                  boxShadow: !isOwnPage && card.hunted_by_viewer ? "0 0 16px 2px rgba(255,184,48,0.55)" : "none",
+                  boxShadow: !isAnonymous && !isOwnPage && card.hunted_by_viewer ? "0 0 16px 2px rgba(255,184,48,0.55)" : "none",
                 }}
               >
                 {/* Card image */}
@@ -500,7 +475,7 @@ export default function DuplicatesPage() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Filter duplicates"
+            aria-label="Filter trade binder"
             style={{
               position: "fixed", right: 0, top: 0, bottom: 0,
               width: "85vw", maxWidth: 360,
@@ -677,8 +652,46 @@ export default function DuplicatesPage() {
         document.body
       )}
 
-      {/* Fixed bottom selection bar — friend view only */}
-      {!isOwnPage && selected.size > 0 && (
+      {/* Fixed bottom bar — sign in CTA for anonymous visitors */}
+      {isAnonymous && (
+        <div style={{
+          position: "fixed",
+          bottom: 0, left: 0, right: 0,
+          borderTop: "0.5px solid rgba(244,244,246,0.1)",
+          background: "rgba(5,5,7,0.95)",
+          backdropFilter: "blur(12px)",
+          padding: "12px 16px",
+          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        }}>
+          <div style={{ maxWidth: 384, margin: "0 auto" }}>
+            <button
+              onClick={() => router.push(`/welcome?returnTo=/trade-binder/${handle}`)}
+              style={{
+                width: "100%",
+                padding: "15px",
+                background: "var(--po-green)",
+                borderRadius: "var(--border-radius-md)",
+                color: "#050507",
+                fontWeight: 700,
+                fontSize: 15,
+                letterSpacing: "-0.01em",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <ArrowLeftRight size={15} />
+              Sign in to propose a trade
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed bottom selection bar — logged-in friend view only */}
+      {!isAnonymous && !isOwnPage && selected.size > 0 && (
         <div style={{
           position: "fixed",
           bottom: 0, left: 0, right: 0,

@@ -2,6 +2,11 @@ import { withSentryConfig } from '@sentry/nextjs';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactCompiler: true,
+  async redirects() {
+    return [
+      { source: '/duplicates/:path*', destination: '/trade-binder/:path*', permanent: true },
+    ];
+  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'limitlesstcg.nyc3.cdn.digitaloceanspaces.com' },
