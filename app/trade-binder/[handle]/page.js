@@ -150,6 +150,30 @@ export default function TradeBinderPage() {
     });
   };
 
+  const captureIntentAndGoToSignup = (card) => {
+    const params = new URLSearchParams({
+      returnTo: `/trade-binder/${handle}`,
+      intentType: "propose_trade",
+      sharerHandle: handle,
+      targetPrintingId: card.printing_id,
+    });
+    if (card.card_name) params.set("targetCardName", card.card_name);
+
+    try {
+      sessionStorage.setItem("ms_anon_intent", JSON.stringify({
+        type: "propose_trade",
+        sharerHandle: handle,
+        targetPrintingId: card.printing_id,
+        targetCardName: card.card_name || null,
+        capturedAt: Date.now(),
+      }));
+    } catch (e) {
+      // sessionStorage unavailable — URL params carry the intent
+    }
+
+    router.push(`/welcome?${params.toString()}`);
+  };
+
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
@@ -384,14 +408,17 @@ export default function TradeBinderPage() {
             {sortedDuplicates.map((card) => (
               <div
                 key={card.printing_id}
-                onClick={() => !isAnonymous && !isOwnPage && toggleSelect(card.printing_id)}
+                onClick={() => {
+                  if (isAnonymous) captureIntentAndGoToSignup(card);
+                  else if (!isOwnPage) toggleSelect(card.printing_id);
+                }}
                 style={{
                   position: "relative",
                   borderRadius: "var(--border-radius-md)",
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.4)",
                   aspectRatio: "2.5/3.5",
-                  cursor: isAnonymous || isOwnPage ? "default" : "pointer",
+                  cursor: isOwnPage ? "default" : "pointer",
                   outline: !isAnonymous && !isOwnPage && selected.has(card.printing_id) ? "2px solid var(--po-green)" : "none",
                   outlineOffset: 2,
                   boxShadow: !isAnonymous && !isOwnPage && card.hunted_by_viewer ? "0 0 16px 2px rgba(255,184,48,0.55)" : "none",

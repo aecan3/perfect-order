@@ -117,7 +117,14 @@ function LoginContent() {
             privacy_version: PRIVACY_VERSION,
             privacy_agreed_at: agreedAt,
           },
-          emailRedirectTo: `${window.location.origin}/auth/confirm`,
+          emailRedirectTo: (() => {
+            const p = new URLSearchParams(window.location.search);
+            p.delete("mode"); // not needed in confirm URL
+            const qs = p.toString();
+            return qs
+              ? `${window.location.origin}/auth/confirm?${qs}`
+              : `${window.location.origin}/auth/confirm`;
+          })(),
         },
       });
 
@@ -136,6 +143,34 @@ function LoginContent() {
         setLoading(false);
         return;
       }
+
+      // Resolve pending Trade Binder intent — sessionStorage first, URL params as fallback
+      let intent = null;
+      try {
+        const raw = sessionStorage.getItem("ms_anon_intent");
+        if (raw) intent = JSON.parse(raw);
+      } catch (e) { /* ignore */ }
+
+      if (!intent) {
+        const intentType = searchParams.get("intentType");
+        const sharerHandle = searchParams.get("sharerHandle");
+        const targetCardName = searchParams.get("targetCardName");
+        if (intentType === "propose_trade" && sharerHandle) {
+          intent = { type: "propose_trade", sharerHandle, targetCardName };
+        }
+      }
+
+      if (intent?.type === "propose_trade" && intent.sharerHandle) {
+        const cardRef = intent.targetCardName
+          ? ` about your "${intent.targetCardName}"`
+          : " about a card from your Trade Binder";
+        const messageBody = `Hi! I'm interested in trading${cardRef}. Want to chat?`;
+        try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+        router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+        router.refresh();
+        return;
+      }
+
       router.push("/");
       router.refresh();
     }

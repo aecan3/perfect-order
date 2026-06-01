@@ -97,8 +97,21 @@ function ConfirmContent() {
       // a race against verifyOtp/getSession. The timer just lets the user
       // read the "Confirmed!" state before the redirect fires.
       setTimeout(() => {
-        router.push("/");
-        router.refresh();
+        const intentType = searchParams.get("intentType");
+        const sharerHandle = searchParams.get("sharerHandle");
+        const targetCardName = searchParams.get("targetCardName");
+
+        if (intentType === "propose_trade" && sharerHandle) {
+          const cardRef = targetCardName
+            ? ` about your "${targetCardName}"`
+            : " about a card from your Trade Binder";
+          const messageBody = `Hi! I'm interested in trading${cardRef}. Want to chat?`;
+          router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+          router.refresh();
+        } else {
+          router.push("/");
+          router.refresh();
+        }
       }, 800);
     }
 
