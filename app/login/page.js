@@ -167,6 +167,8 @@ function LoginContent() {
         const intentSubType = searchParams.get("intentSubType");
         if (intentType === "propose_trade" && sharerHandle) {
           intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName };
+        } else if (intentType === "collection_migration") {
+          intent = { type: "collection_migration" };
         }
       }
 
@@ -182,6 +184,32 @@ function LoginContent() {
               : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
         try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
         router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+        router.refresh();
+        return;
+      }
+
+      if (intent?.type === "collection_migration") {
+        try {
+          const raw = localStorage.getItem("ms_anon_entries");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const entries = (parsed.entries || []).filter((e) => e.setId);
+            if (entries.length > 0) {
+              const res = await fetch("/api/anonymous-migration", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ entries }),
+              });
+              if (res.ok) {
+                const result = await res.json();
+                if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
+                sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
+        try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+        router.push("/");
         router.refresh();
         return;
       }

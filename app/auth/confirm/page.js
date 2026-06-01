@@ -96,7 +96,7 @@ function ConfirmContent() {
       // (verifyOtp and profile upsert are both awaited above). This is NOT
       // a race against verifyOtp/getSession. The timer just lets the user
       // read the "Confirmed!" state before the redirect fires.
-      setTimeout(() => {
+      setTimeout(async () => {
         const intentType = searchParams.get("intentType");
         const sharerHandle = searchParams.get("sharerHandle");
         const targetCardName = searchParams.get("targetCardName");
@@ -112,6 +112,28 @@ function ConfirmContent() {
                 ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
                 : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+          router.refresh();
+        } else if (intentType === "collection_migration") {
+          try {
+            const raw = localStorage.getItem("ms_anon_entries");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const entries = (parsed.entries || []).filter((e) => e.setId);
+              if (entries.length > 0) {
+                const res = await fetch("/api/anonymous-migration", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ entries }),
+                });
+                if (res.ok) {
+                  const result = await res.json();
+                  if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
+                  sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
+                }
+              }
+            }
+          } catch (e) { /* ignore */ }
+          router.push("/");
           router.refresh();
         } else {
           router.push("/");

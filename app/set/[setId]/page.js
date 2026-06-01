@@ -18,6 +18,7 @@ import { ReportCardFAB } from "@/components/ReportCardFAB";
 import BackButton from "@/components/BackButton";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { useCollectionState } from "@/lib/hooks/useCollectionState";
+import { AnonymousCollectionBlocker, captureCollectionMigrationIntent } from "@/components/AnonymousCollectionBlocker";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -522,6 +523,9 @@ export default function SetTrackerPage() {
   const photoTargetRef = useRef(null);
   const dupTimersRef = useRef({});
   const ownedPrintingsRef = useRef({});
+  const [blockerTrigger, setBlockerTrigger] = useState(null);
+  const thresholdsFiredRef = useRef(new Set());
+  const [restoreToast, setRestoreToast] = useState(null);
   const isAnonymous = !user;
 
   const printingsMap = useMemo(() => {
@@ -536,7 +540,7 @@ export default function SetTrackerPage() {
 
   const ownedPrintings = isAnonymous
     ? Object.fromEntries(
-        anonCollection.collection.entries.map((e) => [
+        anonCollection.entries.map((e) => [
           e.printingId,
           { checked: true, duplicate_count: Math.max(0, e.quantity - 1), photo_url: null, card_number: e.cardNumber },
         ])
@@ -631,6 +635,43 @@ export default function SetTrackerPage() {
   useEffect(() => () => {
     Object.values(dupTimersRef.current).forEach(clearTimeout);
   }, []);
+
+  const THRESHOLDS = [5, 15, 30, 50];
+
+  // Anonymous: re-arm blocking modal at 5/15/30/50 cards across all sets
+  useEffect(() => {
+    if (!isAnonymous) return;
+    const count = anonCollection.totalCount;
+    for (const threshold of THRESHOLDS) {
+      if (count >= threshold && !thresholdsFiredRef.current.has(threshold)) {
+        thresholdsFiredRef.current.add(threshold);
+        setBlockerTrigger("card_threshold");
+        break;
+      }
+    }
+  }, [isAnonymous, anonCollection.totalCount]);
+
+  // Restore toast: show after migration if this set was migrated
+  useEffect(() => {
+    if (isAnonymous) return;
+    try {
+      const raw = sessionStorage.getItem("ms_show_restore_toast");
+      if (!raw) return;
+      sessionStorage.removeItem("ms_show_restore_toast");
+      const parsed = JSON.parse(raw);
+      if (!parsed.setIds?.includes(setId)) return;
+      setRestoreToast(parsed);
+      setTimeout(() => setRestoreToast(null), 5000);
+    } catch { /* ignore */ }
+  }, [isAnonymous, setId]);
+
+  // Anonymous: warn before unloading when there are unsaved cards
+  useEffect(() => {
+    if (!isAnonymous || anonCollection.totalCount === 0) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isAnonymous, anonCollection.totalCount]);
 
   // Full-set completion detection — fires only on real-time transition, not initial load
   useEffect(() => {
@@ -757,6 +798,7 @@ export default function SetTrackerPage() {
 
   const triggerPhoto = (printing, e) => {
     e.stopPropagation();
+    if (isAnonymous) { setBlockerTrigger("auth_required"); return; }
     photoTargetRef.current = printing;
     fileInputRef.current?.click();
   };
@@ -1019,7 +1061,7 @@ export default function SetTrackerPage() {
                 onClick={async (e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  if (!user) return;
+                  if (!user) { setBlockerTrigger("auth_required"); return; }
                   if (isFav) {
                     setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
                     supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
@@ -1783,7 +1825,46 @@ export default function SetTrackerPage() {
           </div>
         </div>
       )}
+      {restoreToast && (
+        <div
+          onClick={() => setRestoreToast(null)}
+          style={{
+            position: "fixed",
+            bottom: 80,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 300,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 16px",
+            background: "rgba(5,5,7,0.96)",
+            border: "1px solid rgba(200,255,74,0.35)",
+            borderRadius: 10,
+            color: "var(--po-green)",
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: 12,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+            cursor: "pointer",
+          }}
+        >
+          ✓ {restoreToast.count} {restoreToast.count === 1 ? "card" : "cards"} restored to your collection
+        </div>
+      )}
       <ReportCardFAB setId={setId} />
+      <AnonymousCollectionBlocker
+        open={!!blockerTrigger}
+        trigger={blockerTrigger}
+        count={anonCollection.totalCount}
+        valueUsd={anonCollection.totalValueUsd}
+        onSignUp={() => {
+          captureCollectionMigrationIntent();
+          window.location.href = "/welcome?intentType=collection_migration";
+        }}
+        onDismiss={() => setBlockerTrigger(null)}
+      />
     </MSShell>
   );
 }
