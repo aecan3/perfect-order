@@ -33,50 +33,49 @@ async function handleListings(request, { excludeIds = [], tradeCount = 0, market
     const desiredEbayCount = Math.max(8, Math.round(36 - tradeCount * 1.5));
     const favouriteQuotaCount = Math.floor(desiredEbayCount * 0.2);
 
-    // Favourites get up to 20% of eBay tile slots (price-filtered, not already seen).
-    // Unused favourite slots roll into variety.
-    let favouriteIds = [];
-    if (favouriteQuotaCount > 0) {
+    // Favourites flow and variety RPC run in parallel. Variety requests
+    // desiredEbayCount so it has enough candidates regardless of how many
+    // favourite slots get filled. We filter overlap and trim after both resolve.
+    const favouritesPromise = (async () => {
+      if (favouriteQuotaCount === 0) return [];
       const { data: favRows } = await service
         .from("favourites")
         .select("printing_id")
         .eq("user_id", user.id)
         .limit(MAX_FAV_LIMIT);
-
       const rawFavIds = (favRows || []).map((r) => r.printing_id).filter(Boolean);
+      if (rawFavIds.length === 0) return [];
+      const { data: priceRows } = await service
+        .from("printings")
+        .select("id")
+        .in("id", rawFavIds)
+        .gte("price_usd", MIN_PRICE_USD);
+      return (priceRows || [])
+        .map((r) => r.id)
+        .filter((id) => !excludeIds.includes(id))
+        .slice(0, favouriteQuotaCount);
+    })();
 
-      if (rawFavIds.length > 0) {
-        const { data: priceRows } = await service
-          .from("printings")
-          .select("id")
-          .in("id", rawFavIds)
-          .gte("price_usd", MIN_PRICE_USD);
+    const varietyPromise = service.rpc("get_marketplace_variety_for_user", {
+      viewer: user.id,
+      marketplace_id_param: marketplaceId,
+      exclude_printing_ids: excludeIds,
+      limit_count: desiredEbayCount,
+    });
 
-        favouriteIds = (priceRows || [])
-          .map((r) => r.id)
-          .filter((id) => !excludeIds.includes(id))
-          .slice(0, favouriteQuotaCount);
-      }
-    }
+    const [favouriteIds, varietyResult] = await Promise.all([
+      favouritesPromise,
+      varietyPromise,
+    ]);
 
-    // Remaining slots filled from variety pool: cards in user's active sets
-    // they don't own, with a warmed marketplace_pool entry.
+    if (varietyResult.error) throw new Error(`variety RPC failed: ${varietyResult.error.message}`);
+
     const varietyCount = desiredEbayCount - favouriteIds.length;
-    const excludeForRpc = [...excludeIds, ...favouriteIds];
+    const varietyIds = (varietyResult.data || [])
+      .filter((row) => !favouriteIds.includes(row.printing_id))
+      .slice(0, varietyCount)
+      .map((row) => row.printing_id);
 
-    const { data: varietyRows, error: rpcErr } = await service.rpc(
-      "get_marketplace_variety_for_user",
-      {
-        viewer: user.id,
-        marketplace_id_param: marketplaceId,
-        exclude_printing_ids: excludeForRpc,
-        limit_count: varietyCount,
-      }
-    );
-
-    if (rpcErr) throw new Error(`variety RPC failed: ${rpcErr.message}`);
-
-    const varietyIds = (varietyRows || []).map((r) => r.printing_id);
     const targetPrintingIds = [...favouriteIds, ...varietyIds];
 
     const { listings } = await getListingsForUser(targetPrintingIds, {
