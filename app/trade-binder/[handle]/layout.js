@@ -5,7 +5,7 @@ export async function generateMetadata({ params }) {
   const service = getServiceClient();
   const { data: profile } = await service
     .from("profiles")
-    .select("handle, display_name, avatar_url")
+    .select("handle, display_name")
     .eq("handle", handle)
     .maybeSingle();
 
@@ -16,7 +16,6 @@ export async function generateMetadata({ params }) {
   const displayName = profile.display_name || `@${profile.handle}`;
   const title = `${displayName}'s Trade Binder — Master Setter`;
   const description = `Browse ${displayName}'s tradeable Pokémon TCG cards on Master Setter.`;
-  const ogImage = profile.avatar_url || null;
 
   return {
     title,
@@ -25,13 +24,11 @@ export async function generateMetadata({ params }) {
       title,
       description,
       type: "profile",
-      images: ogImage ? [{ url: ogImage }] : undefined,
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title,
       description,
-      images: ogImage ? [ogImage] : undefined,
     },
   };
 }
