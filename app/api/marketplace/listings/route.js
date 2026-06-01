@@ -1,8 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { refreshStaleForUser } from "@/lib/marketplace/fetch";
+import { getServiceClient } from "@/lib/supabase/service";
 import { getListingsForUser } from "@/lib/marketplace/listings-for-user";
+
+const MIN_PRICE_USD = 5;
+const RANDOM_FILL_COUNT = 20;
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -29,13 +32,40 @@ export async function GET(request) {
   const marketplaceId = searchParams.get("marketplaceId")?.trim() || "EBAY_AU";
 
   try {
-    const { mode, targetPrintingIds, refreshed, skipped, errors } = await refreshStaleForUser(user.id, {
-      marketplaceId,
-    });
+    const service = getServiceClient();
 
-    const { listings } = await getListingsForUser(targetPrintingIds, {
-      marketplaceId,
-    });
+    // Determine which printings to show: favourites (price-filtered) or random pool sample.
+    const { data: favRows } = await service
+      .from("favourites")
+      .select("printing_id")
+      .eq("user_id", user.id)
+      .limit(6);
+
+    const rawFavIds = (favRows || []).map((r) => r.printing_id).filter(Boolean);
+
+    let targetPrintingIds;
+    let mode;
+
+    if (rawFavIds.length > 0) {
+      const { data: priceRows } = await service
+        .from("printings")
+        .select("id")
+        .in("id", rawFavIds)
+        .gte("price_usd", MIN_PRICE_USD);
+      targetPrintingIds = (priceRows || []).map((r) => r.id);
+      mode = "favourites";
+    } else {
+      const { data: pool } = await service
+        .from("marketplace_pool")
+        .select("printing_id")
+        .eq("enabled", true)
+        .not("last_refreshed_at", "is", null);
+      const shuffled = (pool || []).slice().sort(() => Math.random() - 0.5);
+      targetPrintingIds = shuffled.slice(0, RANDOM_FILL_COUNT).map((r) => r.printing_id);
+      mode = "random";
+    }
+
+    const { listings } = await getListingsForUser(targetPrintingIds, { marketplaceId });
 
     return NextResponse.json({ mode, listings });
   } catch (err) {
