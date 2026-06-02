@@ -1,6 +1,6 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 26 May 2026 (session 12). Single source of truth for the next session.*
+*Updated end of session, 2 Jun 2026. Single source of truth for the next session.*
 *Supersedes the previous handover note from session 7.*
 
 ---
@@ -39,6 +39,8 @@ favourites. User works primarily on iPhone PWA.
 ---
 
 ## 1. CURRENT STATE — WHAT'S LIVE AND WORKING
+
+Phase 4 (Trade Binder magnet acquisition flow) is fully shipped. Door A (anonymous binder action sheet → message thread) and Door B (anonymous catalog browse → localStorage collection → signup migration → restored real collection) are both live on production. Next phase: real-traffic observation, polish, and the deferred items listed in §7 / §18.
 
 ### Auth surface — complete
 - Custom domain `mastersettertcg.com` live, SSL, `www` 307s to bare domain
@@ -232,6 +234,9 @@ favourites. User works primarily on iPhone PWA.
   ≥2 sets). Filter + sort compose in one memo (filter first, sort second). Selection
   survives both (keyed by `printing_id`). Header restructured to eyebrow `@handle`
   + big "DUPLICATES" title instead of the wrapping `@handle's duplicates`.
+
+- **Phase 4 Door B — anonymous browse + collection migration (commits `51c3716`, `d43aaf5`, `c1951a7`, `8f1a018`, `17fcb50`, `437f8e1`, `4f47932`):** Full anonymous acquisition funnel, end-to-end. Public catalog (`/sets`, `/set/[setId]`, `/friend/[handle]`) open to logged-out users; 2-item anonymous tab bar (Sets, Sign Up Free). Anonymous ticks saved to `ms_anon_entries` localStorage with per-entry `setId`. CTA count + value updates live via `ms-anon-entries-changed` custom event. Threshold modals (`card_threshold`) at 5/15/30/50 cards. On signup: `verifyOtp` → `/auth/confirm` catch-all migration block. On signin: catch-all migration block regardless of intent. Both paths call `POST /api/anonymous-migration`, which batch-upserts `collection_entries` AND `user_sets` (both are required — see §17 gotcha). localStorage cleared on full match; `ms_show_restore_toast` sessionStorage triggers a 5s lime bar on the landing set page. Service worker bumped v22→v23 with `/auth/*` and `/api/*` bypass rules. **Verified end-to-end on production: test7 account, 15 cards migrated to me4, MY SETS displays me4 correctly.**
+  Key files: `lib/hooks/useCollectionState.js` (anonymous data layer, per-entry `setId`, `ms-anon-entries-changed` event), `components/AnonymousCollectionBlocker.jsx` (threshold/nav-away modals), `app/api/anonymous-migration/route.js` (authenticated POST endpoint, 500-entry cap), restore toast inline in `app/set/[setId]/page.js`.
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
@@ -671,6 +676,12 @@ NOT next-session priorities. Captured to not lose them.
 22. **Push notifications** — friend gets a duplicate of your favourited
     card; PWA notification API.
 
+43. **Stale intent reminder popup (Door B deferred).** When `ms_anon_intent` is present at signin but older than 30 min, currently discarded silently. Better UX: "You started a message about X earlier — continue, view binder, or skip?" Deferred to post-beta.
+
+44. **Restore toast cross-set variant.** Current toast shows "Your N cards have been saved." When migration spans multiple sets, could say "Saved N cards across M sets." Migration API already returns `setIds[]` — toast just needs the multi-set display branch.
+
+45. **Production observability for migration flow.** Instrument: how often migrations fire, how often they partial-fail (`inserted < requested`), conversion through each modal trigger type (card_threshold / nav_away / auth_required). No mechanism yet.
+
 38. **Admin queue for `card_reports`.** The `card_reports` table is live and
     collecting submissions. An admin-only view is not yet built. Needs: a
     protected admin route, a table view of open reports (category, details,
@@ -899,6 +910,20 @@ All safe at current scale; flagged so they're not forgotten.
   the shape or content of the data model goes in `supabase/migrations/` with
   a descriptive name and a header comment explaining why.
 
+- **Any feature inserting `collection_entries` must also upsert a `user_sets` row.** Two tables are required for catalog visibility: `collection_entries` (the cards) and `user_sets` (the set subscription). MY SETS filters by `user_sets` — cards can be fully present in `collection_entries` with no corresponding `user_sets` row, producing an empty MY SETS with no error and no clue. Caught during production test7 verification of the anonymous migration. Upsert shape: `{ user_id, set_id, hidden_at: null }` with `onConflict: "user_id,set_id", ignoreDuplicates: true`. `added_at` defaults itself; prices come from the cron later.
+
+- **Hydration-safe pattern for components reading client-only APIs.** Components that read `localStorage`, `window`, `navigator`, or any other browser API during render cause React hydration mismatches — the server renders one value, the first client render produces a different value, and Next.js overlays a blank screen. The pattern: `const [hydrated, setHydrated] = useState(false)`, then `setHydrated(true)` as the first line of `useEffect`, then gate all dynamic content with `hydrated && ...`. The server render and the first client render must match. Caught when `AnonymousTabBar`'s dynamic CTA text (reading localStorage card count) caused the entire app to blank.
+
+- **Service worker must explicitly bypass `/auth/*` and `/api/*`.** SW intercepting `/auth/*` produces "Failed to convert value to 'Response'" — Supabase auth redirect chains return opaque responses the SW can't handle, breaking the entire `/auth/confirm` lifecycle silently. SW intercepting `/api/*` risks caching dynamic responses or 401s. Both must be early-return guards at the top of the `fetch` handler, before any caching logic, ordered: non-http scheme → Supabase hostname → non-GET → `/auth/` → `/api/`.
+
+- **SW cache version bump is required on any SW change.** Without bumping the `CACHE` constant in `public/sw.js`, existing PWA installs keep the OLD service worker indefinitely. `skipWaiting() + clients.claim()` only activate a newly installed SW — they can't help if nothing triggered a new install. Increment the constant (current: `"perfect-order-v23"`) on every SW change; the next page load activates the new worker and evicts stale entries.
+
+- **Anonymous data migration should fire on any successful auth with localStorage data — not just when a matching intent is present.** Real failure modes: user signs up, but `/auth/confirm` migration fails (SW bug, network glitch); user signs in later with no intent param but data still in localStorage. A catch-all block at the end of BOTH auth paths (confirm page + signin handler) handles these without cost to normal signins (no localStorage data = no-op). Idempotency via ON CONFLICT DO NOTHING makes re-running harmless.
+
+- **`ms_anon_intent` sessionStorage leaks across sessions if the user abandons the auth flow.** Without expiry, intent captured when a user tapped a Trade Binder card hours earlier would route them to that message thread on next signin. Fix: record `capturedAt` timestamp at write time, check age on read, discard if older than 30 minutes.
+
+- **`localStorage` is origin-scoped — `localhost:3000` and `mastersettertcg.com` are different origins.** Anonymous data ticked at `localhost:3000` is not accessible at `mastersettertcg.com`, and vice versa. The full anonymous → signup → migration flow must be tested on a single origin end-to-end. Testing signup on production while data was accumulated on localhost always produces 0 migrated entries with no error. This cost several hours of confused diagnosis during Door B verification.
+
 ### Gotchas — 30-second fixes that took 20 minutes to find
 
 - **Supabase real-time requires explicit publication membership.** A `supabase.channel().on("postgres_changes", ...).subscribe()` will appear correctly wired in code but silently receive zero events if the table isn't in the `supabase_realtime` publication. Always verify both: code subscription exists AND table is in the publication (`SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime'`). Add missing tables via `ALTER PUBLICATION supabase_realtime ADD TABLE <table>;` and save as a migration. Discovered 23 May 2026 when TradePanel real-time updates weren't firing across devices despite the subscription code being correct.
@@ -1115,6 +1140,16 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **`CREATE OR REPLACE FUNCTION` does NOT replace across signature changes.** PostgreSQL treats functions with different argument types as DIFFERENT functions, even with the same name. Iterating on an RPC signature creates a new overload alongside the old one — `CREATE OR REPLACE` only updates the matching signature. PostgREST then returns HTTP 300 (Multiple Choices) because it can't pick which overload to call. The user sees an empty result with no error. Fix: explicitly `DROP FUNCTION IF EXISTS function_name(arg_types)` before re-creating with the new signature. Caught in session 19 (commit d59cd33) when `get_marketplace_variety_for_user` had two overloads: one with `exclude_printing_ids uuid[]` and one with `text[]`. Cost: half a day debugging "the RPC works but Discover shows nothing." Always drop explicitly when changing function signatures.
 
+- **`collection_entries` has a 4-column composite primary key: `(user_id, set_id, card_number, printing_id)`.** Migration upserts MUST use `onConflict: "user_id,set_id,card_number,printing_id"` exactly. Using only `"user_id,printing_id"` is not unique (same user can own the same printing_id across different card_numbers in different sets) and silently produces wrong ON CONFLICT behaviour.
+
+- **`collection_entries.duplicate_count` semantic: 0 means 1 copy, N means N+1 copies.** When mapping from an anonymous `quantity` value: `duplicate_count = quantity > 1 ? quantity - 1 : 0`. `checked=true + duplicate_count=0` = exactly one owned card. Never store `quantity` directly as `duplicate_count`.
+
+- **`user_sets` minimal insert shape for migration: `{ user_id, set_id, hidden_at: null }`.** `added_at` defaults to `now()`. `prices_updated_at` and `previous_value` are populated later by the price refresh cron. Do not try to pre-fill prices at migration time — they don't exist yet, and writing zeros would trigger the staleness gate.
+
+- **Local `npm run build` can pass while Vercel build fails.** Turbopack (local) and Webpack (Vercel) handle missing modules differently — Turbopack may lazily resolve imports that Webpack requires at build time. Canonical example from this project: `AnonymousCollectionBlocker.jsx` existed on disk and was imported, so local build passed. Vercel build failed with "Module not found" because the file was never committed to git. Always verify deployment status after push; "local build passes" is not proof.
+
+- **Vercel runtime logs (server-side `console.log` from API routes) are visible at:** Vercel dashboard → project → Logs (or Runtime Logs). Browser DevTools console only shows client-side output. For debugging silent API route failures in production, add a `console.log`, trigger the flow, and check Vercel Logs — not the browser.
+
 - **`RETURNS TABLE(col_name type)` column names become in-scope variables inside the function body.** When a PL/pgSQL function has `RETURNS TABLE(printing_id text, is_active_set boolean)`, those column names become declared output variables. Any subquery selecting a column of the same name will be ambiguous (`error: column reference "printing_id" is ambiguous`). Fix: alias the subquery column to something distinct. Example: change `SELECT printing_id FROM user_owned` to `SELECT printing_id AS owned_id FROM user_owned`, then use `owned_id` everywhere. Caught in session 19 (commit 812f45b's follow-up).
 
 ---
@@ -1134,6 +1169,8 @@ When picking this back up, suggested sequence:
 3. ~~**Block (item 6) — DONE 24 May 2026.**~~ ~~**Admin queue (item 7) — DONE 26 May 2026.**~~ Both queues shipped and gate fixed. Diagnosis: `notFound()` in `useEffect` is a no-op — throws inside async Promise nobody catches. Fixed with `router.replace("/you")` + `checking` state guard (commit `e2003b4`). See §17 for the `notFound()` client gotcha entry.
 
 4. ~~**PPT API plan upgrade (item 10a) — DONE 25 May 2026.**~~
+
+5. ~~**Phase 4 Door A + Door B — DONE 2 Jun 2026.**~~ Both anonymous acquisition funnels live on production. Door A: anonymous Trade Binder view → message intent → auth → message thread. Door B: anonymous catalog browse → localStorage collection → signup/signin migration → restored real collection. End-to-end verified on production (test7, 15 cards migrated to me4). Next focus: real-traffic observation, deferred polish (items 43–45), and marketing plan.
 
 **⚠️ Beta tester note — 26 May 2026:** Alex showed the app to a card-shop visitor who requested early access. Beta testers are now relevant. Practical implications: Sentry will start capturing real user errors (not just dev errors); `user_reports` and `card_reports` queues will receive real submissions; first-time user experience and friend-add flow are now on the critical path before wider access.
 
