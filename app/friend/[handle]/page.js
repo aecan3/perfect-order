@@ -52,6 +52,7 @@ export default function FriendOverviewPage() {
   const [isPendingFromThem, setIsPendingFromThem] = useState(false);
   const [localPendingFromMe, setLocalPendingFromMe] = useState(false);
   const [publicHuntingCount, setPublicHuntingCount] = useState(null);
+  const [authResolved, setAuthResolved] = useState(false);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -83,6 +84,7 @@ export default function FriendOverviewPage() {
     (async () => {
       // ── Gate 1: auth ──────────────────────────────────────────────
       const { data: { user } } = await supabase.auth.getUser();
+      if (!cancelled) setAuthResolved(true);
 
       if (!user) {
         // Anonymous path — fetch public profile only; skip blocked check + friendship queries
@@ -279,7 +281,7 @@ export default function FriendOverviewPage() {
   // ── Gate renders ──────────────────────────────────────────────────
   if (status === "loading") {
     return (
-      <MSShell anonymousNav={isAnonymous}>
+      <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading…
         </div>
@@ -289,7 +291,7 @@ export default function FriendOverviewPage() {
 
   if (status === "not-found") {
     return (
-      <MSShell anonymousNav={isAnonymous}>
+      <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, padding: "0 16px", textAlign: "center" }}>
           <p className="text-[var(--po-text)] mb-3">No user with handle @{handle}.</p>
           <Link href="/friends" className="text-[var(--po-green)] underline text-sm">Back to friends</Link>
@@ -608,7 +610,7 @@ export default function FriendOverviewPage() {
 
   return (
     <>
-      <MSShell anonymousNav={isAnonymous}>
+      <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         {/* BackButton above ProfileView */}
         <div style={{ padding: "8px 16px 0" }}>
           <BackButton />
