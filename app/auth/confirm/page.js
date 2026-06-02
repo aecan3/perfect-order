@@ -83,9 +83,11 @@ function ConfirmContent() {
         const displayName = meta.display_name || handle;
 
         if (handle) {
-          // Insert is idempotent: if a prior attempt already created the row
-          // (e.g. StrictMode second mount), the conflict is silently ignored.
-          await supabase.from("profiles").upsert(
+          // onConflict: "id" + ignoreDuplicates generates ON CONFLICT (id) DO NOTHING.
+          // A re-confirm (same id) silently succeeds — idempotency preserved.
+          // A handle collision (profiles_handle_key, different id) is NOT caught by
+          // the id conflict clause and propagates as error code 23505.
+          const { error: upsertError } = await supabase.from("profiles").upsert(
             {
               id: user.id,
               handle,
@@ -98,6 +100,16 @@ function ConfirmContent() {
             },
             { onConflict: "id", ignoreDuplicates: true }
           );
+
+          if (upsertError) {
+            if (upsertError.code === "23505" && upsertError.message?.includes("profiles_handle_key")) {
+              setErrorMsg("That handle was taken while you confirmed your email. Please sign in and choose a different one.");
+            } else {
+              setErrorMsg(upsertError.message || "Something went wrong creating your profile. Please try again.");
+            }
+            setStatus("invalid");
+            return;
+          }
         }
       }
 
