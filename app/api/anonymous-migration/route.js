@@ -19,6 +19,7 @@ async function getSupabase() {
 export async function POST(request) {
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
+  console.log("[migration:api] user:", user?.id ?? "null (unauthorized)");
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -31,6 +32,7 @@ export async function POST(request) {
   }
 
   const { entries: rawEntries = [] } = body;
+  console.log("[migration:api] rawEntries received:", rawEntries.length, "first:", rawEntries[0] ?? null);
 
   const entries = rawEntries
     .filter(
@@ -44,7 +46,10 @@ export async function POST(request) {
     )
     .slice(0, 500);
 
+  console.log("[migration:api] entries after filter:", entries.length);
+
   if (entries.length === 0) {
+    console.log("[migration:api] zero entries after filter — returning early");
     return NextResponse.json({ inserted: 0, requested: 0, setIds: [] });
   }
 
@@ -58,6 +63,8 @@ export async function POST(request) {
     updated_at: new Date().toISOString(),
   }));
 
+  console.log("[migration:api] upserting", rows.length, "rows, sample:", rows[0]);
+
   const { data: inserted, error } = await supabase
     .from("collection_entries")
     .upsert(rows, {
@@ -65,6 +72,8 @@ export async function POST(request) {
       ignoreDuplicates: true,
     })
     .select("printing_id");
+
+  console.log("[migration:api] upsert complete — inserted:", inserted?.length ?? 0, "error:", error?.message ?? null);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

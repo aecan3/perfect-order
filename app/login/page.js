@@ -219,18 +219,23 @@ function LoginContent() {
       // had a SW bug or network failure that prevented the migration from
       // firing in /auth/confirm. Idempotent via ON CONFLICT DO NOTHING.
       try {
+        console.log("[migration:login] catch-all block running");
         const raw = localStorage.getItem("ms_anon_entries");
+        console.log("[migration:login] localStorage raw:", raw ? `${raw.length} chars` : "null");
         if (raw) {
           const parsed = JSON.parse(raw);
           const entries = (parsed.entries || []).filter((e) => e.setId);
+          console.log("[migration:login] entries with setId:", entries.length, "first:", entries[0] ?? null);
           if (entries.length > 0) {
             const res = await fetch("/api/anonymous-migration", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ entries }),
             });
+            console.log("[migration:login] API status:", res.status);
+            const result = await res.json();
+            console.log("[migration:login] API result:", result);
             if (res.ok) {
-              const result = await res.json();
               if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
               sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
                 count: result.inserted,
@@ -239,7 +244,7 @@ function LoginContent() {
             }
           }
         }
-      } catch (e) { /* ignore — migration is best-effort here */ }
+      } catch (e) { console.error("[migration:login] error:", e); }
 
       router.push("/");
       router.refresh();

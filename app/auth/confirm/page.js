@@ -119,24 +119,29 @@ function ConfirmContent() {
           // dropped in the Supabase redirect chain, or a prior attempt failed.
           // Idempotent via ON CONFLICT DO NOTHING.
           try {
+            console.log("[migration:confirm] catch-all block running, intentType:", intentType);
             const raw = localStorage.getItem("ms_anon_entries");
+            console.log("[migration:confirm] localStorage raw:", raw ? `${raw.length} chars` : "null");
             if (raw) {
               const parsed = JSON.parse(raw);
               const entries = (parsed.entries || []).filter((e) => e.setId);
+              console.log("[migration:confirm] entries with setId:", entries.length, "first:", entries[0] ?? null);
               if (entries.length > 0) {
                 const res = await fetch("/api/anonymous-migration", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ entries }),
                 });
+                console.log("[migration:confirm] API status:", res.status);
+                const result = await res.json();
+                console.log("[migration:confirm] API result:", result);
                 if (res.ok) {
-                  const result = await res.json();
                   if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
                   sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
                 }
               }
             }
-          } catch (e) { /* ignore */ }
+          } catch (e) { console.error("[migration:confirm] error:", e); }
           router.push("/");
           router.refresh();
         }
