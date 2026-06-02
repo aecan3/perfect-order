@@ -214,6 +214,33 @@ function LoginContent() {
         return;
       }
 
+      // Catch-all: migrate any orphaned anonymous data present at signin,
+      // regardless of intent. Handles the case where a prior signup attempt
+      // had a SW bug or network failure that prevented the migration from
+      // firing in /auth/confirm. Idempotent via ON CONFLICT DO NOTHING.
+      try {
+        const raw = localStorage.getItem("ms_anon_entries");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const entries = (parsed.entries || []).filter((e) => e.setId);
+          if (entries.length > 0) {
+            const res = await fetch("/api/anonymous-migration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ entries }),
+            });
+            if (res.ok) {
+              const result = await res.json();
+              if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
+              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
+                count: result.inserted,
+                setIds: result.setIds || [],
+              }));
+            }
+          }
+        }
+      } catch (e) { /* ignore — migration is best-effort here */ }
+
       router.push("/");
       router.refresh();
     }

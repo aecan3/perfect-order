@@ -113,7 +113,11 @@ function ConfirmContent() {
                 : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
           router.refresh();
-        } else if (intentType === "collection_migration") {
+        } else {
+          // Catch-all: always attempt migration if localStorage has anonymous data,
+          // regardless of intentType. Handles cases where the intent param was
+          // dropped in the Supabase redirect chain, or a prior attempt failed.
+          // Idempotent via ON CONFLICT DO NOTHING.
           try {
             const raw = localStorage.getItem("ms_anon_entries");
             if (raw) {
@@ -133,9 +137,6 @@ function ConfirmContent() {
               }
             }
           } catch (e) { /* ignore */ }
-          router.push("/");
-          router.refresh();
-        } else {
           router.push("/");
           router.refresh();
         }
