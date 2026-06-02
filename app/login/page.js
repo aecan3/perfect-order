@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Check } from "lucide-react";
 import { createClient, createPasskeyClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
@@ -77,6 +78,9 @@ function LoginContent() {
   const [legalModal, setLegalModal] = useState(null); // null | "terms" | "privacy"
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeyError, setPasskeyError] = useState(null);
+  const [handleStatus, setHandleStatus] = useState("idle"); // "idle" | "checking" | "available" | "taken"
+  const handleDebounceRef = useRef(null);
+  const handleValueRef = useRef("");
 
   // Shared post-signin routing used by both password and passkey sign-in.
   // Checks intent, runs migration if needed, then redirects.
@@ -236,6 +240,7 @@ function LoginContent() {
         .maybeSingle();
 
       if (existing) {
+        setHandleStatus("taken");
         setError("That handle is already taken.");
         setLoading(false);
         return;
@@ -361,12 +366,50 @@ function LoginContent() {
                   <input
                     type="text"
                     value={handle}
-                    onChange={(e) => setHandle(e.target.value.toLowerCase())}
+                    onChange={(e) => {
+                      const v = e.target.value.toLowerCase();
+                      setHandle(v);
+                      handleValueRef.current = v;
+                      clearTimeout(handleDebounceRef.current);
+                      if (v.length < 3 || !/^[a-z0-9_]+$/.test(v)) {
+                        setHandleStatus("idle");
+                        return;
+                      }
+                      setHandleStatus("checking");
+                      handleDebounceRef.current = setTimeout(async () => {
+                        const { data } = await supabase
+                          .from("profiles")
+                          .select("id")
+                          .eq("handle", v)
+                          .maybeSingle();
+                        if (handleValueRef.current !== v) return;
+                        setHandleStatus(data ? "taken" : "available");
+                      }, 400);
+                    }}
                     placeholder="alex_c"
                     required
-                    className="w-full px-3 py-2 bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text)] rounded-lg focus:outline-none focus:border-[var(--po-green)]"
+                    className={`w-full px-3 py-2 bg-[var(--po-bg-soft)] border text-[var(--po-text)] rounded-lg focus:outline-none ${
+                      handleStatus === "taken"
+                        ? "border-rose-500"
+                        : handleStatus === "available"
+                        ? "border-[var(--po-green)]"
+                        : "border-[var(--po-border)] focus:border-[var(--po-green)]"
+                    }`}
                   />
-                  <p className="text-[10px] text-[var(--po-text-dim)] mt-1">Your friend will use this to add you.</p>
+                  {handleStatus === "idle" && (
+                    <p className="text-[10px] text-[var(--po-text-dim)] mt-1">Your friend will use this to add you.</p>
+                  )}
+                  {handleStatus === "checking" && (
+                    <p className="text-[10px] text-[var(--po-text-dim)] mt-1">Checking…</p>
+                  )}
+                  {handleStatus === "available" && (
+                    <p className="text-[10px] mt-1 flex items-center gap-0.5" style={{ color: "var(--po-green)" }}>
+                      <Check size={10} strokeWidth={3} />Available
+                    </p>
+                  )}
+                  {handleStatus === "taken" && (
+                    <p className="text-[10px] text-rose-400 mt-1">Handle taken</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-1">Display name</label>
@@ -494,7 +537,7 @@ function LoginContent() {
           )}
 
           <button
-            onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(null); setLegalAgreed(false); }}
+            onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(null); setLegalAgreed(false); setHandleStatus("idle"); }}
             className="w-full mt-4 text-xs text-[var(--po-text-dim)] hover:text-[var(--po-green)]"
           >
             {mode === "signup" ? "Already have an account? Sign in" : "Don't have an account? Create one"}
