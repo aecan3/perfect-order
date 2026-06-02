@@ -128,6 +128,7 @@ export default function SetBrowserPage() {
   const [query, setQuery] = useState("");
   const [seriesFilter, setSeriesFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [authResolved, setAuthResolved] = useState(false);
   const [currency, setCurrency] = useState("AUD");
 
   // Wizard state
@@ -163,6 +164,7 @@ export default function SetBrowserPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) setUser(user);
+      setAuthResolved(true);
 
       const { data: sets } = await supabase
         .from("sets")
@@ -425,7 +427,7 @@ export default function SetBrowserPage() {
 
   if (loading) {
     return (
-      <MSShell anonymousNav={isAnonymous}>
+      <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading...
         </div>
@@ -443,7 +445,7 @@ export default function SetBrowserPage() {
     "Done!";
 
   return (
-    <MSShell anonymousNav={isAnonymous}>
+    <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
       <MSPageTitle>{isAnonymous ? "BROWSE SETS" : "ADD A SET"}</MSPageTitle>
 
       <div className="px-4 pb-3 max-w-md mx-auto">
