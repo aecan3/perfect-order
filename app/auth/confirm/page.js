@@ -118,43 +118,31 @@ function ConfirmContent() {
           // regardless of intentType. Handles cases where the intent param was
           // dropped in the Supabase redirect chain, or a prior attempt failed.
           // Idempotent via ON CONFLICT DO NOTHING.
-          console.log("[auth-confirm-migration] starting");
           try {
             const raw = localStorage.getItem("ms_anon_entries");
-            console.log("[auth-confirm-migration] localStorage raw:", raw ? `has data (${raw.length} chars)` : "empty");
             if (raw) {
               const parsed = JSON.parse(raw);
               const entries = (parsed.entries || []).filter((e) => e.setId);
-              console.log("[auth-confirm-migration] entries to migrate:", entries.length);
               if (entries.length > 0) {
-                console.log("[auth-confirm-migration] calling API");
                 const res = await fetch("/api/anonymous-migration", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ entries }),
                 });
-                console.log("[auth-confirm-migration] response status:", res.status);
                 const responseText = await res.text();
-                console.log("[auth-confirm-migration] response body:", responseText);
                 if (res.ok) {
                   const result = JSON.parse(responseText);
                   if (result.inserted === entries.length) {
                     localStorage.removeItem("ms_anon_entries");
-                    console.log("[auth-confirm-migration] localStorage cleared");
                   }
                   sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
                     count: result.inserted,
                     setIds: result.setIds || [],
                   }));
-                  console.log("[auth-confirm-migration] toast flag set");
-                } else {
-                  console.error("[auth-confirm-migration] API returned non-OK");
                 }
               }
             }
-          } catch (e) {
-            console.error("[auth-confirm-migration] error:", e);
-          }
+          } catch (e) { /* ignore */ }
           router.push("/");
           router.refresh();
         }

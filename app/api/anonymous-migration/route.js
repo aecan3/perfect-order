@@ -17,29 +17,20 @@ async function getSupabase() {
 }
 
 export async function POST(request) {
-  console.log("[migration-api] received POST");
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    console.warn("[migration-api] no authenticated user");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  console.log("[migration-api] user:", user.id);
 
-  const body = await request.json().catch((e) => {
-    console.error("[migration-api] body parse failed:", e);
-    return {};
-  });
+  const body = await request.json().catch(() => ({}));
   const { entries } = body;
-  console.log("[migration-api] entries count:", entries?.length);
 
   if (!Array.isArray(entries) || entries.length === 0) {
-    console.warn("[migration-api] invalid or empty entries");
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   if (entries.length > 500) {
-    console.warn("[migration-api] too many entries:", entries.length);
     return NextResponse.json({ error: "Too many entries" }, { status: 400 });
   }
 
@@ -54,9 +45,8 @@ export async function POST(request) {
       duplicate_count: e.quantity > 1 ? e.quantity - 1 : 0,
     }));
 
-  console.log("[migration-api] filtered rows count:", rows.length);
-  if (rows.length > 0) {
-    console.log("[migration-api] first row sample:", JSON.stringify(rows[0]));
+  if (rows.length === 0) {
+    return NextResponse.json({ inserted: 0, requested: 0, setIds: [] });
   }
 
   const { data: inserted, error: insertErr } = await supabase
@@ -68,12 +58,10 @@ export async function POST(request) {
     .select("printing_id");
 
   if (insertErr) {
-    console.error("[migration-api] upsert failed:", JSON.stringify(insertErr));
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
   const setIds = [...new Set(rows.map((r) => r.set_id))];
-  console.log("[migration-api] inserted:", inserted?.length, "of", rows.length, "setIds:", setIds);
 
   // Ensure a user_sets row exists for each migrated set so it appears in MY SETS.
   // added_at defaults to now(); prices_updated_at and previous_value are populated
@@ -92,11 +80,9 @@ export async function POST(request) {
     });
 
   if (userSetsErr) {
-    console.error("[migration-api] user_sets upsert failed:", JSON.stringify(userSetsErr));
+    console.error("[migration] user_sets upsert failed:", JSON.stringify(userSetsErr));
     // Don't fail the whole migration — collection_entries succeeded.
     // Worst case: user sees empty MY SETS but cards exist and can re-add the set.
-  } else {
-    console.log("[migration-api] user_sets upserted:", setIds.length);
   }
 
   return NextResponse.json({
