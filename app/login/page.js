@@ -218,33 +218,43 @@ function LoginContent() {
       // regardless of intent. Handles the case where a prior signup attempt
       // had a SW bug or network failure that prevented the migration from
       // firing in /auth/confirm. Idempotent via ON CONFLICT DO NOTHING.
+      console.log("[login-migration] starting");
       try {
-        console.log("[migration:login] catch-all block running");
         const raw = localStorage.getItem("ms_anon_entries");
-        console.log("[migration:login] localStorage raw:", raw ? `${raw.length} chars` : "null");
+        console.log("[login-migration] localStorage raw:", raw ? `has data (${raw.length} chars)` : "empty");
         if (raw) {
           const parsed = JSON.parse(raw);
           const entries = (parsed.entries || []).filter((e) => e.setId);
-          console.log("[migration:login] entries with setId:", entries.length, "first:", entries[0] ?? null);
+          console.log("[login-migration] entries to migrate:", entries.length);
           if (entries.length > 0) {
+            console.log("[login-migration] calling API");
             const res = await fetch("/api/anonymous-migration", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ entries }),
             });
-            console.log("[migration:login] API status:", res.status);
-            const result = await res.json();
-            console.log("[migration:login] API result:", result);
+            console.log("[login-migration] response status:", res.status);
+            const responseText = await res.text();
+            console.log("[login-migration] response body:", responseText);
             if (res.ok) {
-              if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
+              const result = JSON.parse(responseText);
+              if (result.inserted === entries.length) {
+                localStorage.removeItem("ms_anon_entries");
+                console.log("[login-migration] localStorage cleared");
+              }
               sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
                 count: result.inserted,
                 setIds: result.setIds || [],
               }));
+              console.log("[login-migration] toast flag set");
+            } else {
+              console.error("[login-migration] API returned non-OK");
             }
           }
         }
-      } catch (e) { console.error("[migration:login] error:", e); }
+      } catch (e) {
+        console.error("[login-migration] error:", e);
+      }
 
       router.push("/");
       router.refresh();

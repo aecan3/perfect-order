@@ -17,55 +17,49 @@ async function getSupabase() {
 }
 
 export async function POST(request) {
+  console.log("[migration-api] received POST");
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
-  console.log("[migration:api] user:", user?.id ?? "null (unauthorized)");
   if (!user) {
+    console.warn("[migration-api] no authenticated user");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  console.log("[migration-api] user:", user.id);
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  const body = await request.json().catch((e) => {
+    console.error("[migration-api] body parse failed:", e);
+    return {};
+  });
+  const { entries } = body;
+  console.log("[migration-api] entries count:", entries?.length);
+
+  if (!Array.isArray(entries) || entries.length === 0) {
+    console.warn("[migration-api] invalid or empty entries");
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { entries: rawEntries = [] } = body;
-  console.log("[migration:api] rawEntries received:", rawEntries.length, "first:", rawEntries[0] ?? null);
-
-  const entries = rawEntries
-    .filter(
-      (e) =>
-        e.printingId &&
-        e.cardNumber !== undefined &&
-        e.cardNumber !== null &&
-        e.setId &&
-        typeof e.quantity === "number" &&
-        e.quantity > 0
-    )
-    .slice(0, 500);
-
-  console.log("[migration:api] entries after filter:", entries.length);
-
-  if (entries.length === 0) {
-    console.log("[migration:api] zero entries after filter — returning early");
-    return NextResponse.json({ inserted: 0, requested: 0, setIds: [] });
+  if (entries.length > 500) {
+    console.warn("[migration-api] too many entries:", entries.length);
+    return NextResponse.json({ error: "Too many entries" }, { status: 400 });
   }
 
-  const rows = entries.map((e) => ({
-    user_id: user.id,
-    printing_id: e.printingId,
-    card_number: e.cardNumber,
-    set_id: e.setId,
-    checked: true,
-    duplicate_count: Math.max(0, e.quantity - 1),
-    updated_at: new Date().toISOString(),
-  }));
+  const rows = entries
+    .filter((e) => e.printingId && e.cardNumber !== undefined && e.setId && typeof e.quantity === "number" && e.quantity > 0)
+    .map((e) => ({
+      user_id: user.id,
+      printing_id: e.printingId,
+      card_number: e.cardNumber,
+      set_id: e.setId,
+      checked: true,
+      duplicate_count: e.quantity > 1 ? e.quantity - 1 : 0,
+    }));
 
-  console.log("[migration:api] upserting", rows.length, "rows, sample:", rows[0]);
+  console.log("[migration-api] filtered rows count:", rows.length);
+  if (rows.length > 0) {
+    console.log("[migration-api] first row sample:", JSON.stringify(rows[0]));
+  }
 
-  const { data: inserted, error } = await supabase
+  const { data: inserted, error: insertErr } = await supabase
     .from("collection_entries")
     .upsert(rows, {
       onConflict: "user_id,set_id,card_number,printing_id",
@@ -73,17 +67,17 @@ export async function POST(request) {
     })
     .select("printing_id");
 
-  console.log("[migration:api] upsert complete — inserted:", inserted?.length ?? 0, "error:", error?.message ?? null);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (insertErr) {
+    console.error("[migration-api] upsert failed:", JSON.stringify(insertErr));
+    return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  const setIds = [...new Set(entries.map((e) => e.setId))];
+  const setIds = [...new Set(rows.map((r) => r.set_id))];
+  console.log("[migration-api] inserted:", inserted?.length, "of", rows.length, "setIds:", setIds);
 
   return NextResponse.json({
-    inserted: inserted?.length ?? 0,
-    requested: entries.length,
+    inserted: inserted?.length || 0,
+    requested: rows.length,
     setIds,
   });
 }
