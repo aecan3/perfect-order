@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase";
+import { createClient, createPasskeyClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
 import { PRIVACY_CONTENT, PRIVACY_LAST_UPDATED } from "@/content/legal/privacy";
@@ -75,6 +75,135 @@ function LoginContent() {
   const [error, setError] = useState(null);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [legalModal, setLegalModal] = useState(null); // null | "terms" | "privacy"
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState(null);
+
+  // Shared post-signin routing used by both password and passkey sign-in.
+  // Checks intent, runs migration if needed, then redirects.
+  async function resolvePostSignin() {
+    let intent = null;
+    try {
+      const raw = sessionStorage.getItem("ms_anon_intent");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const ageMs = Date.now() - (parsed.capturedAt || 0);
+        const THIRTY_MIN = 30 * 60 * 1000;
+        if (ageMs > THIRTY_MIN) {
+          sessionStorage.removeItem("ms_anon_intent");
+        } else {
+          intent = parsed;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    if (!intent) {
+      const intentType = searchParams.get("intentType");
+      const sharerHandle = searchParams.get("sharerHandle");
+      const targetCardName = searchParams.get("targetCardName");
+      const intentSubType = searchParams.get("intentSubType");
+      if (intentType === "propose_trade" && sharerHandle) {
+        intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName };
+      } else if (intentType === "collection_migration") {
+        intent = { type: "collection_migration" };
+      }
+    }
+
+    if (intent?.type === "propose_trade" && intent.sharerHandle) {
+      const subType = intent.intentSubType || "message";
+      const cardName = intent.targetCardName;
+      const messageBody = subType === "trade"
+        ? (cardName
+            ? `Hi! I'm interested in trading for your "${cardName}". I'm building my own binder — let's chat!`
+            : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
+        : (cardName
+            ? `Hi! I'd love to chat about your "${cardName}". Are you open to a trade or sale?`
+            : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
+      try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+      router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+      router.refresh();
+      return;
+    }
+
+    if (intent?.type === "collection_migration") {
+      try {
+        const raw = localStorage.getItem("ms_anon_entries");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const entries = (parsed.entries || []).filter((e) => e.setId);
+          if (entries.length > 0) {
+            const res = await fetch("/api/anonymous-migration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ entries }),
+            });
+            if (res.ok) {
+              const result = await res.json();
+              if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
+              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+      try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+      router.push("/");
+      router.refresh();
+      return;
+    }
+
+    // Catch-all: migrate any orphaned anonymous data present at signin,
+    // regardless of intent. Handles the case where a prior signup attempt
+    // had a SW bug or network failure that prevented the migration from
+    // firing in /auth/confirm. Idempotent via ON CONFLICT DO NOTHING.
+    try {
+      const raw = localStorage.getItem("ms_anon_entries");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const entries = (parsed.entries || []).filter((e) => e.setId);
+        if (entries.length > 0) {
+          const res = await fetch("/api/anonymous-migration", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entries }),
+          });
+          const responseText = await res.text();
+          if (res.ok) {
+            const result = JSON.parse(responseText);
+            if (result.inserted === entries.length) {
+              localStorage.removeItem("ms_anon_entries");
+            }
+            sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
+              count: result.inserted,
+              setIds: result.setIds || [],
+            }));
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
+    router.refresh();
+  }
+
+  async function handlePasskeySignIn() {
+    setPasskeyLoading(true);
+    setPasskeyError(null);
+    const supabase = createPasskeyClient();
+    const { error } = await supabase.auth.signInWithPasskey();
+    if (!error) {
+      await resolvePostSignin();
+      return;
+    }
+    setPasskeyLoading(false);
+    // User dismissed the Face ID / fingerprint prompt — silent no-op.
+    if (error.cause?.name === "NotAllowedError") return;
+    // Device does not support WebAuthn.
+    if (error.message === "Browser does not support WebAuthn") {
+      setPasskeyError("Your device doesn't support passkeys.");
+      return;
+    }
+    // No passkey registered or no matching credential on this device.
+    setPasskeyError("No passkey found on this device — sign in with your email and password, or set one up in Settings after signing in.");
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -154,108 +283,7 @@ function LoginContent() {
         return;
       }
 
-      // Resolve pending Trade Binder intent — sessionStorage first, URL params as fallback
-      let intent = null;
-      try {
-        const raw = sessionStorage.getItem("ms_anon_intent");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const ageMs = Date.now() - (parsed.capturedAt || 0);
-          const THIRTY_MIN = 30 * 60 * 1000;
-          if (ageMs > THIRTY_MIN) {
-            sessionStorage.removeItem("ms_anon_intent");
-          } else {
-            intent = parsed;
-          }
-        }
-      } catch (e) { /* ignore */ }
-
-      if (!intent) {
-        const intentType = searchParams.get("intentType");
-        const sharerHandle = searchParams.get("sharerHandle");
-        const targetCardName = searchParams.get("targetCardName");
-        const intentSubType = searchParams.get("intentSubType");
-        if (intentType === "propose_trade" && sharerHandle) {
-          intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName };
-        } else if (intentType === "collection_migration") {
-          intent = { type: "collection_migration" };
-        }
-      }
-
-      if (intent?.type === "propose_trade" && intent.sharerHandle) {
-        const subType = intent.intentSubType || "message";
-        const cardName = intent.targetCardName;
-        const messageBody = subType === "trade"
-          ? (cardName
-              ? `Hi! I'm interested in trading for your "${cardName}". I'm building my own binder — let's chat!`
-              : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
-          : (cardName
-              ? `Hi! I'd love to chat about your "${cardName}". Are you open to a trade or sale?`
-              : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
-        try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
-        router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
-        router.refresh();
-        return;
-      }
-
-      if (intent?.type === "collection_migration") {
-        try {
-          const raw = localStorage.getItem("ms_anon_entries");
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            const entries = (parsed.entries || []).filter((e) => e.setId);
-            if (entries.length > 0) {
-              const res = await fetch("/api/anonymous-migration", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ entries }),
-              });
-              if (res.ok) {
-                const result = await res.json();
-                if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
-                sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
-              }
-            }
-          }
-        } catch (e) { /* ignore */ }
-        try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
-        router.push("/");
-        router.refresh();
-        return;
-      }
-
-      // Catch-all: migrate any orphaned anonymous data present at signin,
-      // regardless of intent. Handles the case where a prior signup attempt
-      // had a SW bug or network failure that prevented the migration from
-      // firing in /auth/confirm. Idempotent via ON CONFLICT DO NOTHING.
-      try {
-        const raw = localStorage.getItem("ms_anon_entries");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const entries = (parsed.entries || []).filter((e) => e.setId);
-          if (entries.length > 0) {
-            const res = await fetch("/api/anonymous-migration", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ entries }),
-            });
-            const responseText = await res.text();
-            if (res.ok) {
-              const result = JSON.parse(responseText);
-              if (result.inserted === entries.length) {
-                localStorage.removeItem("ms_anon_entries");
-              }
-              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
-                count: result.inserted,
-                setIds: result.setIds || [],
-              }));
-            }
-          }
-        }
-      } catch (e) { /* ignore */ }
-
-      router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
-      router.refresh();
+      await resolvePostSignin();
     }
   }
 
@@ -434,11 +462,35 @@ function LoginContent() {
           </form>
 
           {mode === "signin" && (
-            <div className="mt-3 text-center">
-              <a href="/forgot-password" style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: '0.875rem', color: 'rgba(244,244,246,0.6)', textDecoration: 'none', letterSpacing: '0.05em' }}>
-                Forgot password?
-              </a>
-            </div>
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0 0" }}>
+                <div style={{ flex: 1, height: 1, background: "var(--po-border)" }} />
+                <span style={{ fontSize: 11, color: "var(--po-text-dim)", fontFamily: '"IBM Plex Sans", sans-serif', letterSpacing: "0.08em" }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "var(--po-border)" }} />
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePasskeySignIn}
+                disabled={passkeyLoading || loading}
+                className="w-full py-3 border border-[var(--po-border)] text-[var(--po-text)] rounded-lg font-bold text-xs uppercase tracking-widest disabled:opacity-50"
+                style={{ fontFamily: '"IBM Plex Sans", sans-serif', marginTop: 8 }}
+              >
+                {passkeyLoading ? "Checking…" : "Sign in with Face ID / passkey"}
+              </button>
+
+              {passkeyError && (
+                <div className="text-sm text-rose-300 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2" style={{ marginTop: 4 }}>
+                  {passkeyError}
+                </div>
+              )}
+
+              <div className="mt-3 text-center">
+                <a href="/forgot-password" style={{ fontFamily: '"IBM Plex Sans", sans-serif', fontSize: '0.875rem', color: 'rgba(244,244,246,0.6)', textDecoration: 'none', letterSpacing: '0.05em' }}>
+                  Forgot password?
+                </a>
+              </div>
+            </>
           )}
 
           <button
