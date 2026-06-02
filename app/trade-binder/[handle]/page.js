@@ -14,7 +14,6 @@ import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import BackButton from "@/components/BackButton";
-import { Avatar } from "@/components/Avatar";
 
 const rarityRankOf = (rarity) => {
   const bucket = rarityBucket(rarity, [], 0, 0);
@@ -307,18 +306,25 @@ export default function TradeBinderPage() {
           {isOwnPage ? "Your Trade Binder" : "Trade Binder"}
         </MSPageTitle>
 
-        {/* Sharer profile link — shown to all non-owner viewers (anon + logged-in) */}
+        {/* Sharer profile button — shown to all non-owner viewers (anon + logged-in) */}
         {!isOwnPage && targetProfile && (
           <Link
             href={`/friend/${handle}`}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              textDecoration: "none",
+              display: "block",
+              textAlign: "center",
+              padding: "13px 16px",
               marginBottom: 16,
+              background: "rgba(200,255,74,0.08)",
+              border: "0.5px solid rgba(200,255,74,0.25)",
+              borderRadius: "var(--border-radius-md)",
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--po-green)",
+              textDecoration: "none",
             }}
           >
-            <Avatar profile={targetProfile} size={28} />
-            <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>@{handle}</span>
+            {`View ${targetProfile.display_name || ('@' + handle)}'s profile`}
           </Link>
         )}
 

@@ -354,6 +354,14 @@ export default function FriendOverviewPage() {
           Add @{friend.handle} as a friend
         </button>
       )}
+      {isPreview && isAnonymous && (
+        <Link
+          href={`/welcome?returnTo=/friend/${friend.handle}`}
+          className="block w-full px-4 py-3 bg-[var(--po-green)] text-black font-bold rounded-lg po-glow-green text-center"
+        >
+          Sign in to view profile
+        </Link>
+      )}
       {isPendingFromThem && (
         <div style={{ display: "flex", gap: 8 }}>
           <button
