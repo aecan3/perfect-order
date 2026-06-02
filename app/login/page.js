@@ -463,7 +463,7 @@ function LoginContent() {
                   </select>
                 </div>
 
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }} onClick={() => setLegalAgreed((v) => !v)}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }} onClick={() => setLegalAgreed((v) => !v)}>
                   <div
                     style={{
                       width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 1,
@@ -472,7 +472,7 @@ function LoginContent() {
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                   >
-                    {legalAgreed && <span style={{ color: "#000", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>v</span>}
+                    {legalAgreed && <Check size={10} strokeWidth={3} style={{ color: "#000" }} />}
                   </div>
                   <p style={{ fontSize: 12, color: "var(--po-text-dim)", lineHeight: 1.6, margin: 0, fontFamily: '"IBM Plex Sans", sans-serif' }}>
                     I am 18 or older and agree to the{" "}
@@ -485,7 +485,7 @@ function LoginContent() {
                     </button>
                     .
                   </p>
-                </label>
+                </div>
               </>
             )}
 
