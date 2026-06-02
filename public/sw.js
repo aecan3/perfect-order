@@ -1,6 +1,6 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v24";
+const CACHE = "perfect-order-v25";
 
 // /data/au-localities.json is the static suburb autocomplete dataset (~134 KB gzipped).
 // Precached so suburb search works offline after first SW install.
@@ -103,5 +103,46 @@ self.addEventListener("fetch", (e) => {
         const cached = await caches.match(e.request);
         return cached ?? new Response("", { status: 503 });
       })
+  );
+});
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+// These handlers are additive — they do not affect the fetch handler above.
+
+self.addEventListener("push", (e) => {
+  if (!e.data) return;
+
+  let payload;
+  try {
+    payload = e.data.json();
+  } catch {
+    payload = { title: "Master Setter", body: e.data.text(), url: "/" };
+  }
+
+  const title = payload.title || "Master Setter";
+  const options = {
+    body: payload.body || "",
+    icon: "/icon-192.png",
+    data: { url: payload.url || "/" },
+  };
+
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const targetUrl = e.notification.data?.url || "/";
+
+  e.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === targetUrl && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
   );
 });

@@ -66,6 +66,10 @@ const PUBLIC_PATHS = new Set([
   "/api/cron/trade-handover-prompts",
   "/api/cron/marketplace-pool-refresh",
 
+  // Stage 1 push test — CRON_SECRET gated, no session cookie when triggered via curl.
+  // Remove or restrict to admin-only in Stage 2.
+  "/api/push/test",
+
   // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.

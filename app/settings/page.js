@@ -10,6 +10,7 @@ import { Avatar } from "@/components/Avatar";
 import { createClient } from "@/lib/supabase";
 import { uploadAvatar } from "@/lib/avatar";
 import BackButton from "@/components/BackButton";
+import { subscribeToPush } from "@/lib/push/subscribe";
 
 export default function SettingsPage() {
   const supabase = createClient();
@@ -21,6 +22,8 @@ export default function SettingsPage() {
   const [unblockTarget, setUnblockTarget] = useState(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError]         = useState(null);
+  // TEMP Stage 1 — remove or replace with contextual prompt in Stage 2
+  const [pushStatus, setPushStatus] = useState("idle"); // "idle" | "subscribing" | "done" | "error"
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -181,6 +184,50 @@ export default function SettingsPage() {
 
         {/* ── Sign-in / Passkey ── */}
         <PasskeySection />
+
+        {/* ── Push Notifications (TEMP Stage 1 test — remove in Stage 2) ── */}
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ms-dim)",
+            marginBottom: 12,
+          }}>
+            Notifications (dev)
+          </h2>
+          <button
+            disabled={pushStatus === "subscribing" || pushStatus === "done"}
+            onClick={async () => {
+              setPushStatus("subscribing");
+              const sub = await subscribeToPush();
+              setPushStatus(sub ? "done" : "error");
+            }}
+            style={{
+              padding: "10px 16px",
+              background: pushStatus === "done" ? "transparent" : "var(--po-green, #39d353)",
+              border: pushStatus === "done" ? "1px solid rgba(244,244,246,0.2)" : "none",
+              borderRadius: 8,
+              color: pushStatus === "done" ? "rgba(244,244,246,0.7)" : "#000",
+              fontSize: 13,
+              fontFamily: '"IBM Plex Sans", sans-serif',
+              fontWeight: 700,
+              cursor: pushStatus === "subscribing" || pushStatus === "done" ? "default" : "pointer",
+              opacity: pushStatus === "subscribing" ? 0.6 : 1,
+            }}
+          >
+            {pushStatus === "idle"        && "Enable push (test)"}
+            {pushStatus === "subscribing" && "Subscribing…"}
+            {pushStatus === "done"        && "Subscribed ✓"}
+            {pushStatus === "error"       && "Failed — try again"}
+          </button>
+          {pushStatus === "error" && (
+            <p style={{ fontSize: 12, color: "rgba(244,244,246,0.4)", marginTop: 6 }}>
+              Check that notifications are allowed in iOS Settings → Safari → your app.
+            </p>
+          )}
+        </section>
 
         {/* ── Blocked Users ── */}
         <section style={{ marginBottom: 32 }}>
