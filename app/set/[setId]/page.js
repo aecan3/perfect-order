@@ -499,6 +499,7 @@ export default function SetTrackerPage() {
   const [ownedPrintingsState, setOwnedPrintings] = useState({});
   const [pickingCard, setPickingCard] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
   const [currency, setCurrency] = useState("AUD");
   const [view, setView] = useState("rarity"); // "rarity" | "binder" | "missing"
   const [openSections, setOpenSections] = useState({});
@@ -566,6 +567,7 @@ export default function SetTrackerPage() {
     (async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) setUser(authUser);
+      setAuthResolved(true);
 
       const [{ data: setData }, { data: cardData }, { data: printingData }, { data: gmPrintingData }] = await Promise.all([
         supabase.from("sets").select("*").eq("id", setId).maybeSingle(),
@@ -874,7 +876,7 @@ export default function SetTrackerPage() {
 
   if (!authChecked) {
     return (
-      <MSShell anonymousNav={isAnonymous}>
+      <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>Loading…</div>
       </MSShell>
     );
@@ -1201,7 +1203,7 @@ export default function SetTrackerPage() {
   };
 
   return (
-    <MSShell anonymousNav={isAnonymous}>
+    <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
       {celebration && (
         <AchievementCelebration
           type={celebration.type}
