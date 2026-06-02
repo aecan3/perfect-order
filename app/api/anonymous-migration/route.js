@@ -75,6 +75,30 @@ export async function POST(request) {
   const setIds = [...new Set(rows.map((r) => r.set_id))];
   console.log("[migration-api] inserted:", inserted?.length, "of", rows.length, "setIds:", setIds);
 
+  // Ensure a user_sets row exists for each migrated set so it appears in MY SETS.
+  // added_at defaults to now(); prices_updated_at and previous_value are populated
+  // later by the price refresh cron. ignoreDuplicates = safe to re-run.
+  const userSetsRows = setIds.map((setId) => ({
+    user_id: user.id,
+    set_id: setId,
+    hidden_at: null,
+  }));
+
+  const { error: userSetsErr } = await supabase
+    .from("user_sets")
+    .upsert(userSetsRows, {
+      onConflict: "user_id,set_id",
+      ignoreDuplicates: true,
+    });
+
+  if (userSetsErr) {
+    console.error("[migration-api] user_sets upsert failed:", JSON.stringify(userSetsErr));
+    // Don't fail the whole migration — collection_entries succeeded.
+    // Worst case: user sees empty MY SETS but cards exist and can re-add the set.
+  } else {
+    console.log("[migration-api] user_sets upserted:", setIds.length);
+  }
+
   return NextResponse.json({
     inserted: inserted?.length || 0,
     requested: rows.length,
