@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Star, ArrowLeftRight, X, ChevronDown } from "lucide-react";
 import { AnonymousBinderActionSheet } from "@/components/marketplace/AnonymousBinderActionSheet";
 import { AnonymousSignupConfirm } from "@/components/AnonymousSignupConfirm";
@@ -13,6 +14,7 @@ import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import BackButton from "@/components/BackButton";
+import { Avatar } from "@/components/Avatar";
 
 const rarityRankOf = (rarity) => {
   const bucket = rarityBucket(rarity, [], 0, 0);
@@ -235,7 +237,7 @@ export default function TradeBinderPage() {
       // Resolve target handle → profile (works for anon via RLS)
       const { data: targetProf } = await supabase
         .from("profiles")
-        .select("id, handle, display_name")
+        .select("id, handle, display_name, avatar_url")
         .eq("handle", handle)
         .maybeSingle();
 
@@ -304,6 +306,21 @@ export default function TradeBinderPage() {
         <MSPageTitle sub={isOwnPage ? null : `@${handle}`}>
           {isOwnPage ? "Your Trade Binder" : "Trade Binder"}
         </MSPageTitle>
+
+        {/* Sharer profile link — shown to all non-owner viewers (anon + logged-in) */}
+        {!isOwnPage && targetProfile && (
+          <Link
+            href={`/friend/${handle}`}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              textDecoration: "none",
+              marginBottom: 16,
+            }}
+          >
+            <Avatar profile={targetProfile} size={28} />
+            <span style={{ fontSize: 13, color: "var(--po-text-dim)" }}>@{handle}</span>
+          </Link>
+        )}
 
         {/* Hunting-match banner — logged-in friend view only */}
         {!isAnonymous && !isOwnPage && huntCount > 0 && (
