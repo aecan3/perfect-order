@@ -769,7 +769,7 @@ export default function TradeBinderPage() {
         }}>
           <div style={{ maxWidth: 384, margin: "0 auto" }}>
             <button
-              onClick={() => router.push(`/welcome?returnTo=/trade-binder/${handle}`)}
+              onClick={() => router.push(`/login?returnTo=/trade-binder/${handle}`)}
               style={{
                 width: "100%",
                 padding: "15px",
