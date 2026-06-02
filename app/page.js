@@ -20,6 +20,7 @@ import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
+import PasskeyNudge from "@/components/PasskeyNudge";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -842,6 +843,7 @@ export default function HomePage() {
         </div>
 
         <div className="px-4 pb-4 space-y-3 max-w-md mx-auto">
+          <PasskeyNudge />
           {allSets.length > 0 && renderBanner()}
 
           {renderDiscoverPanel()}

@@ -5,6 +5,7 @@ import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { SuburbAutocomplete } from "@/components/SuburbAutocomplete";
 import { BlockConfirmModal } from "@/components/BlockConfirmModal";
+import PasskeySection from "@/components/PasskeySection";
 import { Avatar } from "@/components/Avatar";
 import { createClient } from "@/lib/supabase";
 import { uploadAvatar } from "@/lib/avatar";
@@ -177,6 +178,9 @@ export default function SettingsPage() {
             <p style={{ fontSize: 12, color: "var(--ms-green)", marginTop: 8 }}>Location saved.</p>
           )}
         </section>
+
+        {/* ── Sign-in / Passkey ── */}
+        <PasskeySection />
 
         {/* ── Blocked Users ── */}
         <section style={{ marginBottom: 32 }}>
