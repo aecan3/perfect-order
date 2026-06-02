@@ -13,6 +13,39 @@ import { fetchMarketplaceListings } from "@/lib/marketplace/client-fetch";
 import { RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 
 function AnonymousTabBar() {
+  const [hydrated, setHydrated] = useState(false);
+  const [stats, setStats] = useState({ count: 0, value: 0 });
+
+  useEffect(() => {
+    setHydrated(true);
+    const update = () => {
+      try {
+        const raw = localStorage.getItem("ms_anon_entries");
+        if (!raw) { setStats({ count: 0, value: 0 }); return; }
+        const parsed = JSON.parse(raw);
+        const count = parsed.entries.reduce((s, e) => s + e.quantity, 0);
+        const valueUsd = parsed.entries.reduce((s, e) => s + (e.priceUsd || 0) * e.quantity, 0);
+        setStats({ count, value: valueUsd * 1.53 });
+      } catch {
+        setStats({ count: 0, value: 0 });
+      }
+    };
+    update();
+    window.addEventListener("storage", update);
+    window.addEventListener("ms-anon-entries-changed", update);
+    return () => {
+      window.removeEventListener("storage", update);
+      window.removeEventListener("ms-anon-entries-changed", update);
+    };
+  }, []);
+
+  // Gate dynamic content on hydration — server and first client
+  // render must match (both show "Sign Up Free" at fontSize 13)
+  const showDynamic = hydrated && stats.count > 0;
+  const buttonText = showDynamic
+    ? `Sign Up — Save ${stats.count} ${stats.count === 1 ? "card" : "cards"} (A$${Math.round(stats.value)})`
+    : "Sign Up Free";
+
   return (
     <nav
       aria-label="Primary"
@@ -67,13 +100,17 @@ function AnonymousTabBar() {
           color: "#050507",
           borderRadius: 12,
           fontWeight: 700,
-          fontSize: 13,
+          fontSize: showDynamic ? 11 : 13,
           textDecoration: "none",
-          letterSpacing: "0.04em",
+          letterSpacing: "0.02em",
           WebkitTapHighlightColor: "transparent",
+          paddingLeft: 8,
+          paddingRight: 8,
+          textAlign: "center",
+          lineHeight: 1.2,
         }}
       >
-        Sign Up Free
+        {buttonText}
       </Link>
     </nav>
   );
