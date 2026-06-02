@@ -46,6 +46,16 @@ function renderLegalMarkdown(text) {
   );
 }
 
+// Returns path if safe for internal redirect, null otherwise.
+// Accepts only paths starting with a single "/" — blocks external URLs and
+// protocol-relative URLs (//evil.com). Must stay identical to the copy in
+// app/auth/confirm/page.js.
+function safeReturnTo(path) {
+  if (!path || typeof path !== "string") return null;
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  return path;
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -244,7 +254,7 @@ function LoginContent() {
         }
       } catch (e) { /* ignore */ }
 
-      router.push("/");
+      router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
       router.refresh();
     }
   }

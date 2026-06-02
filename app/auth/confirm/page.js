@@ -5,6 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 
+// Returns path if safe for internal redirect, null otherwise.
+// Accepts only paths starting with a single "/" — blocks external URLs and
+// protocol-relative URLs (//evil.com). Must stay identical to the copy in
+// app/login/page.js.
+function safeReturnTo(path) {
+  if (!path || typeof path !== "string") return null;
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  return path;
+}
+
 function ConfirmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -143,7 +153,7 @@ function ConfirmContent() {
               }
             }
           } catch (e) { /* ignore */ }
-          router.push("/");
+          router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
           router.refresh();
         }
       }, 800);
