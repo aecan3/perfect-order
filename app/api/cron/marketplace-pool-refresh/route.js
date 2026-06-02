@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/service";
 import { refreshListingsForPrinting } from "@/lib/marketplace/refresh";
 
-// GitHub Actions fires this every 10 minutes. Each invocation processes
-// a small batch (25 cards) within the Vercel Hobby 60s timeout.
-// 3,540 pool cards / (6 invocations/hr × 20 pool slots) ≈ 24h full cycle.
+// cron-job.org fires this every 3 minutes. Each invocation processes
+// a small batch (12 cards) within the cron-job.org 30s timeout (~24s actual).
+// 3,540 pool cards / (20 invocations/hr × 10 pool slots) ≈ 18h full cycle.
 
 const MARKETPLACE_ID = "EBAY_AU";
-const BATCH_SIZE = 25;
-const FAVOURITE_RATIO = 0.20;  // 5 favourite slots, 20 pool slots per batch
+const BATCH_SIZE = 12;
+const FAVOURITE_RATIO = 0.20;  // 2 favourite slots, 10 pool slots per batch
 
 export async function GET(request) {
   if (!process.env.CRON_SECRET) {
@@ -24,8 +24,8 @@ export async function GET(request) {
   const supabase = getServiceClient();
   const startTime = Date.now();
 
-  const favouriteSlots = Math.floor(BATCH_SIZE * FAVOURITE_RATIO);  // 5
-  const poolSlots = BATCH_SIZE - favouriteSlots;                     // 20
+  const favouriteSlots = Math.floor(BATCH_SIZE * FAVOURITE_RATIO);  // 2
+  const poolSlots = BATCH_SIZE - favouriteSlots;                     // 10
 
   // Oldest unfulfilled pool_requests (favourite-priority slots)
   const { data: requests, error: reqErr } = await supabase
