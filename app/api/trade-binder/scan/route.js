@@ -95,8 +95,30 @@ export async function POST(req) {
     return NextResponse.json({ error: "Missing imageBase64" }, { status: 400 });
   }
 
-  // Strip data URL prefix if present (mirrors verify-photo pattern)
-  const base64Data = body.imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  // Parse media type from the data URL prefix.
+  // Anthropic supports: image/jpeg, image/png, image/gif, image/webp.
+  // HEIC is not supported. Browsers usually transcode HEIC to JPEG when reading
+  // via FileReader, but a raw HEIC upload would arrive as image/heic or image/heif.
+  const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const prefixMatch = body.imageBase64.match(/^data:(image\/[\w.+-]+);base64,/);
+  const detectedType = prefixMatch ? prefixMatch[1].toLowerCase() : "image/jpeg";
+
+  if (detectedType === "image/heic" || detectedType === "image/heif") {
+    return NextResponse.json(
+      { error: "HEIC images are not supported. Please use JPEG or PNG." },
+      { status: 400 }
+    );
+  }
+  if (!SUPPORTED_TYPES.has(detectedType)) {
+    return NextResponse.json(
+      { error: `Unsupported image format "${detectedType}". Supported: JPEG, PNG, GIF, WebP.` },
+      { status: 400 }
+    );
+  }
+
+  const base64Data = prefixMatch
+    ? body.imageBase64.slice(prefixMatch[0].length)
+    : body.imageBase64;
 
   // --- AI identification ---
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -112,7 +134,7 @@ export async function POST(req) {
           content: [
             {
               type: "image",
-              source: { type: "base64", media_type: "image/jpeg", data: base64Data },
+              source: { type: "base64", media_type: detectedType, data: base64Data },
             },
             {
               type: "text",
