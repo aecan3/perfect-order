@@ -98,6 +98,10 @@ async function matchBack(service, aiCard) {
     console.error("[scan/match-back] cards query error:", cardErr.message);
     return { aiCard, matches: [], status: "none", reason: cardErr.message };
   }
+  // TEMP DIAGNOSTIC — Stage 1 results
+  console.log(`[scan/mb1] "${card_name}" #${card_number} → ${cardRows?.length ?? 0} card rows:`,
+    (cardRows || []).map((c) => `id=${c.id} set_id=${c.set_id} num=${c.number}`).join(" | "));
+
   if (!cardRows?.length) {
     return { aiCard, matches: [], status: "none", reason: "no matching cards" };
   }
@@ -115,10 +119,27 @@ async function matchBack(service, aiCard) {
     }
     const { data: setRows } = await setQuery;
     if (setRows?.length) setIds = setRows.map((s) => s.id);
+    // TEMP DIAGNOSTIC — Stage 2 results
+    console.log(`[scan/mb2] "${card_name}" set hint name="${set_name}" code="${set_code_hint}" → ${setRows?.length ?? 0} set rows: setIds=${JSON.stringify(setIds)}`);
+  } else {
+    // TEMP DIAGNOSTIC — Stage 2 skipped
+    console.log(`[scan/mb2] "${card_name}" no set hint — skipping set filter`);
   }
 
   // Step 3: find master printings — all filters on root printings columns.
   const cardIds = cardRows.map((c) => c.id);
+
+  // TEMP DIAGNOSTIC — query without set filter to see tier count
+  const { data: allPrintRows } = await service
+    .from("printings")
+    .select("id, printing_type, card_id, set_id, collection_tier")
+    .in("card_id", cardIds);
+  console.log(`[scan/mb3] "${card_name}" all printings for card_ids=${JSON.stringify(cardIds)}: ${allPrintRows?.length ?? 0} rows`);
+  const masterRows = (allPrintRows || []).filter((p) => p.collection_tier === "master");
+  console.log(`[scan/mb3] "${card_name}" after collection_tier=master: ${masterRows.length} rows`);
+  const setFilteredRows = setIds ? masterRows.filter((p) => setIds.includes(p.set_id)) : masterRows;
+  console.log(`[scan/mb3] "${card_name}" after set_id filter (setIds=${JSON.stringify(setIds)}): ${setFilteredRows.length} rows`);
+
   let printQuery = service
     .from("printings")
     .select("id, printing_type, card_id, set_id")
@@ -270,6 +291,19 @@ Rules:
 
   // --- Match-back: resolve each identified card to DB printings ---
   const service = getServiceClient();
+
+  // TEMP DIAGNOSTIC — log the exact AI read for every card before matchBack
+  identified.forEach((card) => {
+    console.log("[scan/aiCard]", JSON.stringify({
+      card_name:           card.card_name,
+      card_number:         card.card_number,
+      set_name:            card.set_name,
+      set_code_hint:       card.set_code_hint,
+      printing_type_hint:  card.printing_type_hint,
+      confidence:          card.confidence,
+    }));
+  });
+
   const results = await Promise.all(identified.map((card) => matchBack(service, card)));
 
   // --- Refocus: one cropped-image AI call per ambiguous card (status === "set") ---
