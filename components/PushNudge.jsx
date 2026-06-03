@@ -5,11 +5,61 @@ import { createClient } from "@/lib/supabase";
 import { isPushSupported, isStandalone } from "@/lib/push/support";
 import { subscribeToPush } from "@/lib/push/subscribe";
 
-const DISMISSED_KEY = "ms_push_prompt_dismissed";
+const STATE_KEY    = "ms_push_prompt_state";
+const LEGACY_KEY   = "ms_push_prompt_dismissed";
+const MAX_DISMISSALS = 3;
+const THREE_WEEKS_MS = 21 * 24 * 60 * 60 * 1000;
+const ONE_MONTH_MS   = 30 * 24 * 60 * 60 * 1000;
 
 // Must match PasskeyNudge.jsx — kept identical so both nudges use the same window.
 const PASSKEY_NUDGE_DISMISSED_KEY = "ms_passkey_nudge_dismissed";
 const PASSKEY_NUDGE_WINDOW_MS = 10 * 60 * 1000;
+
+function readState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (raw) return JSON.parse(raw);
+    // Migrate legacy boolean flag: treat as one dismiss with an old timestamp.
+    if (localStorage.getItem(LEGACY_KEY)) {
+      localStorage.removeItem(LEGACY_KEY);
+      const migrated = { dismissCount: 1, lastDismissedAt: new Date(0).toISOString() };
+      localStorage.setItem(STATE_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+    return { dismissCount: 0, lastDismissedAt: null };
+  } catch {
+    return { dismissCount: MAX_DISMISSALS, lastDismissedAt: null };
+  }
+}
+
+function shouldShow(state) {
+  const { dismissCount, lastDismissedAt } = state;
+  if (dismissCount >= MAX_DISMISSALS) return false;
+  if (dismissCount === 0) return true;
+  const elapsed = Date.now() - new Date(lastDismissedAt).getTime();
+  if (dismissCount === 1) return elapsed > THREE_WEEKS_MS;
+  if (dismissCount === 2) return elapsed > ONE_MONTH_MS;
+  return false;
+}
+
+function writeDismiss() {
+  try {
+    const state = readState();
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      dismissCount: state.dismissCount + 1,
+      lastDismissedAt: new Date().toISOString(),
+    }));
+  } catch { /* ignore */ }
+}
+
+function writeCap() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      dismissCount: MAX_DISMISSALS,
+      lastDismissedAt: new Date().toISOString(),
+    }));
+  } catch { /* ignore */ }
+}
 
 export default function PushNudge() {
   const [show, setShow] = useState(false);
@@ -21,11 +71,8 @@ export default function PushNudge() {
       if (!isPushSupported()) return;
       if (Notification.permission !== "default") return;
 
-      try {
-        if (localStorage.getItem(DISMISSED_KEY)) return;
-      } catch {
-        return;
-      }
+      const state = readState();
+      if (!shouldShow(state)) return;
 
       // Defer to PasskeyNudge if it would currently be showing — never stack two banners.
       // Self-clears after PASSKEY_NUDGE_WINDOW_MS; PushNudge shows on the next app-open.
@@ -51,7 +98,7 @@ export default function PushNudge() {
   }, []);
 
   function dismiss() {
-    try { localStorage.setItem(DISMISSED_KEY, "1"); } catch { /* ignore */ }
+    writeDismiss();
     setShow(false);
   }
 
@@ -59,10 +106,14 @@ export default function PushNudge() {
     setBusy(true);
     const sub = await subscribeToPush();
     setBusy(false);
-    // Whether they granted or denied, don't re-nag — dismiss either way.
-    dismiss();
-    // (If sub is non-null, the settings toggle will reflect "on" next time they look.)
-    void sub;
+    if (sub) {
+      // Subscription succeeded — cap the counter so schedule never re-shows.
+      writeCap();
+    } else {
+      // Permission denied or error — treat as a dismiss so we don't immediately re-nag.
+      writeDismiss();
+    }
+    setShow(false);
   }
 
   if (!show) return null;
