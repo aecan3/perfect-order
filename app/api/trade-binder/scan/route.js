@@ -29,7 +29,7 @@ async function matchBack(service, aiCard) {
   // Step 1: find matching card rows — name and optional number on root cards table.
   let cardQuery = service
     .from("cards")
-    .select("id, name, number, set_id, rarity")
+    .select("id, name, number, set_id, rarity, image_large")
     .ilike("name", card_name);
   if (card_number !== null && card_number !== undefined) {
     cardQuery = cardQuery.eq("number", card_number);
@@ -94,6 +94,7 @@ async function matchBack(service, aiCard) {
     card_name:     cardMap[p.card_id]?.name,
     card_number:   cardMap[p.card_id]?.number,
     rarity:        cardMap[p.card_id]?.rarity,
+    image_url:     cardMap[p.card_id]?.image_large,
   }));
 
   let status;
