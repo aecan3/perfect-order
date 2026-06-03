@@ -66,9 +66,6 @@ const PUBLIC_PATHS = new Set([
   "/api/cron/trade-handover-prompts",
   "/api/cron/marketplace-pool-refresh",
 
-  // Stage 1 push test — CRON_SECRET gated, no session cookie when triggered via curl.
-  // Remove or restrict to admin-only in Stage 2.
-  "/api/push/test",
 
   // Push webhook — called by Supabase on notifications INSERT, no session cookie.
   // Authenticated via PUSH_WEBHOOK_SECRET Authorization header.
