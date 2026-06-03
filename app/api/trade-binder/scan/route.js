@@ -49,12 +49,15 @@ async function matchBack(service, aiCard) {
     query = query.eq("card.number", card_number);
   }
 
-  // Set filter: match on set name OR set code if AI provided either
+  // Set filter: match on set name OR set code if AI provided either.
+  // { referencedTable: "sets" } scopes the OR to the embedded sets join —
+  // without it PostgREST applies it to the root printings table (no name/code cols → 0 rows).
+  // Column names are relative to the referenced table, so no "set." prefix here.
   const setFilters = [];
-  if (set_name) setFilters.push(`set.name.ilike.%${set_name}%`);
-  if (set_code_hint) setFilters.push(`set.code.ilike.${set_code_hint}`);
+  if (set_name) setFilters.push(`name.ilike.%${set_name}%`);
+  if (set_code_hint) setFilters.push(`code.ilike.${set_code_hint}`);
   if (setFilters.length > 0) {
-    query = query.or(setFilters.join(","));
+    query = query.or(setFilters.join(","), { referencedTable: "sets" });
   }
 
   const { data: rows, error } = await query;
@@ -143,14 +146,14 @@ Return ONLY a JSON array — no prose, no markdown, no explanation.
 Each element must follow this exact shape:
 {
   "card_name": "exact name printed on the card",
-  "card_number": <integer from the card's collector number, e.g. 98, or null if unreadable>,
+  "card_number": <integer from the card's collector number, e.g. 98, or null if truly unreadable>,
   "set_name": "full set name if visible, or null",
   "set_code_hint": "short set code printed on the card if visible (e.g. POR, SIT), or null",
   "printing_type_hint": "holofoil" | "reverse_holofoil" | "normal" | null,
   "confidence": "high" | "medium" | "low"
 }
 Rules:
-- card_number is the number before the slash (e.g. for "098/102" return 98).
+- card_number: Look carefully at the bottom of the card for a number like "098/102" or "25/185". Return the integer before the slash (e.g. 98). Try hard — zoom in mentally, use context clues like card art and name to infer the set total. Only return null if the number is genuinely obscured or outside the frame.
 - printing_type_hint: "holofoil" if the card art is holographic; "reverse_holofoil" if only the card border/background shimmers but the art is flat; "normal" if no holo effect is visible; null if uncertain.
 - Use "low" confidence rather than guessing a wrong name or number.
 - Include every card you can see, even partially. Omit only cards where nothing is readable.`,
