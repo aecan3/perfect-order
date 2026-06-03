@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Upload, Check, ArrowRight } from "lucide-react";
 import { CameraCapture } from "@/components/CameraCapture";
@@ -21,6 +21,21 @@ const STATUS_META = {
   set:     { label: "Pick card",     color: "#60a5fa" },
   none:    { label: "Not found",     color: "#ff6b6b" },
 };
+
+const CONF_META = {
+  high:   { label: "High", color: "#c8ff4a" },
+  medium: { label: "Med",  color: "#FFB830" },
+  low:    { label: "Low",  color: "#ff6b6b" },
+};
+
+// "Worse wins": resolution state and AI confidence both contribute; lower score wins.
+// Missing AI confidence (null/undefined) is treated as neutral (2) so it doesn't penalise.
+function deriveConfidence(status, aiConfidence) {
+  const resScore = status === "auto" ? 2 : status === "variant" ? 1 : 0;
+  const aiScore  = aiConfidence === "low" ? 0 : aiConfidence === "medium" ? 1 : 2;
+  const combined = Math.min(resScore, aiScore);
+  return combined === 2 ? "high" : combined === 1 ? "medium" : "low";
+}
 
 function initSelections(results) {
   const sel = {};
@@ -110,6 +125,8 @@ function ResultCard({ result, selection, onSelect, onSkip, onUnskip }) {
   const { aiCard, matches, status } = result;
   const isSkipped = selection === "skip";
   const { label: statusLabel, color: statusColor } = STATUS_META[status] || STATUS_META.none;
+  const confidence = deriveConfidence(status, aiCard.confidence);
+  const { label: confLabel, color: confColor } = CONF_META[confidence];
 
   return (
     <div>
@@ -125,6 +142,9 @@ function ResultCard({ result, selection, onSelect, onSkip, onUnskip }) {
           border: `1px solid ${statusColor}44`,
         }}>
           {statusLabel}
+        </span>
+        <span style={{ fontSize: 9, fontWeight: 600, color: confColor, opacity: 0.8, whiteSpace: "nowrap" }}>
+          {confLabel}
         </span>
       </div>
 
@@ -263,6 +283,16 @@ export default function ScanPage() {
     setSelections((prev) => ({ ...prev, [resultIdx]: matchIdx }));
   };
 
+  // Needs-attention-first: Low → Medium → High so the user resolves hard ones first.
+  const sortedIndices = useMemo(() => {
+    const order = { low: 0, medium: 1, high: 2 };
+    return [...scanResults.keys()].sort((a, b) => {
+      const ca = deriveConfidence(scanResults[a].status, scanResults[a].aiCard.confidence);
+      const cb = deriveConfidence(scanResults[b].status, scanResults[b].aiCard.confidence);
+      return order[ca] - order[cb];
+    });
+  }, [scanResults]);
+
   const toCommitList = scanResults
     .map((r, i) => ({ r, i, sel: selections[i] }))
     .filter(({ sel }) => sel !== "skip" && sel !== null && sel !== undefined)
@@ -361,16 +391,19 @@ export default function ScanPage() {
               <p style={{ color: "#ff6b6b", fontSize: 13, marginBottom: 12 }}>{errMsg}</p>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-              {scanResults.map((r, i) => (
-                <ResultCard
-                  key={i}
-                  result={r}
-                  selection={selections[i]}
-                  onSelect={(mi) => setSelection(i, mi)}
-                  onSkip={() => setSelection(i, "skip")}
-                  onUnskip={() => setSelection(i, r.status === "auto" ? 0 : (r.status === "variant" || r.status === "set" ? null : "skip"))}
-                />
-              ))}
+              {sortedIndices.map((i) => {
+                const r = scanResults[i];
+                return (
+                  <ResultCard
+                    key={i}
+                    result={r}
+                    selection={selections[i]}
+                    onSelect={(mi) => setSelection(i, mi)}
+                    onSkip={() => setSelection(i, "skip")}
+                    onUnskip={() => setSelection(i, r.status === "auto" ? 0 : (r.status === "variant" || r.status === "set" ? null : "skip"))}
+                  />
+                );
+              })}
             </div>
           </div>
         )}

@@ -97,6 +97,18 @@ async function matchBack(service, aiCard) {
     image_url:     cardMap[p.card_id]?.image_large,
   }));
 
+  // Sort candidates so the most-likely match leads:
+  //   1. printing_type matches AI's hint → rank 0 (best)
+  //   2. hint absent or no match → rank 1
+  //   Secondary: stable by set_id so order is deterministic across renders.
+  const hint = aiCard.printing_type_hint;
+  matches.sort((a, b) => {
+    const ra = (hint && a.printing_type === hint) ? 0 : 1;
+    const rb = (hint && b.printing_type === hint) ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    return (a.set_id || "").localeCompare(b.set_id || "");
+  });
+
   let status;
   if (matches.length === 0)     status = "none";
   else if (matches.length === 1) status = "auto";
