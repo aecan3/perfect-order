@@ -66,9 +66,10 @@ function priceFromCard(card) {
 }
 
 async function upsertSet(set) {
+  const preferredCode = (set.ptcgoCode || set.id).toUpperCase().slice(0, 8);
   const row = {
     id: set.id,
-    code: (set.ptcgoCode || set.id).toUpperCase().slice(0, 8),
+    code: preferredCode,
     name: set.name,
     series: set.series,
     total: set.printedTotal || set.total || 0,
@@ -78,11 +79,41 @@ async function upsertSet(set) {
     symbol_url: set.images?.symbol || null,
   };
   const { error } = await supabase.from("sets").upsert(row, { onConflict: "id" });
-  if (error) throw new Error(`Failed to upsert set ${set.id}: ${error.message}`);
+  if (!error) return;
+
+  // Detect a ptcgoCode collision on sets_code_key (two sets sharing the same ptcgoCode,
+  // e.g. swsh12pt5 and swsh12pt5gg both use "CRZ"). Auto-disambiguate by falling back to
+  // the set's own ID as the code — set IDs are always unique, so this never collides.
+  //
+  // SCHEMA NOTE (not changed here): sets_code_key may be too strict. pokemontcg.io
+  // legitimately assigns the same ptcgoCode to companion sub-sets. If "code" is meant
+  // as a human-readable display label (not a lookup key), uniqueness prevents showing
+  // the real code for companion sets. Worth a deliberate schema decision.
+  if (error.message.includes("sets_code_key")) {
+    const fallbackCode = set.id.toUpperCase().slice(0, 8);
+    console.warn(`    ⚠ Code collision: ${set.id} wanted code "${preferredCode}" (already taken by another set). Retrying with "${fallbackCode}".`);
+    row.code = fallbackCode;
+    const { error: retryError } = await supabase.from("sets").upsert(row, { onConflict: "id" });
+    if (retryError) throw new Error(`Failed to upsert set ${set.id} even with fallback code "${fallbackCode}": ${retryError.message}`);
+    return;
+  }
+
+  throw new Error(`Failed to upsert set ${set.id}: ${error.message}`);
 }
 
 async function upsertCards(setId, cards) {
-  const rows = cards.map((c, i) => ({
+  // Filter out cards that belong to a different set — pokemontcg.io bundles sub-set cards
+  // (trainer galleries, companion sub-sets) into the parent set's response. Each card carries
+  // its true set identity in c.set.id. Seeding them here under setId would mis-file them;
+  // seed those sub-sets explicitly instead.
+  const foreignCards = cards.filter((c) => c.set?.id && c.set.id !== setId);
+  if (foreignCards.length > 0) {
+    const foreignSetIds = [...new Set(foreignCards.map((c) => c.set?.id))].sort().join(", ");
+    console.warn(`    ⚠ Skipping ${foreignCards.length} card(s) belonging to sub-set(s) [${foreignSetIds}] bundled in the ${setId} response — seed those sets separately.`);
+  }
+  const ownCards = cards.filter((c) => !c.set?.id || c.set.id === setId);
+
+  const rows = ownCards.map((c, i) => ({
     id: c.id,
     set_id: setId,
     number: parseCardNumber(c.number, i),
@@ -134,6 +165,7 @@ async function main() {
     process.exit(1);
   }
 
+  const failed = [];
   for (let i = 0; i < targets.length; i++) {
     const set = targets[i];
     try {
@@ -141,13 +173,18 @@ async function main() {
       console.log(`[${i + 1}/${targets.length}] ${set.name} (${set.id}) — set row done, fetching cards...`);
       const cards = await fetchCardsForSet(set.id);
       await upsertCards(set.id, cards);
-      console.log(`    ✓ ${cards.length} cards inserted/updated`);
+      console.log(`    ✓ ${cards.length} card(s) from API (own-set only) inserted/updated`);
     } catch (err) {
       console.error(`    ✗ ${set.id} failed: ${err.message}`);
+      failed.push(set.id);
     }
     await new Promise((r) => setTimeout(r, 200));
   }
 
+  if (failed.length > 0) {
+    console.error(`\n✗ ${failed.length} set(s) failed: ${failed.join(", ")}`);
+    process.exit(1);
+  }
   console.log("Done.");
 }
 
