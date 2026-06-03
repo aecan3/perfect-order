@@ -21,6 +21,7 @@ import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 import PasskeyNudge from "@/components/PasskeyNudge";
+import PushNudge from "@/components/PushNudge";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -844,6 +845,7 @@ export default function HomePage() {
 
         <div className="px-4 pb-4 space-y-3 max-w-md mx-auto">
           <PasskeyNudge />
+          <PushNudge />
           {allSets.length > 0 && renderBanner()}
 
           {renderDiscoverPanel()}
