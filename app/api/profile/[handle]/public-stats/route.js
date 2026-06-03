@@ -63,7 +63,7 @@ export async function GET(request, { params }) {
       .select("printing:printings!inner(collection_tier)", { count: "exact", head: true })
       .eq("user_id", targetId)
       .eq("checked", true)
-      .gt("duplicate_count", 0)
+      .or("duplicate_count.gt.0,trade_flagged.eq.true")
       .eq("printing.collection_tier", "master"),
     service
       .from("favourites")
