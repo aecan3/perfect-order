@@ -228,7 +228,8 @@ export default function ScanPage() {
   const captureStreamRef = useRef(null);
   const captureVideoRef  = useRef(null);
   const captureCanvasRef = useRef(null);
-  const lastCaptureRef   = useRef(0); // throttle timestamp
+  const captureGuideRef  = useRef(null); // read getBoundingClientRect() at shutter time
+  const lastCaptureRef   = useRef(0);    // throttle timestamp
 
   const [authReady,   setAuthReady]   = useState(false);
   const [userHandle,  setUserHandle]  = useState(null);
@@ -309,47 +310,14 @@ export default function ScanPage() {
     }
   };
 
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => handleImage(ev.target.result);
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const setSelection = (resultIdx, matchIdx) => {
-    setSelections((prev) => ({ ...prev, [resultIdx]: matchIdx }));
-  };
-
-  // Synchronous frame grab — instant, no async gap between taps
-  const handleShutter = () => {
-    const video  = captureVideoRef.current;
-    const canvas = captureCanvasRef.current;
-    if (!video || !canvas || !captureReady || video.videoWidth === 0) return;
-    const now = Date.now();
-    if (now - lastCaptureRef.current < 300) return; // 300 ms throttle
-    lastCaptureRef.current = now;
-
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-    setCapturedImages((prev) => [...prev, dataUrl]);
-    setFlash(true);
-    setTimeout(() => setFlash(false), 80);
-    navigator.vibrate?.(30);
-  };
-
-  // Batch-process captured images through the scan API (5 concurrent workers)
-  const handleCaptureDone = async () => {
-    if (capturedImages.length === 0) return;
-    const images = [...capturedImages];
-    setPhase("processing"); // triggers capture stream cleanup via useEffect
+  // Shared batch pipeline — used by both rapid-capture Done and multi-upload.
+  // Caller sets phase to "processing" first (so capture stream cleanup fires),
+  // then passes the array of base64 data-URL strings.
+  const processImageBatch = async (images) => {
     setProcessingProgress({ done: 0, total: images.length });
 
     const allCardResults = [];
-    let nextIdx       = 0;
+    let nextIdx        = 0;
     let completedCount = 0;
 
     const worker = async () => {
@@ -385,6 +353,95 @@ export default function ScanPage() {
     setScanResults(allCardResults);
     setSelections(initSelections(allCardResults));
     setPhase("review");
+  };
+
+  // Multi-file upload: read all files to base64 in parallel, then batch-process.
+  const handleFile = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    const images = await Promise.all(
+      files.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload  = (ev) => resolve(ev.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+
+    setErrMsg("");
+    setPhase("processing");
+    await processImageBatch(images);
+  };
+
+  const setSelection = (resultIdx, matchIdx) => {
+    setSelections((prev) => ({ ...prev, [resultIdx]: matchIdx }));
+  };
+
+  // Synchronous frame grab cropped to the guide rect, accounting for objectFit: cover.
+  // Reads live getBoundingClientRect() so translateY and any layout shifts are captured exactly.
+  const handleShutter = () => {
+    const video  = captureVideoRef.current;
+    const canvas = captureCanvasRef.current;
+    const guide  = captureGuideRef.current;
+    if (!video || !canvas || !guide || !captureReady || video.videoWidth === 0) return;
+    const now = Date.now();
+    if (now - lastCaptureRef.current < 300) return; // 300 ms throttle
+    lastCaptureRef.current = now;
+
+    // Displayed size of the video element and native source size
+    const dispW = video.clientWidth;
+    const dispH = video.clientHeight;
+    const srcW  = video.videoWidth;
+    const srcH  = video.videoHeight;
+
+    // objectFit: cover — scale by the larger ratio so both axes fill, overflow clipped, centered
+    const scale   = Math.max(dispW / srcW, dispH / srcH);
+    const scaledW = srcW * scale;
+    const scaledH = srcH * scale;
+    const offX    = (scaledW - dispW) / 2; // source-px hidden on left/right
+    const offY    = (scaledH - dispH) / 2; // source-px hidden on top/bottom
+
+    // Guide rect in CSS px relative to the top-left of the video element
+    const guideRect = guide.getBoundingClientRect();
+    const videoRect = video.getBoundingClientRect();
+    const guideLeft = guideRect.left - videoRect.left;
+    const guideTop  = guideRect.top  - videoRect.top;
+    const guideW    = guideRect.width;
+    const guideH    = guideRect.height;
+
+    // Map guide rect from display-px back to source-px
+    const sx = (guideLeft + offX) / scale;
+    const sy = (guideTop  + offY) / scale;
+    const sw = guideW / scale;
+    const sh = guideH / scale;
+
+    // Clamp to source bounds so rounding cannot read outside the frame
+    const csx = Math.max(0, sx);
+    const csy = Math.max(0, sy);
+    const csw = Math.min(sw, srcW - csx);
+    const csh = Math.min(sh, srcH - csy);
+
+    canvas.width  = Math.round(csw);
+    canvas.height = Math.round(csh);
+    canvas.getContext("2d").drawImage(video, csx, csy, csw, csh, 0, 0, csw, csh);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+
+    setCapturedImages((prev) => [...prev, dataUrl]);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 80);
+    navigator.vibrate?.(30);
+  };
+
+  const handleCaptureDone = async () => {
+    if (capturedImages.length === 0) return;
+    const images = [...capturedImages];
+    setPhase("processing"); // triggers capture stream cleanup via useEffect
+    await processImageBatch(images);
   };
 
   // Needs-attention-first: Low → Medium → High so the user resolves hard ones first.
@@ -484,9 +541,9 @@ export default function ScanPage() {
               }}
             >
               <Upload size={18} />
-              Upload Photo
+              Upload Photos
             </button>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={handleFile} />
           </div>
         )}
 
@@ -652,20 +709,39 @@ export default function ScanPage() {
             style={{ flex: 1, objectFit: "cover", width: "100%", minHeight: 0, display: "block" }}
           />
 
-          {/* Card framing guide */}
+          {/* Card framing guide — enlarged to 78%, ref'd for crop math */}
           <div style={{
             position: "absolute", inset: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
             pointerEvents: "none",
           }}>
-            <div style={{
-              width: "52%",
-              aspectRatio: "2.5/3.5",
-              border: "2px solid rgba(200,255,74,0.75)",
-              borderRadius: 8,
-              boxShadow: "0 0 0 2000px rgba(0,0,0,0.28)",
-              transform: "translateY(-10%)",
-            }} />
+            <div
+              ref={captureGuideRef}
+              style={{
+                width: "78%",
+                aspectRatio: "2.5/3.5",
+                border: "2px solid rgba(200,255,74,0.75)",
+                borderRadius: 10,
+                boxShadow: "0 0 0 2000px rgba(0,0,0,0.35)",
+                transform: "translateY(-10%)",
+              }}
+            />
+          </div>
+
+          {/* Instruction label */}
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            <span style={{
+              marginTop: "calc(78vw * (3.5/2.5) * 0.42)",
+              fontSize: 13, fontWeight: 600,
+              color: "rgba(255,255,255,0.7)",
+              textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+            }}>
+              Fill the box with one card.
+            </span>
           </div>
 
           {/* Shutter flash */}
