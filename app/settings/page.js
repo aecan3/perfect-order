@@ -10,7 +10,8 @@ import { Avatar } from "@/components/Avatar";
 import { createClient } from "@/lib/supabase";
 import { uploadAvatar } from "@/lib/avatar";
 import BackButton from "@/components/BackButton";
-import { subscribeToPush } from "@/lib/push/subscribe";
+import { subscribeToPush, unsubscribeFromPush, getPushState } from "@/lib/push/subscribe";
+import { isPushSupported } from "@/lib/push/support";
 
 export default function SettingsPage() {
   const supabase = createClient();
@@ -22,9 +23,14 @@ export default function SettingsPage() {
   const [unblockTarget, setUnblockTarget] = useState(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError]         = useState(null);
-  // TEMP Stage 1 — remove or replace with contextual prompt in Stage 2
-  const [pushStatus, setPushStatus] = useState("idle"); // "idle" | "subscribing" | "done" | "error"
+  // "loading" | "on" | "off" | "blocked" | "unsupported"
+  const [pushState, setPushState]   = useState("loading");
+  const [pushBusy, setPushBusy]     = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    getPushState().then(setPushState);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -185,7 +191,7 @@ export default function SettingsPage() {
         {/* ── Sign-in / Passkey ── */}
         <PasskeySection />
 
-        {/* ── Push Notifications (TEMP Stage 1 test — remove in Stage 2) ── */}
+        {/* ── Notifications ── */}
         <section style={{ marginBottom: 32 }}>
           <h2 style={{
             fontSize: 11,
@@ -195,37 +201,72 @@ export default function SettingsPage() {
             color: "var(--ms-dim)",
             marginBottom: 12,
           }}>
-            Notifications (dev)
+            Notifications
           </h2>
-          <button
-            disabled={pushStatus === "subscribing" || pushStatus === "done"}
-            onClick={async () => {
-              setPushStatus("subscribing");
-              const sub = await subscribeToPush();
-              setPushStatus(sub ? "done" : "error");
-            }}
-            style={{
-              padding: "10px 16px",
-              background: pushStatus === "done" ? "transparent" : "var(--po-green, #39d353)",
-              border: pushStatus === "done" ? "1px solid rgba(244,244,246,0.2)" : "none",
-              borderRadius: 8,
-              color: pushStatus === "done" ? "rgba(244,244,246,0.7)" : "#000",
-              fontSize: 13,
-              fontFamily: '"IBM Plex Sans", sans-serif',
-              fontWeight: 700,
-              cursor: pushStatus === "subscribing" || pushStatus === "done" ? "default" : "pointer",
-              opacity: pushStatus === "subscribing" ? 0.6 : 1,
-            }}
-          >
-            {pushStatus === "idle"        && "Enable push (test)"}
-            {pushStatus === "subscribing" && "Subscribing…"}
-            {pushStatus === "done"        && "Subscribed ✓"}
-            {pushStatus === "error"       && "Failed — try again"}
-          </button>
-          {pushStatus === "error" && (
-            <p style={{ fontSize: 12, color: "rgba(244,244,246,0.4)", marginTop: 6 }}>
-              Check that notifications are allowed in iOS Settings → Safari → your app.
+
+          {pushState === "loading" && null}
+
+          {pushState === "unsupported" && (
+            <p style={{ fontSize: 13, color: "var(--po-text-dim)", lineHeight: 1.5 }}>
+              Add Master Setter to your Home Screen to enable push notifications.
             </p>
+          )}
+
+          {pushState === "blocked" && (
+            <p style={{ fontSize: 13, color: "var(--po-text-dim)", lineHeight: 1.5 }}>
+              Notifications are blocked. To enable them, go to your device Settings and allow notifications for this app.
+            </p>
+          )}
+
+          {(pushState === "on" || pushState === "off") && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--po-text)", margin: 0 }}>
+                  Push notifications
+                </p>
+                <p style={{ fontSize: 12, color: "var(--po-text-dim)", margin: "2px 0 0" }}>
+                  {pushState === "on" ? "You will receive push notifications." : "Enable to get notified about messages, trades, and more."}
+                </p>
+              </div>
+              <button
+                disabled={pushBusy}
+                onClick={async () => {
+                  setPushBusy(true);
+                  if (pushState === "off") {
+                    const sub = await subscribeToPush();
+                    setPushState(sub ? "on" : (Notification.permission === "denied" ? "blocked" : "off"));
+                  } else {
+                    await unsubscribeFromPush();
+                    setPushState("off");
+                  }
+                  setPushBusy(false);
+                }}
+                aria-label={pushState === "on" ? "Turn off push notifications" : "Turn on push notifications"}
+                style={{
+                  flexShrink: 0,
+                  width: 48,
+                  height: 28,
+                  borderRadius: 14,
+                  border: "none",
+                  background: pushState === "on" ? "var(--po-green)" : "rgba(244,244,246,0.15)",
+                  position: "relative",
+                  cursor: pushBusy ? "default" : "pointer",
+                  opacity: pushBusy ? 0.5 : 1,
+                  transition: "background 0.2s",
+                }}
+              >
+                <span style={{
+                  position: "absolute",
+                  top: 3,
+                  left: pushState === "on" ? 23 : 3,
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transition: "left 0.2s",
+                }} />
+              </button>
+            </div>
           )}
         </section>
 
