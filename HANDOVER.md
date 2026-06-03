@@ -1,7 +1,21 @@
 # Master Setter — Handover Note
 
-*Updated end of session, 2 Jun 2026. Single source of truth for the next session.*
+*Updated end of session, 3 Jun 2026. Single source of truth for the next session.*
 *Supersedes the previous handover note from session 7.*
+
+---
+
+## ⚠️ LIVE OPEN ISSUE — marketplace cron stopped (pick up next)
+
+The cron-job.org scheduler that refreshes the marketplace pool **stopped at ~12:00am after 26 consecutive failures** (notification received). Marketplace pool refresh is currently NOT running — the vintage-skew problem is silently back until fixed.
+
+**Diagnose first, do NOT re-enable blindly.** Leading suspects:
+- **30s timeout vs ~28s actual runs** — if eBay responses slowed even slightly, runs tip over cron-job.org's 30s timeout and log as failed. If this is it, drop BATCH_SIZE to 10.
+- **"Schedule expires" setting** — the original cron-job.org config had a "Schedule expires" toggle ON. Check it didn't fire.
+- **cron-job.org auto-disables a job after N consecutive failures** — the "stopped at 12am" reads like an auto-pause after hitting the failure threshold.
+- **Endpoint erroring / auth broke** — check Vercel function logs for `/api/cron/marketplace-pool-refresh` and the cron-job.org job history (status codes).
+
+**Once cron is healthy again, the deferred marketplace work still stands** — see §1 and §18 below.
 
 ---
 
@@ -67,7 +81,9 @@ Phase 4 (Trade Binder magnet acquisition flow) is fully shipped. Door A (anonymo
 - Current `PUBLIC_PATHS`: `/welcome`, `/login`, `/forgot-password`,
   `/reset-password`, `/auth/confirm`, `/terms`, `/privacy`, `/manifest.json`,
   `/sw.js`, `/icon-192.png`, `/icon-512.png`, `/apple-touch-icon.png`,
-  `/favicon.ico`. Plus prefix checks for `/icons/` and `/brand/`.
+  `/favicon.ico`, `/api/admin/card-report-notify`, `/api/cron/trade-handover-prompts`,
+  `/api/cron/marketplace-pool-refresh`, `/api/push/notify`, `/monitoring`.
+  Plus prefix checks for `/icons/`, `/brand/`, `/trade-binder/`, `/sets`, `/set/`, `/friend/`.
 - **Rule for any new public route/asset:** add to `PUBLIC_PATHS` or it gets
   silently gated. This has bitten three times across the project.
 
@@ -237,6 +253,12 @@ Phase 4 (Trade Binder magnet acquisition flow) is fully shipped. Door A (anonymo
 
 - **Phase 4 Door B — anonymous browse + collection migration (commits `51c3716`, `d43aaf5`, `c1951a7`, `8f1a018`, `17fcb50`, `437f8e1`, `4f47932`):** Full anonymous acquisition funnel, end-to-end. Public catalog (`/sets`, `/set/[setId]`, `/friend/[handle]`) open to logged-out users; 2-item anonymous tab bar (Sets, Sign Up Free). Anonymous ticks saved to `ms_anon_entries` localStorage with per-entry `setId`. CTA count + value updates live via `ms-anon-entries-changed` custom event. Threshold modals (`card_threshold`) at 5/15/30/50 cards. On signup: `verifyOtp` → `/auth/confirm` catch-all migration block. On signin: catch-all migration block regardless of intent. Both paths call `POST /api/anonymous-migration`, which batch-upserts `collection_entries` AND `user_sets` (both are required — see §17 gotcha). localStorage cleared on full match; `ms_show_restore_toast` sessionStorage triggers a 5s lime bar on the landing set page. Service worker bumped v22→v23 with `/auth/*` and `/api/*` bypass rules. **Verified end-to-end on production: test7 account, 15 cards migrated to me4, MY SETS displays me4 correctly.**
   Key files: `lib/hooks/useCollectionState.js` (anonymous data layer, per-entry `setId`, `ms-anon-entries-changed` event), `components/AnonymousCollectionBlocker.jsx` (threshold/nav-away modals), `app/api/anonymous-migration/route.js` (authenticated POST endpoint, 500-entry cap), restore toast inline in `app/set/[setId]/page.js`.
+
+- **Marketplace cron migration (GitHub Actions → cron-job.org, session 18+):** Diagnosis chain: GitHub Actions `*/10` schedule fires ~7×/day (not 144×/day) due to GitHub's known sub-hourly degradation → pool cycling at 140 cards/day vs 2,880 designed → vintage skew. Fix: `BATCH_SIZE` dropped **25→12** (commit `81e9d5a`) to fit cron-job.org's 30s timeout (~28s actual at ~2.35s/card). cron-job.org fires every **5 minutes** (5 min × 12 cards = ~3,456/day, ~18h full pool cycle). Auth: `Authorization: Bearer CRON_SECRET` header (unchanged). **⚠️ Cron currently stopped — see LIVE OPEN ISSUE at top.** Deferred: remove `.github/workflows/marketplace-pool-refresh.yml` once cron-job.org proven; pool composition rebalance toward modern sets; $5 threshold question; me4 prices blocked on PokeScope upstream indexing.
+
+- **Push notifications — full system (session 18 follow-up, commits across multiple pushes):** End-to-end verified on device. Architecture: Supabase Database Webhook `push_notification` on `notifications` INSERT → POSTs to `/api/push/notify` → `web-push` + VAPID → Apple/Google push. Because it hooks `notifications` INSERT, ALL types (feed, trade, friend request, friend accepted, messages) push automatically including any future type. **Messages** were the only type with no prior notification; added DB trigger `trg_notify_new_message` (migration `20260603000000`) with 5-min per-sender suppression. Plumbing: `push_subscriptions` table (migration `20260602000000`), `lib/push/subscribe.js` (subscribeToPush/getPushState/unsubscribeFromPush), `lib/push/support.js` (isPushSupported/isStandalone). SW bumped to **v25** with `push` + `notificationclick` handlers. User-facing opt-in: Settings pill toggle (on/off/blocked/unsupported states), `PushNudge` contextual prompt in `app/page.js` beside PasskeyNudge. PushNudge defers to PasskeyNudge within the 10-min post-signup window to prevent double-banner. Re-nag schedule (commit `c61ff9c`): `ms_push_prompt_state = { dismissCount, lastDismissedAt }`, shows at count 0, after 3 weeks (count 1), after 1 month (count 2), never at ≥3. Secrets: `PUSH_WEBHOOK_SECRET` (dedicated, NOT reusing CRON_SECRET) in Vercel env + Supabase hook Authorization header — must be byte-identical in both places. VAPID keys in Vercel. Both were rotated after transcript exposure during session.
+
+- **Friend-request notification button reappear fix (commit `ad8085e`):** Buttons reappeared after accept/decline on return because `resolvedRequests` was in-memory state reset on every mount. Fix: on mount, query live `friendships` DB state — build `pendingSenderHandles` Set (`user_b = me, user_a = sender, status = 'pending'`). Buttons render only if sender is in that set; removed on action. Persists across navigation and cross-surface actioning. Confirmed directional convention: **sender = `user_a`, recipient = `user_b`**, always (verified in `app/friend/[handle]/page.js` line 340 insert and the accept path's `user_a` read for requester notification).
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
@@ -673,8 +695,7 @@ NOT next-session priorities. Captured to not lose them.
 21. **Profile stat "X Grand Master completions"; leaderboard for most GM
     completions.**
 
-22. **Push notifications** — friend gets a duplicate of your favourited
-    card; PWA notification API.
+22. ~~**Push notifications — DONE 3 Jun 2026.**~~ Full system shipped end-to-end. Webhook-driven pipeline: `notifications` INSERT → Supabase webhook → `/api/push/notify` → web-push + VAPID → iOS/Android PWA. All notification types push automatically. Message notifications added via DB trigger `trg_notify_new_message` (5-min per-sender suppression). User-facing: Settings pill toggle + PushNudge contextual prompt with 3-ask re-nag schedule. See §1 for full detail. **The "friend gets a duplicate of your favourited card" sub-feature is NOT built** — the system pushes on all standard notification types but the duplicate-match notification type doesn't exist yet.
 
 43. **Stale intent reminder popup (Door B deferred).** When `ms_anon_intent` is present at signin but older than 30 min, currently discarded silently. Better UX: "You started a message about X earlier — continue, view binder, or skip?" Deferred to post-beta.
 
@@ -916,7 +937,7 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Service worker must explicitly bypass `/auth/*` and `/api/*`.** SW intercepting `/auth/*` produces "Failed to convert value to 'Response'" — Supabase auth redirect chains return opaque responses the SW can't handle, breaking the entire `/auth/confirm` lifecycle silently. SW intercepting `/api/*` risks caching dynamic responses or 401s. Both must be early-return guards at the top of the `fetch` handler, before any caching logic, ordered: non-http scheme → Supabase hostname → non-GET → `/auth/` → `/api/`.
 
-- **SW cache version bump is required on any SW change.** Without bumping the `CACHE` constant in `public/sw.js`, existing PWA installs keep the OLD service worker indefinitely. `skipWaiting() + clients.claim()` only activate a newly installed SW — they can't help if nothing triggered a new install. Increment the constant (current: `"perfect-order-v23"`) on every SW change; the next page load activates the new worker and evicts stale entries.
+- **SW cache version bump is required on any SW change.** Without bumping the `CACHE` constant in `public/sw.js`, existing PWA installs keep the OLD service worker indefinitely. `skipWaiting() + clients.claim()` only activate a newly installed SW — they can't help if nothing triggered a new install. Increment the constant (current: `"perfect-order-v25"`) on every SW change; the next page load activates the new worker and evicts stale entries.
 
 - **Anonymous data migration should fire on any successful auth with localStorage data — not just when a matching intent is present.** Real failure modes: user signs up, but `/auth/confirm` migration fails (SW bug, network glitch); user signs in later with no intent param but data still in localStorage. A catch-all block at the end of BOTH auth paths (confirm page + signin handler) handles these without cost to normal signins (no localStorage data = no-op). Idempotency via ON CONFLICT DO NOTHING makes re-running harmless.
 
@@ -1150,6 +1171,14 @@ All safe at current scale; flagged so they're not forgotten.
 
 - **Vercel runtime logs (server-side `console.log` from API routes) are visible at:** Vercel dashboard → project → Logs (or Runtime Logs). Browser DevTools console only shows client-side output. For debugging silent API route failures in production, add a `console.log`, trigger the flow, and check Vercel Logs — not the browser.
 
+- **Push webhook secret must be byte-identical in Vercel env and the Supabase DB trigger.** The `push_notification` trigger passes the secret in its `authorization` header. The `/api/push/notify` route reads `process.env.PUSH_WEBHOOK_SECRET`. If either is set without redeploying Vercel, or if they are rotated out of sync, the webhook 401s silently — no error surfaced to the user, notifications just stop. Any change to the Vercel env var requires a Vercel redeploy to take effect. The trigger is updated via Supabase SQL; both must change atomically. Diagnosed this session: silent 401s for ~2h because the env var was set after the last deploy.
+
+- **Push only reaches installed PWAs (standalone mode).** `Notification.requestPermission()` and `pushManager.subscribe()` are only available in `navigator.standalone === true` or `display-mode: standalone`. Neither is available in Safari browser tabs or non-installed contexts on iOS. `isStandalone()` in `lib/push/support.js` gates all push UI accordingly. EU iOS 17.4+ may also be affected by DMA restrictions.
+
+- **`Notification.permission` and the push dismiss localStorage flag are per-device/per-origin, NOT per-account.** A tester who granted/denied permission or dismissed the prompt under ANY prior account on the same device will not see PushNudge for a new test account. To test as a true new user: delete and reinstall the PWA (wipes localStorage + permission state). Do not diagnose "PushNudge not showing" against a reused test device without clearing this first.
+
+- **The `ms_push_prompt_dismissed` boolean key is now migrated to `ms_push_prompt_state` JSON.** PushNudge reads the legacy key on first load, converts it to `{ dismissCount: 1, lastDismissedAt: epoch }`, removes the old key, and writes the new one. Devices that previously dismissed will get the second-ask prompt once the 3-week window clears (immediately, since epoch is old enough). The migration is idempotent — the old key is consumed and removed on first read.
+
 - **`RETURNS TABLE(col_name type)` column names become in-scope variables inside the function body.** When a PL/pgSQL function has `RETURNS TABLE(printing_id text, is_active_set boolean)`, those column names become declared output variables. Any subquery selecting a column of the same name will be ambiguous (`error: column reference "printing_id" is ambiguous`). Fix: alias the subquery column to something distinct. Example: change `SELECT printing_id FROM user_owned` to `SELECT printing_id AS owned_id FROM user_owned`, then use `owned_id` everywhere. Caught in session 19 (commit 812f45b's follow-up).
 
 ---
@@ -1157,6 +1186,8 @@ All safe at current scale; flagged so they're not forgotten.
 ## 18. RECOMMENDED NEXT-SESSION ORDER
 
 When picking this back up, suggested sequence:
+
+0. **⚠️ Fix the marketplace cron (LIVE ISSUE).** Diagnose why cron-job.org stopped after 26 failures — check Vercel function logs for `/api/cron/marketplace-pool-refresh` and cron-job.org job history (status codes + timestamps). Leading suspects: 30s timeout exceeded by slightly slower eBay responses (fix: drop BATCH_SIZE 12→10), "Schedule expires" toggle fired, or auto-pause after N failures. Re-enable only after identifying root cause. Once healthy: remove the old GitHub Actions workflow (`.github/workflows/marketplace-pool-refresh.yml`); then revisit pool composition rebalance toward modern sets.
 
 1. ~~**Complete pattern variant pricing (item 12, Problem 2) — zsv10pt5 re-refresh.**~~
    **DONE 22 May 2026 (session 8).** sv8pt5 verified, rsv10pt5 fully priced, sv10
