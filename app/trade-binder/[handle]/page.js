@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Star, ArrowLeftRight, X, ChevronDown, Zap } from "lucide-react";
+import { Star, ArrowLeftRight, X, ChevronDown, Zap, Search } from "lucide-react";
 import { SCAN_ENABLED } from "@/lib/flags";
 import { AnonymousBinderActionSheet } from "@/components/marketplace/AnonymousBinderActionSheet";
 import { AnonymousSignupConfirm } from "@/components/AnonymousSignupConfirm";
@@ -307,6 +307,24 @@ export default function TradeBinderPage() {
           {isOwnPage ? "Your Trade Binder" : "Trade Binder"}
         </MSPageTitle>
 
+        {/* Add Cards entry — owner only, always visible */}
+        {isOwnPage && (
+          <Link
+            href="/trade-binder/add"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "13px 16px", marginBottom: SCAN_ENABLED ? 8 : 16,
+              background: "var(--po-green)", border: "none",
+              borderRadius: "var(--border-radius-md)",
+              color: "#050507", fontSize: 14, fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            <Search size={15} />
+            Add Cards
+          </Link>
+        )}
+
         {/* Scan Cards entry — owner only, hidden behind SCAN_ENABLED flag */}
         {isOwnPage && SCAN_ENABLED && (
           <Link
@@ -314,9 +332,9 @@ export default function TradeBinderPage() {
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               padding: "13px 16px", marginBottom: 16,
-              background: "var(--po-green)", border: "none",
+              background: "rgba(200,255,74,0.1)", border: "1px solid rgba(200,255,74,0.3)",
               borderRadius: "var(--border-radius-md)",
-              color: "#050507", fontSize: 14, fontWeight: 700,
+              color: "var(--po-green)", fontSize: 14, fontWeight: 700,
               textDecoration: "none",
             }}
           >
