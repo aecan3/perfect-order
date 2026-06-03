@@ -15,6 +15,10 @@ async function getAnonClient() {
 
 // Resolve each AI-identified card to matching master-tier printings.
 // Returns the matched rows plus a resolution status tag.
+//
+// Uses 3 sequential queries so every filter lands on a root-table column.
+// PostgREST embedded-resource filters (e.g. .ilike("card.name", x)) silently
+// apply to the root table when the column doesn't exist there, returning 0 rows.
 async function matchBack(service, aiCard) {
   const { card_name, card_number, set_name, set_code_hint } = aiCard;
 
@@ -22,67 +26,81 @@ async function matchBack(service, aiCard) {
     return { aiCard, matches: [], status: "none", reason: "no card_name" };
   }
 
-  // Build the query — set name + code both tried via OR so a partially-right
-  // AI guess on either field still resolves.
-  let query = service
-    .from("printings")
-    .select(`
-      id,
-      printing_type,
-      collection_tier,
-      card:cards!inner(
-        name,
-        number,
-        set_id,
-        rarity
-      ),
-      set:sets!inner(
-        id,
-        name,
-        code
-      )
-    `)
-    .eq("collection_tier", "master")
-    .ilike("card.name", card_name);
-
+  // Step 1: find matching card rows — name and optional number on root cards table.
+  let cardQuery = service
+    .from("cards")
+    .select("id, name, number, set_id, rarity")
+    .ilike("name", card_name);
   if (card_number !== null && card_number !== undefined) {
-    query = query.eq("card.number", card_number);
+    cardQuery = cardQuery.eq("number", card_number);
+  }
+  const { data: cardRows, error: cardErr } = await cardQuery;
+  if (cardErr) {
+    console.error("[scan/match-back] cards query error:", cardErr.message);
+    return { aiCard, matches: [], status: "none", reason: cardErr.message };
+  }
+  if (!cardRows?.length) {
+    return { aiCard, matches: [], status: "none", reason: "no matching cards" };
   }
 
-  // Set filter: match on set name OR set code if AI provided either.
-  // { referencedTable: "sets" } scopes the OR to the embedded sets join —
-  // without it PostgREST applies it to the root printings table (no name/code cols → 0 rows).
-  // Column names are relative to the referenced table, so no "set." prefix here.
-  const setFilters = [];
-  if (set_name) setFilters.push(`name.ilike.%${set_name}%`);
-  if (set_code_hint) setFilters.push(`code.ilike.${set_code_hint}`);
-  if (setFilters.length > 0) {
-    query = query.or(setFilters.join(","), { referencedTable: "sets" });
+  // Step 2 (optional): resolve set IDs from name/code — root filters on sets table.
+  let setIds = null;
+  if (set_name || set_code_hint) {
+    let setQuery = service.from("sets").select("id, name, code");
+    if (set_name && set_code_hint) {
+      setQuery = setQuery.or(`name.ilike.%${set_name}%,code.ilike.${set_code_hint}`);
+    } else if (set_name) {
+      setQuery = setQuery.ilike("name", `%${set_name}%`);
+    } else {
+      setQuery = setQuery.ilike("code", set_code_hint);
+    }
+    const { data: setRows } = await setQuery;
+    if (setRows?.length) setIds = setRows.map((s) => s.id);
   }
 
-  const { data: rows, error } = await query;
+  // Step 3: find master printings — all filters on root printings columns.
+  const cardIds = cardRows.map((c) => c.id);
+  let printQuery = service
+    .from("printings")
+    .select("id, printing_type, card_id, set_id")
+    .in("card_id", cardIds)
+    .eq("collection_tier", "master");
+  if (setIds) printQuery = printQuery.in("set_id", setIds);
 
-  if (error) {
-    console.error("[scan/match-back] query error:", error.message);
-    return { aiCard, matches: [], status: "none", reason: error.message };
+  const { data: printRows, error: printErr } = await printQuery;
+  if (printErr) {
+    console.error("[scan/match-back] printings query error:", printErr.message);
+    return { aiCard, matches: [], status: "none", reason: printErr.message };
+  }
+  if (!printRows?.length) {
+    return { aiCard, matches: [], status: "none", reason: "no master printings" };
   }
 
-  const matches = (rows || []).map((p) => ({
+  // Step 4: fetch set display names for the result set_ids.
+  const resultSetIds = [...new Set(printRows.map((p) => p.set_id))];
+  const { data: resultSets } = await service
+    .from("sets")
+    .select("id, name, code")
+    .in("id", resultSetIds);
+  const setMap  = Object.fromEntries((resultSets || []).map((s) => [s.id, s]));
+  const cardMap = Object.fromEntries(cardRows.map((c) => [c.id, c]));
+
+  const matches = printRows.map((p) => ({
     printing_id:   p.id,
     printing_type: p.printing_type,
-    set_id:        p.card?.set_id,
-    set_name:      p.set?.name,
-    set_code:      p.set?.code,
-    card_name:     p.card?.name,
-    card_number:   p.card?.number,
-    rarity:        p.card?.rarity,
+    set_id:        p.set_id,
+    set_name:      setMap[p.set_id]?.name,
+    set_code:      setMap[p.set_id]?.code,
+    card_name:     cardMap[p.card_id]?.name,
+    card_number:   cardMap[p.card_id]?.number,
+    rarity:        cardMap[p.card_id]?.rarity,
   }));
 
   let status;
   if (matches.length === 0)     status = "none";
   else if (matches.length === 1) status = "auto";
-  else if (matches.length === 2) status = "variant";   // typically normal + reverse_holofoil
-  else                           status = "set";        // multiple sets or many printings
+  else if (matches.length === 2) status = "variant";
+  else                           status = "set";
 
   return { aiCard, matches, status };
 }
