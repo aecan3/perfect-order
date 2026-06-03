@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/service";
 import { refreshListingsForPrinting } from "@/lib/marketplace/refresh";
 
-// cron-job.org fires this every 3 minutes. Each invocation processes
-// a small batch (12 cards) within the cron-job.org 30s timeout (~24s actual).
-// 3,540 pool cards / (20 invocations/hr × 10 pool slots) ≈ 18h full cycle.
+// cron-job.org fires this every 5 minutes. Each invocation processes
+// a small batch (10 cards) within the cron-job.org 30s timeout (~22s actual).
+// 3,540 pool cards / (12 invocations/hr × 8 pool slots) ≈ 37h full cycle.
 
 const MARKETPLACE_ID = "EBAY_AU";
-const BATCH_SIZE = 12;
-const FAVOURITE_RATIO = 0.20;  // 2 favourite slots, 10 pool slots per batch
+const BATCH_SIZE = 10;
+const FAVOURITE_RATIO = 0.20;  // 2 favourite slots, 8 pool slots per batch
 
 export async function GET(request) {
   if (!process.env.CRON_SECRET) {
