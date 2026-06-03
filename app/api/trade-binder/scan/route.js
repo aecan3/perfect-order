@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import { getServiceClient } from "@/lib/supabase/service";
 
 async function getAnonClient() {
@@ -11,6 +12,64 @@ async function getAnonClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
   );
+}
+
+// Crop the full-photo base64 to the given normalized bbox, padded to avoid clipping
+// the card's bottom edge (where the set symbol + collector number live).
+async function cropCard(base64Data, bbox, padFraction = 0.12) {
+  const buffer = Buffer.from(base64Data, "base64");
+  const { width, height } = await sharp(buffer).metadata();
+
+  const padX = bbox.w * padFraction;
+  const padY = bbox.h * padFraction;
+  const x0 = Math.max(0, bbox.x - padX);
+  const y0 = Math.max(0, bbox.y - padY);
+  const x1 = Math.min(1, bbox.x + bbox.w + padX);
+  const y1 = Math.min(1, bbox.y + bbox.h + padY);
+
+  const left  = Math.round(x0 * width);
+  const top   = Math.round(y0 * height);
+  const cropW = Math.max(1, Math.round((x1 - x0) * width));
+  const cropH = Math.max(1, Math.round((y1 - y0) * height));
+
+  const cropBuffer = await sharp(buffer)
+    .extract({ left, top, width: cropW, height: cropH })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  return cropBuffer.toString("base64");
+}
+
+// Send a single card crop to the AI and ask only for set name/code + collector number.
+// Returns { set_name, set_code, card_number } or null on parse/network failure.
+async function refocusCard(anthropic, cropBase64, cardName) {
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 200,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: cropBase64 } },
+          {
+            type: "text",
+            text: `This is a cropped photo of a single Pokémon TCG card named "${cardName}".
+Look at the bottom of the card and return a single JSON object — no prose, no markdown:
+{"set_name": "full set name or null", "set_code": "short code e.g. MEW, PAF or null", "card_number": <integer or null>}
+- card_number: integer before the slash in the collector number (e.g. "098/102" → 98).
+- set_code: short code printed near the collector number.
+- Return null for any field you cannot read clearly.`,
+          },
+        ],
+      }],
+    });
+    const text     = response.content[0]?.text || "";
+    const objMatch = text.match(/\{[\s\S]*\}/);
+    return objMatch ? JSON.parse(objMatch[0]) : null;
+  } catch (err) {
+    console.error("[scan/refocus] AI call failed:", err.message);
+    return null;
+  }
 }
 
 // Resolve each AI-identified card to matching master-tier printings.
@@ -213,13 +272,48 @@ Rules:
   const service = getServiceClient();
   const results = await Promise.all(identified.map((card) => matchBack(service, card)));
 
-  // Summary counts for quick inspection
+  // --- Refocus: one cropped-image AI call per ambiguous card (status === "set") ---
+  // Skips auto (already resolved), variant (foil choice — user picks anyway), none (wrong name).
+  const toRefocus = results
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.status === "set" && r.aiCard.bbox);
+
+  if (toRefocus.length > 0) {
+    await Promise.all(toRefocus.map(async ({ r, i }) => {
+      try {
+        const cropBase64  = await cropCard(base64Data, r.aiCard.bbox);
+        const refocusData = await refocusCard(anthropic, cropBase64, r.aiCard.card_name);
+        if (!refocusData) return;
+
+        console.log(`[scan/refocus] "${r.aiCard.card_name}" read: set="${refocusData.set_name}", code="${refocusData.set_code}", num=${refocusData.card_number}`);
+
+        const refinedAiCard = {
+          ...r.aiCard,
+          set_name:      refocusData.set_name    || r.aiCard.set_name,
+          set_code_hint: refocusData.set_code    || r.aiCard.set_code_hint,
+          card_number:   refocusData.card_number ?? r.aiCard.card_number,
+        };
+
+        const refined = await matchBack(service, refinedAiCard);
+        // Only upgrade if refocus found matches — don't replace with an empty list
+        if (refined.matches.length > 0) {
+          console.log(`[scan/refocus] "${r.aiCard.card_name}" ${r.matches.length} → ${refined.matches.length} candidates (${r.status} → ${refined.status})`);
+          results[i] = refined;
+        }
+      } catch (err) {
+        console.error(`[scan/refocus] "${r.aiCard.card_name}" failed:`, err.message);
+      }
+    }));
+  }
+
+  // Summary counts (computed after refocus so counts reflect refined results)
   const summary = {
-    identified:  identified.length,
-    auto:        results.filter((r) => r.status === "auto").length,
-    variant:     results.filter((r) => r.status === "variant").length,
-    set:         results.filter((r) => r.status === "set").length,
-    none:        results.filter((r) => r.status === "none").length,
+    identified: identified.length,
+    auto:       results.filter((r) => r.status === "auto").length,
+    variant:    results.filter((r) => r.status === "variant").length,
+    set:        results.filter((r) => r.status === "set").length,
+    none:       results.filter((r) => r.status === "none").length,
+    refocused:  toRefocus.length,
   };
 
   console.log("[scan] complete", summary);
