@@ -78,6 +78,11 @@ Look at the bottom of the card and return a single JSON object — no prose, no 
 // Uses 3 sequential queries so every filter lands on a root-table column.
 // PostgREST embedded-resource filters (e.g. .ilike("card.name", x)) silently
 // apply to the root table when the column doesn't exist there, returning 0 rows.
+//
+// The set hint from the AI is treated as a soft ranking signal, never a hard
+// filter. Wrong hints (e.g. AI reads "XY" and resolves to xy1, but the card is
+// in xy3) previously zeroed out valid results; now they are ignored when no
+// master printings fall in the hinted set, and all candidates are returned.
 async function matchBack(service, aiCard) {
   const { card_name, card_number, set_name, set_code_hint } = aiCard;
 
@@ -98,15 +103,12 @@ async function matchBack(service, aiCard) {
     console.error("[scan/match-back] cards query error:", cardErr.message);
     return { aiCard, matches: [], status: "none", reason: cardErr.message };
   }
-  // TEMP DIAGNOSTIC — Stage 1 results
-  console.log(`[scan/mb1] "${card_name}" #${card_number} → ${cardRows?.length ?? 0} card rows:`,
-    (cardRows || []).map((c) => `id=${c.id} set_id=${c.set_id} num=${c.number}`).join(" | "));
-
   if (!cardRows?.length) {
     return { aiCard, matches: [], status: "none", reason: "no matching cards" };
   }
 
   // Step 2 (optional): resolve set IDs from name/code — root filters on sets table.
+  // Result is used only for ranking, not filtering.
   let setIds = null;
   if (set_name || set_code_hint) {
     let setQuery = service.from("sets").select("id, name, code");
@@ -119,35 +121,16 @@ async function matchBack(service, aiCard) {
     }
     const { data: setRows } = await setQuery;
     if (setRows?.length) setIds = setRows.map((s) => s.id);
-    // TEMP DIAGNOSTIC — Stage 2 results
-    console.log(`[scan/mb2] "${card_name}" set hint name="${set_name}" code="${set_code_hint}" → ${setRows?.length ?? 0} set rows: setIds=${JSON.stringify(setIds)}`);
-  } else {
-    // TEMP DIAGNOSTIC — Stage 2 skipped
-    console.log(`[scan/mb2] "${card_name}" no set hint — skipping set filter`);
   }
 
-  // Step 3: find master printings — all filters on root printings columns.
+  // Step 3: fetch ALL master printings for the matched card_ids.
+  // No set_id filter — the set hint is applied as soft ranking only (see sort below).
   const cardIds = cardRows.map((c) => c.id);
-
-  // TEMP DIAGNOSTIC — query without set filter to see tier count
-  const { data: allPrintRows } = await service
-    .from("printings")
-    .select("id, printing_type, card_id, set_id, collection_tier")
-    .in("card_id", cardIds);
-  console.log(`[scan/mb3] "${card_name}" all printings for card_ids=${JSON.stringify(cardIds)}: ${allPrintRows?.length ?? 0} rows`);
-  const masterRows = (allPrintRows || []).filter((p) => p.collection_tier === "master");
-  console.log(`[scan/mb3] "${card_name}" after collection_tier=master: ${masterRows.length} rows`);
-  const setFilteredRows = setIds ? masterRows.filter((p) => setIds.includes(p.set_id)) : masterRows;
-  console.log(`[scan/mb3] "${card_name}" after set_id filter (setIds=${JSON.stringify(setIds)}): ${setFilteredRows.length} rows`);
-
-  let printQuery = service
+  const { data: printRows, error: printErr } = await service
     .from("printings")
     .select("id, printing_type, card_id, set_id")
     .in("card_id", cardIds)
     .eq("collection_tier", "master");
-  if (setIds) printQuery = printQuery.in("set_id", setIds);
-
-  const { data: printRows, error: printErr } = await printQuery;
   if (printErr) {
     console.error("[scan/match-back] printings query error:", printErr.message);
     return { aiCard, matches: [], status: "none", reason: printErr.message };
@@ -177,15 +160,26 @@ async function matchBack(service, aiCard) {
     image_url:     cardMap[p.card_id]?.image_large,
   }));
 
-  // Sort candidates so the most-likely match leads:
-  //   1. printing_type matches AI's hint → rank 0 (best)
-  //   2. hint absent or no match → rank 1
-  //   Secondary: stable by set_id so order is deterministic across renders.
+  // Sort candidates so the most-likely match leads.
+  // The set hint is applied only when it actually resolved to sets that contain
+  // at least one of this card's master printings (otherwise the hint was wrong
+  // and we fall back to printing_type + set_id order).
   const hint = aiCard.printing_type_hint;
+  const hintedSetIds  = new Set(setIds || []);
+  const hintedSetUsed = setIds !== null && matches.some((m) => hintedSetIds.has(m.set_id));
+
   matches.sort((a, b) => {
+    // 1. printing_type matches AI's hint → rank 0 (best)
     const ra = (hint && a.printing_type === hint) ? 0 : 1;
     const rb = (hint && b.printing_type === hint) ? 0 : 1;
     if (ra !== rb) return ra - rb;
+    // 2. in hinted set (only when hint actually matched some printings)
+    if (hintedSetUsed) {
+      const sa = hintedSetIds.has(a.set_id) ? 0 : 1;
+      const sb = hintedSetIds.has(b.set_id) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+    }
+    // 3. stable by set_id
     return (a.set_id || "").localeCompare(b.set_id || "");
   });
 
@@ -291,19 +285,6 @@ Rules:
 
   // --- Match-back: resolve each identified card to DB printings ---
   const service = getServiceClient();
-
-  // TEMP DIAGNOSTIC — log the exact AI read for every card before matchBack
-  identified.forEach((card) => {
-    console.log("[scan/aiCard]", JSON.stringify({
-      card_name:           card.card_name,
-      card_number:         card.card_number,
-      set_name:            card.set_name,
-      set_code_hint:       card.set_code_hint,
-      printing_type_hint:  card.printing_type_hint,
-      confidence:          card.confidence,
-    }));
-  });
-
   const results = await Promise.all(identified.map((card) => matchBack(service, card)));
 
   // --- Refocus: one cropped-image AI call per ambiguous card (status === "set") ---
