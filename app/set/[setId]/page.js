@@ -580,7 +580,7 @@ export default function SetTrackerPage() {
       if (authUser) {
         [{ data: prof }, { data: entriesData }, { data: userSetData }, { data: favsData }] = await Promise.all([
           supabase.from("profiles").select("*").eq("id", authUser.id).maybeSingle(),
-          supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count").eq("user_id", authUser.id).eq("set_id", setId),
+          supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count, trade_flagged").eq("user_id", authUser.id).eq("set_id", setId),
           supabase.from("user_sets").select("prices_updated_at").eq("user_id", authUser.id).eq("set_id", setId).maybeSingle(),
           supabase.from("favourites").select("printing_id").eq("user_id", authUser.id),
         ]);
@@ -604,7 +604,7 @@ export default function SetTrackerPage() {
       const ownedMap = {};
       (entriesData || []).forEach((e) => {
         if (e.printing_id) {
-          ownedMap[e.printing_id] = { checked: e.checked, photo_url: e.photo_url, card_number: e.card_number, duplicate_count: e.duplicate_count || 0 };
+          ownedMap[e.printing_id] = { checked: e.checked, photo_url: e.photo_url, card_number: e.card_number, duplicate_count: e.duplicate_count || 0, trade_flagged: e.trade_flagged || false };
         }
       });
       setOwnedPrintings(ownedMap);
@@ -722,6 +722,24 @@ export default function SetTrackerPage() {
         { onConflict: "user_id,set_id,card_number,printing_id" }
       );
     }, 800);
+  };
+
+  const handleFlagToggle = (printingId) => {
+    if (!user) return;
+    const cur = ownedPrintingsRef.current[printingId] || {};
+    const newFlag = !cur.trade_flagged;
+    setOwnedPrintings((prev) => ({
+      ...prev,
+      [printingId]: { ...prev[printingId], trade_flagged: newFlag },
+    }));
+    supabase
+      .from("collection_entries")
+      .update({ trade_flagged: newFlag })
+      .eq("user_id", user.id)
+      .eq("set_id", setId)
+      .eq("card_number", cur.card_number)
+      .eq("printing_id", printingId)
+      .then(() => {});
   };
 
   const togglePrinting = useCallback(
@@ -1045,6 +1063,14 @@ export default function SetTrackerPage() {
               {fmtMoney(cardPrice, currency)}
             </div>
           )}
+          {prints.length === 1 && ownedPrintings[prints[0].id]?.trade_flagged && (
+            <div
+              className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded leading-none"
+              style={{ background: "rgba(200,255,74,0.18)", color: "#c8ff4a", border: "1px solid rgba(200,255,74,0.45)" }}
+            >
+              TRADE
+            </div>
+          )}
           {completionState !== "complete" && (
             <FindOnline
               cardName={card.name}
@@ -1161,6 +1187,23 @@ export default function SetTrackerPage() {
               >
                 +
               </button>
+              {!isAnonymous && (() => {
+                const isFlagged = !!ownedPrintings[prints[0].id]?.trade_flagged;
+                return (
+                  <button
+                    onClick={() => handleFlagToggle(prints[0].id)}
+                    title={isFlagged ? "Remove from trade binder" : "Add to trade binder"}
+                    className="w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center leading-none"
+                    style={{
+                      background: isFlagged ? "rgba(200,255,74,0.15)" : "var(--po-bg-soft)",
+                      border: `1px solid ${isFlagged ? "#c8ff4a" : "var(--po-border)"}`,
+                      color: isFlagged ? "#c8ff4a" : "var(--po-text-dim)",
+                    }}
+                  >
+                    ⇄
+                  </button>
+                );
+              })()}
             </div>
           )
         ) : (
@@ -1759,6 +1802,23 @@ export default function SetTrackerPage() {
                       >
                         <Camera size={14} />
                       </button>
+                      {isOwned && !isAnonymous && (() => {
+                        const isFlagged = !!ownedPrintings[p.id]?.trade_flagged;
+                        return (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleFlagToggle(p.id); }}
+                            title={isFlagged ? "Remove from trade binder" : "Add to trade binder"}
+                            className="w-8 h-8 rounded-full text-sm font-bold flex items-center justify-center"
+                            style={{
+                              background: isFlagged ? "rgba(200,255,74,0.15)" : "var(--po-bg-soft)",
+                              border: `1px solid ${isFlagged ? "#c8ff4a" : "var(--po-border)"}`,
+                              color: isFlagged ? "#c8ff4a" : "var(--po-text-dim)",
+                            }}
+                          >
+                            ⇄
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
