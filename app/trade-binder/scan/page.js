@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Upload, Check, ArrowRight } from "lucide-react";
+import { Camera, Upload, Check, ArrowRight, Zap } from "lucide-react";
 import { CameraCapture } from "@/components/CameraCapture";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -220,18 +220,31 @@ function ResultCard({ result, selection, onSelect, onSkip, onUnskip }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ScanPage() {
-  const router     = useRouter();
-  const supabase   = createClient();
-  const fileRef    = useRef(null);
+  const router   = useRouter();
+  const supabase = createClient();
+  const fileRef  = useRef(null);
+
+  // rapid-fire capture refs
+  const captureStreamRef = useRef(null);
+  const captureVideoRef  = useRef(null);
+  const captureCanvasRef = useRef(null);
+  const lastCaptureRef   = useRef(0); // throttle timestamp
 
   const [authReady,   setAuthReady]   = useState(false);
   const [userHandle,  setUserHandle]  = useState(null);
-  const [phase,       setPhase]       = useState("idle"); // idle | scanning | review | committing | done
+  // idle | capture | scanning | processing | review | committing | done
+  const [phase,       setPhase]       = useState("idle");
   const [showCamera,  setShowCamera]  = useState(false);
   const [scanResults, setScanResults] = useState([]);
   const [selections,  setSelections]  = useState({});
   const [errMsg,      setErrMsg]      = useState("");
   const [committedCount, setCommittedCount] = useState(0);
+
+  // rapid-fire capture state
+  const [capturedImages,     setCapturedImages]     = useState([]);
+  const [captureReady,       setCaptureReady]       = useState(false);
+  const [flash,              setFlash]              = useState(false);
+  const [processingProgress, setProcessingProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
     (async () => {
@@ -249,6 +262,32 @@ export default function ScanPage() {
       setAuthReady(true);
     })();
   }, []);
+
+  // Start / stop camera stream when in capture phase
+  useEffect(() => {
+    if (phase !== "capture") return;
+    let active = true;
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then((stream) => {
+        if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
+        captureStreamRef.current = stream;
+        if (captureVideoRef.current) captureVideoRef.current.srcObject = stream;
+        setCaptureReady(true);
+      })
+      .catch((err) => {
+        console.error("[capture] camera error:", err);
+        setPhase("idle");
+      });
+    return () => {
+      active = false;
+      if (captureStreamRef.current) {
+        captureStreamRef.current.getTracks().forEach((t) => t.stop());
+        captureStreamRef.current = null;
+      }
+      setCaptureReady(false);
+    };
+  }, [phase]);
 
   const handleImage = async (imageBase64) => {
     setPhase("scanning");
@@ -281,6 +320,71 @@ export default function ScanPage() {
 
   const setSelection = (resultIdx, matchIdx) => {
     setSelections((prev) => ({ ...prev, [resultIdx]: matchIdx }));
+  };
+
+  // Synchronous frame grab — instant, no async gap between taps
+  const handleShutter = () => {
+    const video  = captureVideoRef.current;
+    const canvas = captureCanvasRef.current;
+    if (!video || !canvas || !captureReady || video.videoWidth === 0) return;
+    const now = Date.now();
+    if (now - lastCaptureRef.current < 300) return; // 300 ms throttle
+    lastCaptureRef.current = now;
+
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    setCapturedImages((prev) => [...prev, dataUrl]);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 80);
+    navigator.vibrate?.(30);
+  };
+
+  // Batch-process captured images through the scan API (5 concurrent workers)
+  const handleCaptureDone = async () => {
+    if (capturedImages.length === 0) return;
+    const images = [...capturedImages];
+    setPhase("processing"); // triggers capture stream cleanup via useEffect
+    setProcessingProgress({ done: 0, total: images.length });
+
+    const allCardResults = [];
+    let nextIdx       = 0;
+    let completedCount = 0;
+
+    const worker = async () => {
+      while (nextIdx < images.length) {
+        const idx = nextIdx++;
+        try {
+          const res  = await fetch("/api/trade-binder/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imageBase64: images[idx] }),
+          });
+          const json = await res.json();
+          if (res.ok && Array.isArray(json.results)) {
+            allCardResults.push(...json.results);
+          }
+        } catch (err) {
+          console.error("[batch] shot", idx, "failed:", err.message);
+        }
+        completedCount++;
+        setProcessingProgress({ done: completedCount, total: images.length });
+      }
+    };
+
+    const CONCURRENCY = 5;
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, images.length) }, worker));
+
+    if (allCardResults.length === 0) {
+      setErrMsg("No cards identified across all photos.");
+      setPhase("idle");
+      return;
+    }
+
+    setScanResults(allCardResults);
+    setSelections(initSelections(allCardResults));
+    setPhase("review");
   };
 
   // Needs-attention-first: Low → Medium → High so the user resolves hard ones first.
@@ -342,13 +446,27 @@ export default function ScanPage() {
               <p style={{ color: "#ff6b6b", fontSize: 13, marginBottom: 4 }}>{errMsg}</p>
             )}
             <button
-              onClick={() => setShowCamera(true)}
+              onClick={() => { setCapturedImages([]); setErrMsg(""); setPhase("capture"); }}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 padding: "15px 16px",
                 background: "var(--po-green)", border: "none",
                 borderRadius: "var(--border-radius-md)",
                 color: "#050507", fontSize: 15, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              <Zap size={18} />
+              Rapid Capture
+            </button>
+            <button
+              onClick={() => setShowCamera(true)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                padding: "15px 16px",
+                background: "var(--po-bg-soft)",
+                border: "1px solid var(--po-border)",
+                borderRadius: "var(--border-radius-md)",
+                color: "var(--po-text)", fontSize: 15, fontWeight: 600, cursor: "pointer",
               }}
             >
               <Camera size={18} />
@@ -377,6 +495,31 @@ export default function ScanPage() {
           <div style={{ marginTop: 80, textAlign: "center" }}>
             <p style={{ fontSize: 32, marginBottom: 16 }}>🔍</p>
             <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>Identifying cards…</p>
+          </div>
+        )}
+
+        {/* ── Processing (batch) ───────────────────────────────────────────── */}
+        {phase === "processing" && (
+          <div style={{ marginTop: 80, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center" }}>
+            <p style={{ fontSize: 32, marginBottom: 0 }}>⚡</p>
+            <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>
+              Processing {processingProgress.done} of {processingProgress.total} photos…
+            </p>
+            <div style={{
+              width: "100%", maxWidth: 280, height: 4,
+              background: "var(--po-bg-soft)", borderRadius: 2, overflow: "hidden",
+            }}>
+              <div style={{
+                height: "100%",
+                width: `${processingProgress.total > 0 ? (processingProgress.done / processingProgress.total) * 100 : 0}%`,
+                background: "var(--po-green)",
+                borderRadius: 2,
+                transition: "width 0.25s",
+              }} />
+            </div>
+            <p style={{ fontSize: 12, color: "var(--po-text-faint)" }}>
+              {processingProgress.done} / {processingProgress.total}
+            </p>
           </div>
         )}
 
@@ -493,7 +636,138 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ── Camera overlay ───────────────────────────────────────────────────── */}
+      {/* ── Rapid-fire capture overlay ───────────────────────────────────────── */}
+      {phase === "capture" && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 50,
+          background: "#000",
+          display: "flex", flexDirection: "column",
+        }}>
+          {/* Live camera feed */}
+          <video
+            ref={captureVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ flex: 1, objectFit: "cover", width: "100%", minHeight: 0, display: "block" }}
+          />
+
+          {/* Card framing guide */}
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            <div style={{
+              width: "52%",
+              aspectRatio: "2.5/3.5",
+              border: "2px solid rgba(200,255,74,0.75)",
+              borderRadius: 8,
+              boxShadow: "0 0 0 2000px rgba(0,0,0,0.28)",
+              transform: "translateY(-10%)",
+            }} />
+          </div>
+
+          {/* Shutter flash */}
+          {flash && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "#fff", opacity: 0.55,
+              pointerEvents: "none",
+            }} />
+          )}
+
+          {/* Counter badge (top-right) */}
+          <div style={{
+            position: "absolute", top: 0, left: 0, right: 0,
+            padding: "max(16px, env(safe-area-inset-top)) 20px 12px",
+            display: "flex", justifyContent: "flex-end",
+            background: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%)",
+            pointerEvents: "none",
+          }}>
+            {capturedImages.length > 0 && (
+              <span style={{
+                fontSize: 13, fontWeight: 700, color: "#fff",
+                background: "rgba(0,0,0,0.5)", padding: "4px 12px", borderRadius: 20,
+              }}>
+                {capturedImages.length} captured
+              </span>
+            )}
+          </div>
+
+          {/* Bottom bar: Cancel · Shutter · Done */}
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            padding: "20px 28px",
+            paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+            background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+          }}>
+            {/* Cancel */}
+            <button
+              onClick={() => { setCapturedImages([]); setPhase("idle"); }}
+              style={{
+                background: "rgba(255,255,255,0.15)", border: "none",
+                borderRadius: 24, padding: "10px 20px",
+                color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Cancel
+            </button>
+
+            {/* Shutter button */}
+            <button
+              onClick={handleShutter}
+              disabled={!captureReady}
+              style={{
+                width: 68, height: 68, borderRadius: "50%",
+                background: captureReady ? "#fff" : "rgba(255,255,255,0.25)",
+                border: "4px solid rgba(255,255,255,0.45)",
+                cursor: captureReady ? "pointer" : "default",
+                flexShrink: 0,
+                transition: "background 0.12s",
+              }}
+            />
+
+            {/* Done / undo */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <button
+                onClick={handleCaptureDone}
+                disabled={capturedImages.length === 0}
+                style={{
+                  background: capturedImages.length > 0 ? "var(--po-green)" : "rgba(255,255,255,0.15)",
+                  border: "none",
+                  borderRadius: 24, padding: "10px 20px",
+                  color: capturedImages.length > 0 ? "#050507" : "rgba(255,255,255,0.35)",
+                  fontSize: 14, fontWeight: 700,
+                  cursor: capturedImages.length > 0 ? "pointer" : "default",
+                  transition: "background 0.15s, color 0.15s",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {capturedImages.length > 0 ? `Done (${capturedImages.length})` : "Done"}
+              </button>
+              {capturedImages.length > 0 && (
+                <button
+                  onClick={() => setCapturedImages((prev) => prev.slice(0, -1))}
+                  style={{
+                    background: "none", border: "none",
+                    color: "rgba(255,255,255,0.55)", fontSize: 11, cursor: "pointer", padding: 0,
+                  }}
+                >
+                  Undo last
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Hidden canvas for synchronous frame grabs */}
+          <canvas ref={captureCanvasRef} style={{ display: "none" }} />
+        </div>
+      )}
+
+      {/* ── Single-shot camera overlay ───────────────────────────────────────── */}
       {showCamera && (
         <CameraCapture
           onCapture={(dataUrl) => { setShowCamera(false); handleImage(dataUrl); }}
