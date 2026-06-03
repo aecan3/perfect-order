@@ -1,10 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase";
 import { isPushSupported, isStandalone } from "@/lib/push/support";
 import { subscribeToPush } from "@/lib/push/subscribe";
 
 const DISMISSED_KEY = "ms_push_prompt_dismissed";
+
+// Must match PasskeyNudge.jsx — kept identical so both nudges use the same window.
+const PASSKEY_NUDGE_DISMISSED_KEY = "ms_passkey_nudge_dismissed";
+const PASSKEY_NUDGE_WINDOW_MS = 10 * 60 * 1000;
 
 export default function PushNudge() {
   const [show, setShow] = useState(false);
@@ -20,6 +25,18 @@ export default function PushNudge() {
         if (localStorage.getItem(DISMISSED_KEY)) return;
       } catch {
         return;
+      }
+
+      // Defer to PasskeyNudge if it would currently be showing — never stack two banners.
+      // Self-clears after PASSKEY_NUDGE_WINDOW_MS; PushNudge shows on the next app-open.
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const ageMs = Date.now() - new Date(user.created_at).getTime();
+        const passkeyNudgeDismissed = (() => {
+          try { return !!sessionStorage.getItem(PASSKEY_NUDGE_DISMISSED_KEY); } catch { return true; }
+        })();
+        if (ageMs < PASSKEY_NUDGE_WINDOW_MS && !passkeyNudgeDismissed) return;
       }
 
       const reg = await navigator.serviceWorker.ready.catch(() => null);
