@@ -149,7 +149,7 @@ export async function POST(req) {
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
-      max_tokens: 1500,
+      max_tokens: 2000,
       messages: [
         {
           role: "user",
@@ -169,11 +169,13 @@ Each element must follow this exact shape:
   "set_name": "full set name if visible, or null",
   "set_code_hint": "short set code printed on the card if visible (e.g. POR, SIT), or null",
   "printing_type_hint": "holofoil" | "reverse_holofoil" | "normal" | null,
-  "confidence": "high" | "medium" | "low"
+  "confidence": "high" | "medium" | "low",
+  "bbox": {"x": <0-1>, "y": <0-1>, "w": <0-1>, "h": <0-1>}
 }
 Rules:
 - card_number: Look carefully at the bottom of the card for a number like "098/102" or "25/185". Return the integer before the slash (e.g. 98). Try hard — zoom in mentally, use context clues like card art and name to infer the set total. Only return null if the number is genuinely obscured or outside the frame.
 - printing_type_hint: "holofoil" if the card art is holographic; "reverse_holofoil" if only the card border/background shimmers but the art is flat; "normal" if no holo effect is visible; null if uncertain.
+- bbox: normalized bounding box of where this card sits in the photo. x and y are the top-left corner (0=left/top edge of photo, 1=right/bottom edge). w and h are the card's width and height as a fraction of the full photo dimensions. For a 3×3 binder grid, each card occupies roughly 0.33 of the photo in each axis.
 - Use "low" confidence rather than guessing a wrong name or number.
 - Include every card you can see, even partially. Omit only cards where nothing is readable.`,
             },
