@@ -70,6 +70,10 @@ const PUBLIC_PATHS = new Set([
   // Remove or restrict to admin-only in Stage 2.
   "/api/push/test",
 
+  // Push webhook — called by Supabase on notifications INSERT, no session cookie.
+  // Authenticated via PUSH_WEBHOOK_SECRET Authorization header.
+  "/api/push/notify",
+
   // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.
