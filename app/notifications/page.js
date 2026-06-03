@@ -46,6 +46,9 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [resolvedRequests, setResolvedRequests] = useState({});
+  // Set of sender handles whose friend request is STILL pending in the DB.
+  // Authoritative across page navigations — avoids buttons reappearing on reload.
+  const [pendingSenderHandles, setPendingSenderHandles] = useState(new Set());
   const markAllTimerRef = useRef(null);
 
   useEffect(() => {
@@ -63,6 +66,37 @@ export default function NotificationsPage() {
 
       setNotifications(data || []);
       setLoading(false);
+
+      // Determine which friend_request notifications still have a pending friendship.
+      // Querying the live DB state means buttons persist-gone across page navigations.
+      const frHandles = [
+        ...new Set(
+          (data || [])
+            .filter((n) => n.type === "friend_request" && n.link?.startsWith("/friend/"))
+            .map((n) => n.link.split("/").pop())
+            .filter(Boolean)
+        ),
+      ];
+      if (frHandles.length > 0) {
+        const { data: senderProfiles } = await supabase
+          .from("profiles")
+          .select("id, handle")
+          .in("handle", frHandles);
+        if (senderProfiles?.length) {
+          const senderIds = senderProfiles.map((p) => p.id);
+          const { data: pendingFriendships } = await supabase
+            .from("friendships")
+            .select("user_a")
+            .eq("user_b", user.id)
+            .eq("status", "pending")
+            .in("user_a", senderIds);
+          const pendingIds = new Set((pendingFriendships || []).map((f) => f.user_a));
+          const profileById = Object.fromEntries(senderProfiles.map((p) => [p.id, p.handle]));
+          setPendingSenderHandles(
+            new Set(senderIds.filter((id) => pendingIds.has(id)).map((id) => profileById[id]))
+          );
+        }
+      }
 
       const unread = (data || []).filter((n) => !n.read).map((n) => n.id);
       if (unread.length > 0) {
@@ -113,6 +147,7 @@ export default function NotificationsPage() {
     await supabase.from("notifications").update({ read: true }).eq("id", notif.id);
     setResolvedRequests((prev) => ({ ...prev, [notif.id]: "accepted" }));
     setNotifications((prev) => prev.map((n) => n.id === notif.id ? { ...n, read: true } : n));
+    if (handle) setPendingSenderHandles((prev) => { const next = new Set(prev); next.delete(handle); return next; });
   };
 
   const declineRequest = async (notif) => {
@@ -128,6 +163,7 @@ export default function NotificationsPage() {
     await supabase.from("notifications").update({ read: true }).eq("id", notif.id);
     setResolvedRequests((prev) => ({ ...prev, [notif.id]: "declined" }));
     setNotifications((prev) => prev.map((n) => n.id === notif.id ? { ...n, read: true } : n));
+    if (handle) setPendingSenderHandles((prev) => { const next = new Set(prev); next.delete(handle); return next; });
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -162,7 +198,11 @@ export default function NotificationsPage() {
         <div style={{ marginTop: 12 }}>
           {notifications.map((notif, i) => {
             const { Icon, color } = TYPE_ICON[notif.type] || { Icon: Bell, color: "var(--ms-dim)" };
-            const isFriendRequest = notif.type === "friend_request" && notif.link?.startsWith("/friend/");
+            const senderHandle = notif.type === "friend_request" && notif.link?.startsWith("/friend/")
+              ? notif.link.split("/").pop()
+              : null;
+            const isFriendRequest = !!senderHandle;
+            const isPending = senderHandle ? pendingSenderHandles.has(senderHandle) : false;
             const resolved = resolvedRequests[notif.id];
             const borderBottom = i < notifications.length - 1 ? "1px solid var(--ms-rule-soft)" : "none";
 
@@ -240,55 +280,57 @@ export default function NotificationsPage() {
                     </span>
                   </div>
 
-                  {/* Action row — Accept/Decline or resolved state */}
-                  <div style={{ marginTop: 10, paddingLeft: 36 }}>
-                    {resolved ? (
-                      <div style={{
-                        fontSize: 13,
-                        fontFamily: '"IBM Plex Sans", sans-serif',
-                        color: resolved === "accepted" ? "var(--ms-accent)" : "var(--ms-dim)",
-                      }}>
-                        {resolved === "accepted" ? "Accepted ✓" : "Declined"}
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          onClick={() => acceptRequest(notif)}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            background: "var(--ms-accent)",
-                            color: "black",
-                            border: "none",
-                            borderRadius: 8,
-                            fontFamily: '"IBM Plex Sans", sans-serif',
-                            fontWeight: 700,
-                            fontSize: 13,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => declineRequest(notif)}
-                          style={{
-                            flex: 1,
-                            padding: "8px 12px",
-                            background: "transparent",
-                            color: "var(--ms-dim)",
-                            border: "0.5px solid var(--ms-rule)",
-                            borderRadius: 8,
-                            fontFamily: '"IBM Plex Sans", sans-serif',
-                            fontWeight: 700,
-                            fontSize: 13,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Action row — Accept/Decline (pending), resolved feedback, or nothing */}
+                  {(resolved || isPending) && (
+                    <div style={{ marginTop: 10, paddingLeft: 36 }}>
+                      {resolved ? (
+                        <div style={{
+                          fontSize: 13,
+                          fontFamily: '"IBM Plex Sans", sans-serif',
+                          color: resolved === "accepted" ? "var(--ms-accent)" : "var(--ms-dim)",
+                        }}>
+                          {resolved === "accepted" ? "Accepted ✓" : "Declined"}
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => acceptRequest(notif)}
+                            style={{
+                              flex: 1,
+                              padding: "8px 12px",
+                              background: "var(--ms-accent)",
+                              color: "black",
+                              border: "none",
+                              borderRadius: 8,
+                              fontFamily: '"IBM Plex Sans", sans-serif',
+                              fontWeight: 700,
+                              fontSize: 13,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => declineRequest(notif)}
+                            style={{
+                              flex: 1,
+                              padding: "8px 12px",
+                              background: "transparent",
+                              color: "var(--ms-dim)",
+                              border: "0.5px solid var(--ms-rule)",
+                              borderRadius: 8,
+                              fontFamily: '"IBM Plex Sans", sans-serif',
+                              fontWeight: 700,
+                              fontSize: 13,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             }
