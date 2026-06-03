@@ -739,7 +739,15 @@ export default function SetTrackerPage() {
       .eq("set_id", setId)
       .eq("card_number", cur.card_number)
       .eq("printing_id", printingId)
-      .then(() => {});
+      .then(({ error }) => {
+        if (error) {
+          console.error("[trade-flag] update failed:", error.message);
+          setOwnedPrintings((prev) => ({
+            ...prev,
+            [printingId]: { ...prev[printingId], trade_flagged: cur.trade_flagged },
+          }));
+        }
+      });
   };
 
   const togglePrinting = useCallback(
