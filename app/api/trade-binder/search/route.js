@@ -96,7 +96,7 @@ export async function GET(req) {
     p_name_tokens:  nameTokens.length > 0 ? nameTokens : null,
     p_card_number:  cardNumber,
     p_print_types:  printTypes,
-    p_limit:        24,
+    p_limit:        200,
   });
 
   if (error) {

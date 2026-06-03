@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { X, Check, ArrowRight, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -209,11 +209,15 @@ function StagedTile({ printing, onRemove }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// How many printings to include in the initial visible window and each scroll increment.
+const SCROLL_BATCH = 30;
+
 export default function AddCardsPage() {
   const router   = useRouter();
   const supabase = createClient();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const sentinelRef = useRef(null);
 
   const [authReady,   setAuthReady]   = useState(false);
   const [userHandle,  setUserHandle]  = useState(null);
@@ -222,9 +226,11 @@ export default function AddCardsPage() {
   const [searching,   setSearching]   = useState(false);
   const [results,     setResults]     = useState([]);
   const [searchErr,   setSearchErr]   = useState("");
-  const [staged,      setStaged]      = useState(new Map()); // printing_id → printing object
+  const [staged,      setStaged]      = useState(new Map()); // printing_id -> printing object
   const [commitErr,   setCommitErr]   = useState("");
   const [committedCount, setCommittedCount] = useState(0);
+  // How many printings' worth of complete groups to show (grows with infinite scroll).
+  const [visibleTarget, setVisibleTarget] = useState(SCROLL_BATCH);
 
   useEffect(() => {
     (async () => {
@@ -242,6 +248,60 @@ export default function AddCardsPage() {
       setAuthReady(true);
     })();
   }, []);
+
+  // Reset the visible window on every new result set.
+  useEffect(() => { setVisibleTarget(SCROLL_BATCH); }, [results]);
+
+  // Group printings by (card_id + set_id). The RPC orders by card_id then set_id so
+  // all printings of the same card-in-a-set arrive contiguously — this is a simple
+  // sequential pass, not a hash-group.
+  const groups = useMemo(() => {
+    const out = [];
+    let currentKey = null;
+    for (const p of results) {
+      const key = p.card_id + "|" + p.set_id;
+      if (key !== currentKey) {
+        out.push([p]);
+        currentKey = key;
+      } else {
+        out[out.length - 1].push(p);
+      }
+    }
+    return out;
+  }, [results]);
+
+  // Include complete groups up to visibleTarget printings; never split a group across
+  // the batch boundary (include the whole group even if it pushes past the target).
+  const visibleGroups = useMemo(() => {
+    const out = [];
+    let count = 0;
+    for (const group of groups) {
+      if (count >= visibleTarget && out.length > 0) break;
+      out.push(group);
+      count += group.length;
+    }
+    return out;
+  }, [groups, visibleTarget]);
+
+  const hasMore = visibleGroups.length < groups.length;
+
+  // IntersectionObserver on a sentinel div at the bottom of the list. When it enters the
+  // viewport, expand the visible window by one batch. Paginates already-fetched results —
+  // no additional API calls.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleTarget((prev) => prev + SCROLL_BATCH);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore]); // re-run when sentinel mounts/unmounts (hasMore toggles its presence)
 
   const runSearch = useCallback(async (q) => {
     if (!q || q.trim().length < 2) {
@@ -335,6 +395,9 @@ export default function AddCardsPage() {
 
   if (!authReady) return null;
 
+  const visiblePrintings = visibleGroups.flat();
+  const atCeiling = results.length >= 200;
+
   return (
     <MSShell hideTabBar>
       <div style={{ padding: "0 16px 120px" }}>
@@ -364,7 +427,7 @@ export default function AddCardsPage() {
                 ref={inputRef}
                 type="search"
                 autoFocus
-                placeholder="Card name, set, number, holo…"
+                placeholder="Card name, set, number, holo..."
                 value={query}
                 onChange={handleQueryChange}
                 style={{
@@ -401,27 +464,46 @@ export default function AddCardsPage() {
               </p>
             )}
 
-            {/* Searching indicator */}
-            {searching && (
-              <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 12 }}>Searching…</p>
+            {/* Keep typing hint — shown for single-char queries before search fires */}
+            {query.trim().length === 1 && (
+              <p style={{ fontSize: 13, color: "var(--po-text-faint)", lineHeight: 1.5 }}>
+                Keep typing to search...
+              </p>
             )}
 
-            {/* Results grid */}
-            {!searching && results.length > 0 && (
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 8,
-              }}>
-                {results.map((p) => (
-                  <PrintingTile
-                    key={p.printing_id}
-                    printing={p}
-                    staged={staged.has(p.printing_id)}
-                    onToggle={() => toggleStaged(p)}
-                  />
-                ))}
-              </div>
+            {/* Searching indicator */}
+            {searching && (
+              <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 12 }}>Searching...</p>
+            )}
+
+            {/* Results grid — rendered as complete groups, expanded by infinite scroll */}
+            {!searching && visiblePrintings.length > 0 && (
+              <>
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 8,
+                }}>
+                  {visiblePrintings.map((p) => (
+                    <PrintingTile
+                      key={p.printing_id}
+                      printing={p}
+                      staged={staged.has(p.printing_id)}
+                      onToggle={() => toggleStaged(p)}
+                    />
+                  ))}
+                </div>
+
+                {/* Sentinel — IntersectionObserver loads the next batch when this enters view */}
+                {hasMore && <div ref={sentinelRef} style={{ height: 40 }} />}
+
+                {/* Ceiling notice — only shown when the 200-result cap was actually hit */}
+                {!hasMore && atCeiling && (
+                  <p style={{ fontSize: 12, color: "var(--po-text-faint)", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
+                    Showing first 200 results — add a set or number to narrow.
+                  </p>
+                )}
+              </>
             )}
 
             {/* No results */}
@@ -459,7 +541,7 @@ export default function AddCardsPage() {
                 color: "var(--po-text-dim)", fontSize: 13, cursor: "pointer", padding: "4px 0",
               }}
             >
-              ← Back to search
+              Back to search
             </button>
           </div>
         )}
@@ -468,7 +550,7 @@ export default function AddCardsPage() {
         {phase === "committing" && (
           <div style={{ marginTop: 80, textAlign: "center" }}>
             <p style={{ fontSize: 32, marginBottom: 16 }}>⏳</p>
-            <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>Adding to trade binder…</p>
+            <p style={{ color: "var(--po-text-dim)", fontSize: 14 }}>Adding to trade binder...</p>
           </div>
         )}
 
