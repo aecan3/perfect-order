@@ -369,10 +369,7 @@ export default function FriendSetTrackerPage() {
   const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
   const pct = totalSlots > 0 ? Math.round((ownedSlotCount / totalSlots) * 100) : 0;
 
-  const missingCards = cards.filter((c) => {
-    const prints = printingsByCard[c.number] || [];
-    return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
-  });
+  const missingCards = cards.filter((c) => (cardOwnedSlotKeys[c.number]?.size || 0) < (cardSlotKeys[c.number]?.size || 0));
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
@@ -520,7 +517,7 @@ export default function FriendSetTrackerPage() {
             </span>
           </div>
           <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-1">
-            cards collected · {totalSlots - ownedSlotCount} to go
+            collected · {totalSlots - ownedSlotCount} to go
           </div>
         </div>
 

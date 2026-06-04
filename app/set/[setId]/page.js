@@ -990,8 +990,7 @@ export default function SetTrackerPage() {
 
   const missingFilter = (card) => {
     if (justCollected.has(card.number)) return true;
-    const prints = printingsByCard[card.number] || [];
-    return prints.filter((p) => ownedPrintings[p.id]?.checked).length < prints.length;
+    return (cardOwnedSlotKeys[card.number]?.size || 0) < (cardSlotKeys[card.number]?.size || 0);
   };
   // Binder and rarity show all cards; missing filters to only uncollected
   const viewCards = view === "missing" ? cards.filter(missingFilter) : cards;

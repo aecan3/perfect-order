@@ -195,7 +195,7 @@ async function main() {
   for (const row of existingRows) {
     const { error: updErr } = await supabase
       .from("printings")
-      .update({ price_usd: row.price_usd, updated_at: row.updated_at })
+      .update({ price_usd: row.price_usd, image_url: row.image_url, updated_at: row.updated_at })
       .eq("id", row.id);
     if (updErr) console.error(`  Price update ${row.id} failed: ${updErr.message}`);
   }
