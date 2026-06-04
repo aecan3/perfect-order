@@ -55,6 +55,7 @@ const BUCKET_LABELS = {
   sir: "Special Illustration Rare", hyper_rare: "Hyper Rare",
   mega_hyper_rare: "Mega Hyper Rare", shiny_rare: "Shiny Rare",
   shiny_ultra_rare: "Shiny Ultra Rare", promo: "Promo",
+  energy_card: "Energy", other_null: "Other",
 };
 const RARITY_TINT = {
   gx:                "rgba(59,130,246,0.35)",
@@ -616,7 +617,7 @@ export default function SetTrackerPage() {
   const sections = useMemo(() => {
     const grouped = {};
     for (const c of cards) {
-      const b = rarityBucket(c.rarity, c.subtypes, c.number, setRow?.total);
+      const b = rarityBucket(c.rarity, c.subtypes, c.number, setRow?.total, c.supertype);
       if (!grouped[b]) grouped[b] = [];
       grouped[b].push(c);
     }
@@ -994,7 +995,7 @@ export default function SetTrackerPage() {
       : "partial";
     const minPriceUsd = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
     const cardPrice = Number.isFinite(minPriceUsd) ? valueOf(minPriceUsd, currency) : null;
-    const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total);
+    const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total, card.supertype);
     const tint = RARITY_TINT[bucket];
     const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
     const photo = photoEntry?.photo_url;
