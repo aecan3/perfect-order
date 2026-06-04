@@ -92,6 +92,10 @@ Current strategies:
 - `/_next/static/` → StaleWhileRevalidate (content-hashed, safe to cache)
 - Everything else → NetworkFirst
 
+## Standing rules
+
+- **Migration file discipline**: Any `CREATE`, `ALTER`, or `DROP` executed against the database via MCP must land as a migration file in `supabase/migrations/` in the same commit as the code that depends on it. DB and repo must never drift — this has happened twice (`edition_mode` column, `get_cards_count` RPC) and required retroactive fixes.
+
 ## Known large collections
 
 - **raffertydall**: ~1598 checked entries across 5 sets. Always test pagination and home-page count logic against this account — it exceeds the PostgREST 1000-row default and has historically exposed truncation bugs.
