@@ -12,7 +12,6 @@ import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, us
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { SortableSetCard } from "@/components/home/SortableSetCard";
 import { createClient } from "@/lib/supabase";
-import { fetchMasterPrintingCounts } from "@/lib/queries/printings";
 import { getFriendIds } from "@/lib/queries/friends";
 import { getBlockIds } from "@/lib/queries/blocks";
 import { getDiscoverMatches } from "@/lib/queries/discover";
@@ -144,7 +143,7 @@ export default function HomePage() {
         while (true) {
           const { data, error } = await supabase
             .from("collection_entries")
-            .select("set_id, printing:printings!inner(price_usd)")
+            .select("set_id, card_number, printing:printings!inner(price_usd)")
             .eq("printing.collection_tier", "master")
             .eq("user_id", userId)
             .eq("checked", true)
@@ -177,23 +176,24 @@ export default function HomePage() {
 
       // Step 2: fetch set details at the top level.
       const setIds = (userSetsRows || []).map((r) => r.set_id).filter(Boolean);
-      const [{ data: setsData }, masterCountBySet] = setIds.length > 0
+      const [{ data: setsData }] = setIds.length > 0
         ? await Promise.all([
             supabase
               .from("sets")
               .select("id, code, name, series, total, total_with_secrets, logo_url, theme_primary, theme_secondary, theme_bg, cards(count)")
               .in("id", setIds),
-            fetchMasterPrintingCounts(supabase),
           ])
-        : [{ data: [] }, new Map()];
+        : [{ data: [] }];
 
       const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
-      const counts = {}, vals = {};
+      const cardSets = {}, counts = {}, vals = {};
       (entries || []).forEach((e) => {
-        counts[e.set_id] = (counts[e.set_id] || 0) + 1;
+        if (!cardSets[e.set_id]) cardSets[e.set_id] = new Set();
+        cardSets[e.set_id].add(e.card_number);
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
+      for (const [sid, s] of Object.entries(cardSets)) counts[sid] = s.size;
 
       const enriched = (userSetsRows || [])
         .map((row) => {
@@ -202,7 +202,6 @@ export default function HomePage() {
           return {
             ...s,
             checkedCount: counts[s.id] || 0,
-            masterPrintingCount: masterCountBySet.get(s.id) || 0,
             isHidden: row.hidden_at != null,
             pricesUpdatedAt: row.prices_updated_at,
           };
@@ -459,8 +458,7 @@ export default function HomePage() {
     }, null);
 
   const renderSetCard = (set) => {
-    const printingCount = set.masterPrintingCount || 0;
-    const total = printingCount > 0 ? printingCount : (Number(set.cards?.[0]?.count) || 0);
+    const total = set.total_with_secrets || Number(set.cards?.[0]?.count) || 0;
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
     const isMaster = total > 0 && set.checkedCount >= total;
     const primary = set.theme_primary || "#b9ff3c";

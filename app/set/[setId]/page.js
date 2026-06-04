@@ -958,8 +958,8 @@ export default function SetTrackerPage() {
   const gmOwnedValue = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
   const gmTotalValue = gmPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  const checkedDisplay = ownedPrintingCount;
-  const totalDisplay = totalPrintings;
+  const checkedDisplay = ownedCardCount;
+  const totalDisplay = totalCards;
   const remainingDisplay = totalDisplay - checkedDisplay;
   // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
   const ownedValueDisplay = ownedPrintingValue;

@@ -348,7 +348,9 @@ export default function FriendSetTrackerPage() {
   const allPrintings = cards.flatMap((c) => printingsByCard[c.number] || []);
   const totalPrintings = allPrintings.length;
   const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
-  const pct = totalPrintings > 0 ? Math.round((ownedPrintingCount / totalPrintings) * 100) : 0;
+  const totalCards = cards.length;
+  const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
+  const pct = totalCards > 0 ? Math.round((ownedCardCount / totalCards) * 100) : 0;
 
   const missingCards = cards.filter((c) => {
     const prints = printingsByCard[c.number] || [];

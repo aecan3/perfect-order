@@ -168,7 +168,7 @@ export default function SetBrowserPage() {
 
       const { data: sets } = await supabase
         .from("sets")
-        .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg, printings!printings_set_id_fkey(count)")
+        .select("id, code, name, series, total, total_with_secrets, release_date, logo_url, theme_primary, theme_secondary, theme_bg")
         .order("release_date", { ascending: false });
 
       setAllSets(sets || []);
@@ -483,7 +483,7 @@ export default function SetBrowserPage() {
           </div>
         ) : (
           filteredSets.map((set) => {
-            const total = set.printings?.[0]?.count || 0;
+            const total = set.total_with_secrets || 0;
             const isActive = activeSetIds.has(set.id);
             const isHidden = hiddenSetIds.has(set.id);
             const primary = set.theme_primary || "#b9ff3c";
