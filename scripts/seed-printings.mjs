@@ -20,7 +20,7 @@ const PRINTING_MAP = [
   { key: "normal", type: "normal", label: "Normal", order: 0 },
   { key: "holofoil", type: "holofoil", label: "Holo", order: 1 },
   { key: "reverseHolofoil", type: "reverse_holofoil", label: "Reverse Holo", order: 2 },
-  { key: "1stEditionNormal", type: "first_edition_normal", label: "1st Ed. Normal", order: 3 },
+  { key: "1stEdition",       type: "first_edition",        label: "1st Ed.",        order: 3 },
   { key: "1stEditionHolofoil", type: "first_edition_holofoil", label: "1st Ed. Holo", order: 4 },
   { key: "unlimitedHolofoil", type: "unlimited_holofoil", label: "Unlimited Holo", order: 5 },
   { key: "unlimited", type: "unlimited", label: "Unlimited", order: 6 },
