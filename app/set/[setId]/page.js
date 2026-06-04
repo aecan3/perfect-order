@@ -991,27 +991,21 @@ export default function SetTrackerPage() {
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  // 'any' mode: cheapest-per-slot, ignoring null/zero prices
+  // 'any' mode all-in: cheapest-per-slot, ignoring null/zero prices.
+  // Owned value in 'any' mode uses actual checked-printing prices (ownedPrintingValue),
+  // not slot-min — market value of what's held; can exceed all-in.
   let anyTotalValue = 0;
-  let anyOwnedValue = 0;
   {
-    const slotData = {};
+    const slotMin = {};
     for (const card of cards) {
       for (const p of (printingsByCard[card.number] || [])) {
         const sk = `${card.number}::${stripEditionPrefix(p.printing_type)}`;
-        if (!slotData[sk]) slotData[sk] = { min: null, owned: false };
-        if (p.price_usd > 0 && (slotData[sk].min === null || p.price_usd < slotData[sk].min)) {
-          slotData[sk].min = p.price_usd;
+        if (p.price_usd > 0 && (slotMin[sk] === undefined || p.price_usd < slotMin[sk])) {
+          slotMin[sk] = p.price_usd;
         }
-        if (ownedPrintings[p.id]?.checked) slotData[sk].owned = true;
       }
     }
-    for (const { min, owned } of Object.values(slotData)) {
-      if (min !== null) {
-        anyTotalValue += valueOf(min, currency);
-        if (owned) anyOwnedValue += valueOf(min, currency);
-      }
-    }
+    for (const v of Object.values(slotMin)) anyTotalValue += valueOf(v, currency);
   }
 
   // Single-edition value
@@ -1024,7 +1018,8 @@ export default function SetTrackerPage() {
   }
 
   // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
-  const ownedValueDisplay = editionMode === "any" ? anyOwnedValue : editionMode === "all" ? ownedPrintingValue : editionOwnedValue;
+  // Owned value: actual market value of checked printings in all modes; only single-edition modes filter to that edition.
+  const ownedValueDisplay = (editionMode === "any" || editionMode === "all") ? ownedPrintingValue : editionOwnedValue;
   const totalValueDisplay = editionMode === "any" ? anyTotalValue : editionMode === "all" ? totalPrintingValue : editionTotalValue;
   const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
