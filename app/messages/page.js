@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, SquarePen } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { getBlockIds } from "@/lib/queries/blocks";
 import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { NewMessageSheet } from "@/components/NewMessageSheet";
 
 const timeAgo = (ts) => {
   const diff = (Date.now() - new Date(ts).getTime()) / 1000;
@@ -24,6 +25,7 @@ export default function InboxPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [conversations, setConversations] = useState(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const loadConversations = async (userId) => {
     const [{ data: threads }, blockIds] = await Promise.all([
@@ -69,7 +71,22 @@ export default function InboxPage() {
 
   return (
     <MSShell>
-      <MSPageTitle>Messages</MSPageTitle>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 18 }}>
+        <MSPageTitle>Messages</MSPageTitle>
+        <button
+          onClick={() => setComposeOpen(true)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 36, height: 36,
+            background: "var(--po-green)", color: "#050507",
+            border: "none", borderRadius: 10,
+            cursor: "pointer", flexShrink: 0,
+          }}
+          aria-label="New message"
+        >
+          <SquarePen size={18} strokeWidth={2.5} />
+        </button>
+      </div>
 
       <div className="max-w-md mx-auto px-4 pb-4">
         {conversations === null && (
@@ -123,6 +140,7 @@ export default function InboxPage() {
           </div>
         )}
       </div>
+      <NewMessageSheet open={composeOpen} onClose={() => setComposeOpen(false)} />
     </MSShell>
   );
 }

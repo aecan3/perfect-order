@@ -154,6 +154,14 @@ export default function ThreadPage() {
     };
   }, [handle, router, supabase]);
 
+  // Focus composer when arriving from the New Message picker (?compose=1)
+  useEffect(() => {
+    if (otherProfile && searchParams.get("compose") === "1") {
+      const t = setTimeout(() => inputRef.current?.focus(), 100);
+      return () => clearTimeout(t);
+    }
+  }, [otherProfile, searchParams]);
+
   // Instant scroll on initial load; follow new messages only if near bottom
   useEffect(() => {
     if (messages.length === 0) return;
