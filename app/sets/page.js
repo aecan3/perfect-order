@@ -123,6 +123,7 @@ export default function SetBrowserPage() {
   const supabase = createClient();
   const [user, setUser] = useState(null);
   const [allSets, setAllSets] = useState([]);
+  const [slotCountById, setSlotCountById] = useState({});
   const [activeSetIds, setActiveSetIds] = useState(new Set());  // user_sets with hidden_at IS NULL
   const [hiddenSetIds, setHiddenSetIds] = useState(new Set());  // user_sets with hidden_at IS NOT NULL
   const [query, setQuery] = useState("");
@@ -172,6 +173,15 @@ export default function SetBrowserPage() {
         .order("release_date", { ascending: false });
 
       setAllSets(sets || []);
+
+      if (sets && sets.length > 0) {
+        const { data: slotRows } = await supabase.rpc("master_printing_counts", {
+          set_ids: sets.map((s) => s.id),
+        });
+        const map = {};
+        (slotRows || []).forEach((r) => { map[r.set_id] = Number(r.slot_count); });
+        setSlotCountById(map);
+      }
 
       if (user) {
         const { data: userSets } = await supabase.from("user_sets").select("set_id, hidden_at").eq("user_id", user.id);
@@ -483,7 +493,7 @@ export default function SetBrowserPage() {
           </div>
         ) : (
           filteredSets.map((set) => {
-            const total = set.total_with_secrets || 0;
+            const total = slotCountById[set.id] || set.total_with_secrets || 0;
             const isActive = activeSetIds.has(set.id);
             const isHidden = hiddenSetIds.has(set.id);
             const primary = set.theme_primary || "#b9ff3c";

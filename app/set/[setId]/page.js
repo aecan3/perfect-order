@@ -17,6 +17,7 @@ import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { ReportCardFAB } from "@/components/ReportCardFAB";
 import BackButton from "@/components/BackButton";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
+import { stripEditionPrefix } from "@/lib/edition-utils";
 import { useCollectionState } from "@/lib/hooks/useCollectionState";
 import { AnonymousCollectionBlocker, captureCollectionMigrationIntent } from "@/components/AnonymousCollectionBlocker";
 
@@ -936,6 +937,22 @@ export default function SetTrackerPage() {
   const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
   const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
 
+  // Slot-level counts: edition prefixes collapse (first_edition + unlimited → same slot).
+  // Modern sets: each distinct printing type is its own slot (restores printing-level behaviour).
+  const cardSlotKeys = {};
+  const cardOwnedSlotKeys = {};
+  for (const card of cards) {
+    cardSlotKeys[card.number] = new Set();
+    cardOwnedSlotKeys[card.number] = new Set();
+    for (const p of (printingsByCard[card.number] || [])) {
+      const st = stripEditionPrefix(p.printing_type);
+      cardSlotKeys[card.number].add(st);
+      if (ownedPrintings[p.id]?.checked) cardOwnedSlotKeys[card.number].add(st);
+    }
+  }
+  const totalSlots = cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
+  const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
+
   const totalCardValue = cards.reduce((s, c) => {
     const prints = printingsByCard[c.number] || [];
     const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
@@ -959,8 +976,8 @@ export default function SetTrackerPage() {
   const gmOwnedValue = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
   const gmTotalValue = gmPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
 
-  const checkedDisplay = ownedCardCount;
-  const totalDisplay = totalCards;
+  const checkedDisplay = ownedSlotCount;
+  const totalDisplay = totalSlots;
   const remainingDisplay = totalDisplay - checkedDisplay;
   // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
   const ownedValueDisplay = ownedPrintingValue;
@@ -1442,8 +1459,8 @@ export default function SetTrackerPage() {
             {viewSections.map((section) => {
               const isOpen = !!openSections[section.id];
               const dot = RARITY_DOT[section.id] || "#ffffff";
-              const sectionOwned = section.cards.filter((c) => isCardOwned(c.number)).length;
-              const sectionTotal = section.cards.length;
+              const sectionOwned = section.cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
+              const sectionTotal = section.cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
               return (
                 <RaritySection
                   key={section.id}

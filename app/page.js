@@ -21,6 +21,7 @@ import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 import PasskeyNudge from "@/components/PasskeyNudge";
 import PushNudge from "@/components/PushNudge";
+import { getSlotKey } from "@/lib/edition-utils";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -143,7 +144,7 @@ export default function HomePage() {
         while (true) {
           const { data, error } = await supabase
             .from("collection_entries")
-            .select("set_id, card_number, printing:printings!inner(price_usd)")
+            .select("set_id, card_number, printing:printings!inner(price_usd, printing_type)")
             .eq("printing.collection_tier", "master")
             .eq("user_id", userId)
             .eq("checked", true)
@@ -187,13 +188,19 @@ export default function HomePage() {
 
       const setById = Object.fromEntries((setsData || []).map((s) => [s.id, s]));
 
-      const cardSets = {}, counts = {}, vals = {};
+      const slotCountById = {};
+      if (setIds.length > 0) {
+        const { data: slotRows } = await supabase.rpc("master_printing_counts", { set_ids: setIds });
+        (slotRows || []).forEach((r) => { slotCountById[r.set_id] = Number(r.slot_count); });
+      }
+
+      const slotSets = {}, counts = {}, vals = {};
       (entries || []).forEach((e) => {
-        if (!cardSets[e.set_id]) cardSets[e.set_id] = new Set();
-        cardSets[e.set_id].add(e.card_number);
+        if (!slotSets[e.set_id]) slotSets[e.set_id] = new Set();
+        slotSets[e.set_id].add(getSlotKey(e.card_number, e.printing?.printing_type || ""));
         vals[e.set_id] = (vals[e.set_id] || 0) + (e.printing?.price_usd || 0);
       });
-      for (const [sid, s] of Object.entries(cardSets)) counts[sid] = s.size;
+      for (const [sid, s] of Object.entries(slotSets)) counts[sid] = s.size;
 
       const enriched = (userSetsRows || [])
         .map((row) => {
@@ -202,6 +209,7 @@ export default function HomePage() {
           return {
             ...s,
             checkedCount: counts[s.id] || 0,
+            slotCount: slotCountById[s.id] || 0,
             isHidden: row.hidden_at != null,
             pricesUpdatedAt: row.prices_updated_at,
           };
@@ -458,7 +466,7 @@ export default function HomePage() {
     }, null);
 
   const renderSetCard = (set) => {
-    const total = set.total_with_secrets || Number(set.cards?.[0]?.count) || 0;
+    const total = set.slotCount || set.total_with_secrets || Number(set.cards?.[0]?.count) || 0;
     const pct = total > 0 ? Math.round((set.checkedCount / total) * 100) : 0;
     const isMaster = total > 0 && set.checkedCount >= total;
     const primary = set.theme_primary || "#b9ff3c";

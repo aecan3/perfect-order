@@ -7,6 +7,7 @@ import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
+import { stripEditionPrefix } from "@/lib/edition-utils";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { Avatar } from "@/components/Avatar";
@@ -352,7 +353,21 @@ export default function FriendSetTrackerPage() {
   const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
   const totalCards = cards.length;
   const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
-  const pct = totalCards > 0 ? Math.round((ownedCardCount / totalCards) * 100) : 0;
+
+  const cardSlotKeys = {};
+  const cardOwnedSlotKeys = {};
+  for (const card of cards) {
+    cardSlotKeys[card.number] = new Set();
+    cardOwnedSlotKeys[card.number] = new Set();
+    for (const p of (printingsByCard[card.number] || [])) {
+      const st = stripEditionPrefix(p.printing_type);
+      cardSlotKeys[card.number].add(st);
+      if (ownedPrintings[p.id]?.checked) cardOwnedSlotKeys[card.number].add(st);
+    }
+  }
+  const totalSlots = cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
+  const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
+  const pct = totalSlots > 0 ? Math.round((ownedSlotCount / totalSlots) * 100) : 0;
 
   const missingCards = cards.filter((c) => {
     const prints = printingsByCard[c.number] || [];
@@ -499,13 +514,13 @@ export default function FriendSetTrackerPage() {
             className="tabular-nums font-black leading-none"
             style={{ fontSize: 36, color: themePrimary, textShadow: `0 0 20px ${themePrimary}60` }}
           >
-            {ownedCardCount}
+            {ownedSlotCount}
             <span className="font-black text-[var(--po-text-dim)]" style={{ fontSize: 24 }}>
-              /{totalCards}
+              /{totalSlots}
             </span>
           </div>
           <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-1">
-            cards collected · {totalCards - ownedCardCount} to go
+            cards collected · {totalSlots - ownedSlotCount} to go
           </div>
         </div>
 
@@ -564,7 +579,7 @@ export default function FriendSetTrackerPage() {
                     <div className="text-left">
                       <div className="font-bold text-sm">{section.label}</div>
                       <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {section.cards.filter((c) => isCardOwned(c.number)).length}/{section.cards.length}
+                        {section.cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0)}/{section.cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0)}
                       </div>
                     </div>
                     <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />

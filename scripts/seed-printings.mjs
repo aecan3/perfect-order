@@ -66,16 +66,19 @@ async function main() {
   const cards = await fetchAllCards(onlySet);
   console.log(`Loaded ${cards.length} cards total.`);
 
-  // Guard the priceless fallback: if a card already has printing rows, skip
-  // the fallback even when TCGPlayer returns no prices (e.g. temporary delisting).
-  // One query per set run; falls back to empty set when running without a set arg
-  // (full reseed of new sets has no existing rows, so fallback works as intended).
+  // Preload existing printings for the target set.
+  // existingPrintingIds: used to split new rows (full insert) from existing rows
+  //   (price-only update) — prevents DO UPDATE from overwriting curated printing_type/label.
+  // cardIdsWithPrintings: guards the priceless fallback so a card that already has
+  //   rows doesn't get a stray normal row when TCGPlayer temporarily returns no prices.
+  let existingPrintingIds = new Set();
   let cardIdsWithPrintings = new Set();
   if (onlySet) {
     const { data: existing } = await supabase
       .from("printings")
-      .select("card_id")
+      .select("id, card_id")
       .eq("set_id", onlySet);
+    existingPrintingIds = new Set((existing || []).map((p) => p.id));
     cardIdsWithPrintings = new Set((existing || []).map((p) => p.card_id));
     console.log(`  ${cardIdsWithPrintings.size} cards already have printings in ${onlySet}.`);
   }
@@ -168,19 +171,35 @@ async function main() {
     }
   }
 
-  console.log(`Inserting ${printingsToInsert.length} printing rows...`);
+  // Split: new rows get a full insert; existing rows get price-only updates.
+  // This prevents DO UPDATE from overwriting curated printing_type/printing_label
+  // (e.g. base1 Phase 1 renames from holofoil → unlimited_holofoil would be reverted
+  // if we upsert(chunk, { onConflict: "id" }) because the API returns the old key).
+  const newRows = printingsToInsert.filter((p) => !existingPrintingIds.has(p.id));
+  const existingRows = printingsToInsert.filter((p) => existingPrintingIds.has(p.id));
 
-  for (let i = 0; i < printingsToInsert.length; i += 100) {
-    const chunk = printingsToInsert.slice(i, i + 100);
-    const { error: upErr } = await supabase
+  console.log(`Inserting ${newRows.length} new rows, updating prices on ${existingRows.length} existing rows...`);
+
+  for (let i = 0; i < newRows.length; i += 100) {
+    const chunk = newRows.slice(i, i + 100);
+    const { error: insErr } = await supabase
       .from("printings")
-      .upsert(chunk, { onConflict: "id" });
-    if (upErr) {
-      console.error(`  Chunk ${i} failed: ${upErr.message}`);
+      .upsert(chunk, { onConflict: "id", ignoreDuplicates: true });
+    if (insErr) {
+      console.error(`  Insert chunk ${i} failed: ${insErr.message}`);
     } else {
-      console.log(`  ${Math.min(i + 100, printingsToInsert.length)}/${printingsToInsert.length}`);
+      console.log(`  inserted ${Math.min(i + 100, newRows.length)}/${newRows.length}`);
     }
   }
+
+  for (const row of existingRows) {
+    const { error: updErr } = await supabase
+      .from("printings")
+      .update({ price_usd: row.price_usd, updated_at: row.updated_at })
+      .eq("id", row.id);
+    if (updErr) console.error(`  Price update ${row.id} failed: ${updErr.message}`);
+  }
+  if (existingRows.length > 0) console.log(`  price-updated ${existingRows.length} existing rows`);
 
   console.log("Printings seeded.");
 }
