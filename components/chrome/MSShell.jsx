@@ -39,12 +39,13 @@ function AnonymousTabBar() {
     };
   }, []);
 
-  // Gate dynamic content on hydration — server and first client
-  // render must match (both show "Sign Up Free" at fontSize 13)
+  // Gate dynamic content on hydration — server and first client render must match.
+  // Empty state: "Sign In / Sign Up" (both paths live on /welcome).
+  // Has-cards state: conversion CTA with live count + value — keep unchanged.
   const showDynamic = hydrated && stats.count > 0;
   const buttonText = showDynamic
     ? `Sign Up — Save ${stats.count} ${stats.count === 1 ? "card" : "cards"} (A$${Math.round(stats.value)})`
-    : "Sign Up Free";
+    : "Sign In / Sign Up";
 
   return (
     <nav

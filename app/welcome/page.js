@@ -65,6 +65,12 @@ function WelcomeContent() {
           >
             Sign In
           </Link>
+          <Link
+            href="/sets"
+            className="block w-full py-3 text-[var(--po-text-dim)] rounded-xl font-bold text-sm uppercase tracking-widest text-center hover:text-[var(--po-text)] transition-colors"
+          >
+            View our Master Sets
+          </Link>
         </div>
 
         <InstallGuide />
