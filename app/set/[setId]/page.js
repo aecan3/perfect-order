@@ -17,7 +17,7 @@ import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { ReportCardFAB } from "@/components/ReportCardFAB";
 import BackButton from "@/components/BackButton";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
-import { stripEditionPrefix } from "@/lib/edition-utils";
+import { stripEditionPrefix, getEditionOptions, getAnonEditionMode, setAnonEditionMode } from "@/lib/edition-utils";
 import { useCollectionState } from "@/lib/hooks/useCollectionState";
 import { AnonymousCollectionBlocker, captureCollectionMigrationIntent } from "@/components/AnonymousCollectionBlocker";
 
@@ -529,6 +529,7 @@ export default function SetTrackerPage() {
   const [blockerTrigger, setBlockerTrigger] = useState(null);
   const thresholdsFiredRef = useRef(new Set());
   const [restoreToast, setRestoreToast] = useState(null);
+  const [editionMode, setEditionMode] = useState("any");
   const isAnonymous = !user;
 
   const printingsMap = useMemo(() => {
@@ -583,7 +584,7 @@ export default function SetTrackerPage() {
         [{ data: prof }, { data: entriesData }, { data: userSetData }, { data: favsData }] = await Promise.all([
           supabase.from("profiles").select("*").eq("id", authUser.id).maybeSingle(),
           supabase.from("collection_entries").select("printing_id, card_number, checked, photo_url, duplicate_count, trade_flagged").eq("user_id", authUser.id).eq("set_id", setId),
-          supabase.from("user_sets").select("prices_updated_at").eq("user_id", authUser.id).eq("set_id", setId).maybeSingle(),
+          supabase.from("user_sets").select("prices_updated_at, edition_mode").eq("user_id", authUser.id).eq("set_id", setId).maybeSingle(),
           supabase.from("favourites").select("printing_id").eq("user_id", authUser.id),
         ]);
       }
@@ -591,6 +592,11 @@ export default function SetTrackerPage() {
       setProfile(prof);
       setSetRow(setData);
       setPricesUpdatedAt(userSetData?.prices_updated_at || null);
+      if (authUser) {
+        setEditionMode(userSetData?.edition_mode || "any");
+      } else {
+        setEditionMode(getAnonEditionMode(setId));
+      }
       const gmCardIds = new Set((gmPrintingData || []).map((p) => p.card_id));
       setCards((cardData || []).filter((c) => !gmCardIds.has(c.id)));
       setGmPrintings(gmPrintingData || []);
@@ -636,6 +642,15 @@ export default function SetTrackerPage() {
     localStorage.setItem("po:currency", c);
   };
 
+  const handleEditionModeChange = (mode) => {
+    setEditionMode(mode);
+    if (!isAnonymous && user) {
+      supabase.from("user_sets").update({ edition_mode: mode }).eq("user_id", user.id).eq("set_id", setId).then(() => {});
+    } else {
+      setAnonEditionMode(setId, mode);
+    }
+  };
+
   useEffect(() => () => {
     Object.values(dupTimersRef.current).forEach(clearTimeout);
   }, []);
@@ -677,17 +692,19 @@ export default function SetTrackerPage() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isAnonymous, anonCollection.totalCount]);
 
-  // Full-set completion detection — fires only on real-time transition, not initial load
+  // Full-set completion detection — fires only on real-time transition, not initial load.
+  // ALWAYS uses slot-level ('any') semantics regardless of edition_mode so that
+  // switching modes never re-fires the celebration or re-upserts master_completions.
   useEffect(() => {
     if (!authChecked) return;
-    const pct = totalDisplay > 0 ? (checkedDisplay / totalDisplay) * 100 : 0;
+    const gatePct = totalSlots > 0 ? (ownedSlotCount / totalSlots) * 100 : 0;
     if (prevSetPctRef.current === null) {
-      prevSetPctRef.current = pct;
+      prevSetPctRef.current = gatePct;
       return;
     }
     const prev = prevSetPctRef.current;
-    prevSetPctRef.current = pct;
-    if (prev < 100 && pct >= 100) {
+    prevSetPctRef.current = gatePct;
+    if (prev < 100 && gatePct >= 100) {
       setShimmerMain(true);
       setTimeout(() => setShimmerMain(false), 1100);
       const item = { type: "master", setName: setRow?.name || "", setLogoUrl: setRow?.logo_url || "" };
@@ -925,17 +942,7 @@ export default function SetTrackerPage() {
     const prints = printingsByCard[cardNumber] || [];
     return prints.some((p) => ownedPrintings[p.id]?.checked);
   };
-  const cardOwnedCount = (cardNumber) => {
-    const prints = printingsByCard[cardNumber] || [];
-    return prints.filter((p) => ownedPrintings[p.id]?.checked).length;
-  };
-
   const allPrintings = cards.flatMap((c) => printingsByCard[c.number] || []);
-
-  const totalCards = cards.length;
-  const totalPrintings = allPrintings.length;
-  const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
-  const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
 
   // Slot-level counts: edition prefixes collapse (first_edition + unlimited → same slot).
   // Modern sets: each distinct printing type is its own slot (restores printing-level behaviour).
@@ -950,39 +957,81 @@ export default function SetTrackerPage() {
       if (ownedPrintings[p.id]?.checked) cardOwnedSlotKeys[card.number].add(st);
     }
   }
+  // totalSlots / ownedSlotCount: always slot-level; used for the master_completions gate
   const totalSlots = cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
   const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
 
-  const totalCardValue = cards.reduce((s, c) => {
-    const prints = printingsByCard[c.number] || [];
-    const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
-    return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
-  }, 0);
-  const totalPrintingValue = allPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+  // Edition mode helpers — filter/count based on current edition_mode
+  const getActivePrints = (cardNumber) => {
+    const prints = printingsByCard[cardNumber] || [];
+    if (editionMode === "any" || editionMode === "all") return prints;
+    return prints.filter((p) => p.printing_type.startsWith(editionMode));
+  };
+  const modeOwnedForCard = (cardNumber) => {
+    if (editionMode === "any") return cardOwnedSlotKeys[cardNumber]?.size || 0;
+    return getActivePrints(cardNumber).filter((p) => ownedPrintings[p.id]?.checked).length;
+  };
+  const modeTotalForCard = (cardNumber) => {
+    if (editionMode === "any") return cardSlotKeys[cardNumber]?.size || 0;
+    return getActivePrints(cardNumber).length;
+  };
 
-  const ownedCardValue = cards
-    .filter((c) => isCardOwned(c.number))
-    .reduce((s, c) => {
-      const prints = printingsByCard[c.number] || [];
-      const minPrice = prints.reduce((m, p) => Math.min(m, p.price_usd ?? Infinity), Infinity);
-      return s + (Number.isFinite(minPrice) ? valueOf(minPrice, currency) : 0);
-    }, 0);
+  // Edition dropdown visibility
+  const editionOptions = getEditionOptions(allPrintings);
+  const showEditionDropdown = editionOptions.length >= 2;
+
+  // Mode-aware headline counts
+  const checkedDisplay = cards.reduce((s, c) => s + modeOwnedForCard(c.number), 0);
+  const totalDisplay = cards.reduce((s, c) => s + modeTotalForCard(c.number), 0);
+  const remainingDisplay = totalDisplay - checkedDisplay;
+
+  // Mode-aware value calculations
+  const totalPrintingValue = allPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
   const ownedPrintingValue = allPrintings
     .filter((p) => ownedPrintings[p.id]?.checked)
     .reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
+
+  // 'any' mode: cheapest-per-slot, ignoring null/zero prices
+  let anyTotalValue = 0;
+  let anyOwnedValue = 0;
+  {
+    const slotData = {};
+    for (const card of cards) {
+      for (const p of (printingsByCard[card.number] || [])) {
+        const sk = `${card.number}::${stripEditionPrefix(p.printing_type)}`;
+        if (!slotData[sk]) slotData[sk] = { min: null, owned: false };
+        if (p.price_usd > 0 && (slotData[sk].min === null || p.price_usd < slotData[sk].min)) {
+          slotData[sk].min = p.price_usd;
+        }
+        if (ownedPrintings[p.id]?.checked) slotData[sk].owned = true;
+      }
+    }
+    for (const { min, owned } of Object.values(slotData)) {
+      if (min !== null) {
+        anyTotalValue += valueOf(min, currency);
+        if (owned) anyOwnedValue += valueOf(min, currency);
+      }
+    }
+  }
+
+  // Single-edition value
+  let editionTotalValue = 0;
+  let editionOwnedValue = 0;
+  if (editionMode !== "any" && editionMode !== "all") {
+    const edPrints = allPrintings.filter((p) => p.printing_type.startsWith(editionMode));
+    editionTotalValue = edPrints.reduce((s, p) => s + valueOf(p.price_usd || 0, currency), 0);
+    editionOwnedValue = edPrints.filter((p) => ownedPrintings[p.id]?.checked).reduce((s, p) => s + valueOf(p.price_usd || 0, currency), 0);
+  }
+
+  // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
+  const ownedValueDisplay = editionMode === "any" ? anyOwnedValue : editionMode === "all" ? ownedPrintingValue : editionOwnedValue;
+  const totalValueDisplay = editionMode === "any" ? anyTotalValue : editionMode === "all" ? totalPrintingValue : editionTotalValue;
+  const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const gmOwnedCount = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
   const gmTotalCount = gmPrintings.length;
   const gmOwnedValue = gmPrintings.filter((p) => ownedPrintings[p.id]?.checked).reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
   const gmTotalValue = gmPrintings.reduce((s, p) => s + valueOf(p.price_usd, currency), 0);
-
-  const checkedDisplay = ownedSlotCount;
-  const totalDisplay = totalSlots;
-  const remainingDisplay = totalDisplay - checkedDisplay;
-  // HIDDEN FOR LAUNCH: GM value excluded from aggregates. Restore + gmOwnedValue / + gmTotalValue to re-enable.
-  const ownedValueDisplay = ownedPrintingValue;
-  const totalValueDisplay = totalPrintingValue;
-  const remainingValueDisplay = totalValueDisplay - ownedValueDisplay;
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
@@ -990,7 +1039,7 @@ export default function SetTrackerPage() {
 
   const missingFilter = (card) => {
     if (justCollected.has(card.number)) return true;
-    return (cardOwnedSlotKeys[card.number]?.size || 0) < (cardSlotKeys[card.number]?.size || 0);
+    return modeOwnedForCard(card.number) < modeTotalForCard(card.number);
   };
   // Binder and rarity show all cards; missing filters to only uncollected
   const viewCards = view === "missing" ? cards.filter(missingFilter) : cards;
@@ -1003,11 +1052,12 @@ export default function SetTrackerPage() {
     : sections.map((s) => ({ ...s, displayCards: s.cards }));
 
   const renderCard = (card) => {
-    const prints = printingsByCard[card.number] || [];
-    const checkedCount = prints.filter((p) => ownedPrintings[p.id]?.checked).length;
+    const prints = getActivePrints(card.number);
+    const checkedCount = modeOwnedForCard(card.number);
+    const modeTotal = modeTotalForCard(card.number);
     const completionState =
-      prints.length === 0 || checkedCount === 0 ? "uncollected"
-      : checkedCount === prints.length ? "complete"
+      modeTotal === 0 || checkedCount === 0 ? "uncollected"
+      : checkedCount >= modeTotal ? "complete"
       : "partial";
     const minPriceUsd = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
     const cardPrice = Number.isFinite(minPriceUsd) ? valueOf(minPriceUsd, currency) : null;
@@ -1077,7 +1127,7 @@ export default function SetTrackerPage() {
               className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
               style={{ background: `${themePrimary}30`, color: themePrimary, border: `1px solid ${themePrimary}80` }}
             >
-              {checkedCount}/{prints.length}
+              {checkedCount}/{modeTotal}
             </div>
           )}
           {cardPrice !== null && (
@@ -1313,6 +1363,20 @@ export default function SetTrackerPage() {
       <div className="px-4 pt-0 pb-3" style={{ borderBottom: `1px solid ${themePrimary}30` }}>
         {/* Controls row */}
         <div className="flex items-center justify-end gap-2 mb-3">
+          {showEditionDropdown && (
+            <select
+              value={editionMode}
+              onChange={(e) => handleEditionModeChange(e.target.value)}
+              className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
+              style={{ color: "var(--po-text-dim)" }}
+            >
+              <option value="any">Any</option>
+              <option value="all">All</option>
+              {editionOptions.includes("first_edition") && <option value="first_edition">1st Ed.</option>}
+              {editionOptions.includes("unlimited") && <option value="unlimited">Unlimited</option>}
+              {editionOptions.includes("shadowless") && <option value="shadowless">Shadowless</option>}
+            </select>
+          )}
           <select
             value={currency}
             onChange={(e) => switchCurrency(e.target.value)}
@@ -1458,8 +1522,8 @@ export default function SetTrackerPage() {
             {viewSections.map((section) => {
               const isOpen = !!openSections[section.id];
               const dot = RARITY_DOT[section.id] || "#ffffff";
-              const sectionOwned = section.cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
-              const sectionTotal = section.cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
+              const sectionOwned = section.cards.reduce((s, c) => s + modeOwnedForCard(c.number), 0);
+              const sectionTotal = section.cards.reduce((s, c) => s + modeTotalForCard(c.number), 0);
               return (
                 <RaritySection
                   key={section.id}
@@ -1582,7 +1646,7 @@ export default function SetTrackerPage() {
                 <div className="text-[11px] tabular-nums" style={{ color: "var(--po-text-dim)" }}>
                   {fmtMoney(
                     viewCards.reduce((s, c) => {
-                      const prints = printingsByCard[c.number] || [];
+                      const prints = getActivePrints(c.number);
                       const min = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
                       return s + (Number.isFinite(min) ? min * (RATES[currency]?.rate || 1) : 0);
                     }, 0),
@@ -1717,7 +1781,7 @@ export default function SetTrackerPage() {
               </button>
             </div>
             <div className="space-y-1">
-              {(printingsByCard[pickingCard.number] || []).map((p) => {
+              {getActivePrints(pickingCard.number).map((p) => {
                 const isOwned = !!ownedPrintings[p.id]?.checked;
                 const dc = ownedPrintings[p.id]?.duplicate_count || 0;
                 const v = valueOf(p.price_usd, currency);
