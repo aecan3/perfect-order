@@ -20,6 +20,7 @@ import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { stripEditionPrefix, getEditionOptions, getAnonEditionMode, setAnonEditionMode } from "@/lib/edition-utils";
 import { useCollectionState } from "@/lib/hooks/useCollectionState";
 import { AnonymousCollectionBlocker, captureCollectionMigrationIntent } from "@/components/AnonymousCollectionBlocker";
+import { EditionExplainerSheet } from "@/components/EditionExplainerSheet";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -1359,18 +1360,24 @@ export default function SetTrackerPage() {
         {/* Controls row */}
         <div className="flex items-center justify-end gap-2 mb-3">
           {showEditionDropdown && (
-            <select
-              value={editionMode}
-              onChange={(e) => handleEditionModeChange(e.target.value)}
-              className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
-              style={{ color: "var(--po-text-dim)" }}
-            >
-              <option value="any">Any</option>
-              <option value="all">All</option>
-              {editionOptions.includes("first_edition") && <option value="first_edition">1st Ed.</option>}
-              {editionOptions.includes("unlimited") && <option value="unlimited">Unlimited</option>}
-              {editionOptions.includes("shadowless") && <option value="shadowless">Shadowless</option>}
-            </select>
+            <div className="relative">
+              <select
+                value={editionMode}
+                onChange={(e) => handleEditionModeChange(e.target.value)}
+                className="text-[10px] uppercase tracking-widest pl-2 pr-6 py-1.5 rounded-lg cursor-pointer appearance-none"
+                style={
+                  editionMode !== "any"
+                    ? { background: "#a3e635", color: "#050507", border: "1px solid #a3e635", fontWeight: 700 }
+                    : { background: "var(--po-bg-soft)", color: "var(--po-text-dim)", border: "1px solid var(--po-border)" }
+                }
+              >
+                <option value="any">Edition: Any</option>
+                <option value="all">Edition: All</option>
+                {editionOptions.includes("first_edition") && <option value="first_edition">Edition: 1st Ed.</option>}
+                {editionOptions.includes("unlimited") && <option value="unlimited">Edition: Unlimited</option>}
+                {editionOptions.includes("shadowless") && <option value="shadowless">Edition: Shadowless</option>}
+              </select>
+            </div>
           )}
           <select
             value={currency}
@@ -2000,6 +2007,11 @@ export default function SetTrackerPage() {
         </div>
       )}
       <ReportCardFAB setId={setId} />
+      <EditionExplainerSheet
+        show={showEditionDropdown}
+        editionOptions={editionOptions}
+        blockerOpen={!!blockerTrigger}
+      />
       <AnonymousCollectionBlocker
         open={!!blockerTrigger}
         trigger={blockerTrigger}
