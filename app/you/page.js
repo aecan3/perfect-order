@@ -44,7 +44,7 @@ export default function YouPage() {
       const [
         { data: profileData },
         { count: setCount },
-        { count: cardsCount },
+        { data: cardsCount },
         duplicatesData,
         { data: favData },
         { data: friendshipRows },
@@ -58,12 +58,7 @@ export default function YouPage() {
           .from("user_sets")
           .select("*", { count: "exact", head: true })
           .eq("user_id", uid),
-        supabase
-          .from("collection_entries")
-          .select("printing:printings!inner(collection_tier)", { count: "exact", head: true })
-          .eq("user_id", uid)
-          .eq("checked", true)
-          .eq("printing.collection_tier", "master"),
+        supabase.rpc("get_cards_count", { p_user_id: uid }),
         fetchUserDuplicates(supabase, uid, uid),
         supabase
           .from("favourites")

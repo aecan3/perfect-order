@@ -42,7 +42,7 @@ export async function GET(request, { params }) {
   // CRITICAL: return counts only, never underlying rows.
   const [
     { count: setsCount },
-    { count: cardsCount },
+    { data: cardsCount },
     { count: dupesCount },
     { count: huntingCount },
     { data: requesterFriendships },
@@ -52,12 +52,7 @@ export async function GET(request, { params }) {
       .from("user_sets")
       .select("*", { count: "exact", head: true })
       .eq("user_id", targetId),
-    service
-      .from("collection_entries")
-      .select("printing:printings!inner(collection_tier)", { count: "exact", head: true })
-      .eq("user_id", targetId)
-      .eq("checked", true)
-      .eq("printing.collection_tier", "master"),
+    service.rpc("get_cards_count", { p_user_id: targetId }),
     service
       .from("collection_entries")
       .select("printing:printings!inner(collection_tier)", { count: "exact", head: true })
