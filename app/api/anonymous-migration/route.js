@@ -24,7 +24,7 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const { entries } = body;
+  const { entries, setModes } = body;
 
   if (!Array.isArray(entries) || entries.length === 0) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
@@ -66,11 +66,16 @@ export async function POST(request) {
   // Ensure a user_sets row exists for each migrated set so it appears in MY SETS.
   // added_at defaults to now(); prices_updated_at and previous_value are populated
   // later by the price refresh cron. ignoreDuplicates = safe to re-run.
-  const userSetsRows = setIds.map((setId) => ({
-    user_id: user.id,
-    set_id: setId,
-    hidden_at: null,
-  }));
+  const VALID_MODES = new Set(["any", "all", "first_edition", "unlimited", "shadowless"]);
+  const userSetsRows = setIds.map((setId) => {
+    const mode = setModes?.[setId];
+    return {
+      user_id: user.id,
+      set_id: setId,
+      hidden_at: null,
+      edition_mode: (mode && VALID_MODES.has(mode)) ? mode : "any",
+    };
+  });
 
   const { error: userSetsErr } = await supabase
     .from("user_sets")

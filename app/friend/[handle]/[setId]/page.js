@@ -7,7 +7,7 @@ import Link from "next/link";
 import BackButton from "@/components/BackButton";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
-import { stripEditionPrefix } from "@/lib/edition-utils";
+import { stripEditionPrefix, getEditionOptions } from "@/lib/edition-utils";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { Avatar } from "@/components/Avatar";
@@ -205,6 +205,7 @@ export default function FriendSetTrackerPage() {
   const [pickingCard, setPickingCard] = useState(null);
   const [currency, setCurrency] = useState("AUD");
   const [view, setView] = useState("rarity");
+  const [editionMode, setEditionMode] = useState("any");
   const [openSections, setOpenSections] = useState({});
   const [status, setStatus] = useState("loading");
 
@@ -343,16 +344,7 @@ export default function FriendSetTrackerPage() {
     );
   }
 
-  const isCardOwned = (cardNumber) => {
-    const prints = printingsByCard[cardNumber] || [];
-    return prints.some((p) => ownedPrintings[p.id]?.checked);
-  };
-
   const allPrintings = cards.flatMap((c) => printingsByCard[c.number] || []);
-  const totalPrintings = allPrintings.length;
-  const ownedPrintingCount = allPrintings.filter((p) => ownedPrintings[p.id]?.checked).length;
-  const totalCards = cards.length;
-  const ownedCardCount = cards.filter((c) => isCardOwned(c.number)).length;
 
   const cardSlotKeys = {};
   const cardOwnedSlotKeys = {};
@@ -367,27 +359,50 @@ export default function FriendSetTrackerPage() {
   }
   const totalSlots = cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
   const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
-  const pct = totalSlots > 0 ? Math.round((ownedSlotCount / totalSlots) * 100) : 0;
 
-  const missingCards = cards.filter((c) => (cardOwnedSlotKeys[c.number]?.size || 0) < (cardSlotKeys[c.number]?.size || 0));
+  // Edition mode helpers — viewer-controlled, ephemeral (resets on each visit)
+  const getActivePrints = (cardNumber) => {
+    const prints = printingsByCard[cardNumber] || [];
+    if (editionMode === "any" || editionMode === "all") return prints;
+    return prints.filter((p) => p.printing_type.startsWith(editionMode));
+  };
+  const modeOwnedForCard = (cardNumber) => {
+    if (editionMode === "any") return cardOwnedSlotKeys[cardNumber]?.size || 0;
+    return getActivePrints(cardNumber).filter((p) => ownedPrintings[p.id]?.checked).length;
+  };
+  const modeTotalForCard = (cardNumber) => {
+    if (editionMode === "any") return cardSlotKeys[cardNumber]?.size || 0;
+    return getActivePrints(cardNumber).length;
+  };
+
+  const editionOptions = getEditionOptions(allPrintings);
+  const showEditionDropdown = editionOptions.length >= 2;
+
+  const ownedDisplay = cards.reduce((s, c) => s + modeOwnedForCard(c.number), 0);
+  const totalDisplay = cards.reduce((s, c) => s + modeTotalForCard(c.number), 0);
+  const pct = totalDisplay > 0 ? Math.round((ownedDisplay / totalDisplay) * 100) : 0;
+
+  const missingCards = cards.filter((c) => modeOwnedForCard(c.number) < modeTotalForCard(c.number));
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
   const themeBg = setRow.theme_bg || "#050507";
 
   const renderCard = (card) => {
-    const prints = printingsByCard[card.number] || [];
-    const isCardFavourited = prints.some((p) => friendFavourites.has(p.id));
-    const checkedCount = prints.filter((p) => ownedPrintings[p.id]?.checked).length;
+    const prints = getActivePrints(card.number);
+    const allPrintsForCard = printingsByCard[card.number] || [];
+    const isCardFavourited = allPrintsForCard.some((p) => friendFavourites.has(p.id));
+    const checkedCount = modeOwnedForCard(card.number);
+    const modeTotal = modeTotalForCard(card.number);
     const completionState =
-      prints.length === 0 || checkedCount === 0 ? "uncollected"
-      : checkedCount === prints.length ? "complete"
+      modeTotal === 0 || checkedCount === 0 ? "uncollected"
+      : checkedCount >= modeTotal ? "complete"
       : "partial";
     const minPriceUsd = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
     const cardPrice = Number.isFinite(minPriceUsd) ? valueOf(minPriceUsd, currency) : null;
     const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total, card.supertype);
     const tint = RARITY_TINT[bucket];
-    const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
+    const photoEntry = allPrintsForCard.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
     const photo = photoEntry?.photo_url;
     const photoImgClass =
       completionState === "complete" ? "" :
@@ -428,7 +443,7 @@ export default function FriendSetTrackerPage() {
               className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
               style={{ background: `${themePrimary}30`, color: themePrimary, border: `1px solid ${themePrimary}80` }}
             >
-              {checkedCount}/{prints.length}
+              {checkedCount}/{modeTotal}
             </div>
           )}
           {isCardFavourited && (
@@ -511,13 +526,13 @@ export default function FriendSetTrackerPage() {
             className="tabular-nums font-black leading-none"
             style={{ fontSize: 36, color: themePrimary, textShadow: `0 0 20px ${themePrimary}60` }}
           >
-            {ownedSlotCount}
+            {ownedDisplay}
             <span className="font-black text-[var(--po-text-dim)]" style={{ fontSize: 24 }}>
-              /{totalSlots}
+              /{totalDisplay}
             </span>
           </div>
           <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-1">
-            collected · {totalSlots - ownedSlotCount} to go
+            collected · {totalDisplay - ownedDisplay} to go
           </div>
         </div>
 
@@ -531,6 +546,24 @@ export default function FriendSetTrackerPage() {
               boxShadow: `0 0 12px ${themePrimary}80`,
             }}
           />
+        </div>
+
+        {/* Edition + view controls */}
+        <div className="flex items-center gap-2 mb-2">
+          {showEditionDropdown && (
+            <select
+              value={editionMode}
+              onChange={(e) => setEditionMode(e.target.value)}
+              className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
+              style={{ color: "var(--po-text-dim)" }}
+            >
+              <option value="any">Any</option>
+              <option value="all">All</option>
+              {editionOptions.includes("first_edition") && <option value="first_edition">1st Ed.</option>}
+              {editionOptions.includes("unlimited") && <option value="unlimited">Unlimited</option>}
+              {editionOptions.includes("shadowless") && <option value="shadowless">Shadowless</option>}
+            </select>
+          )}
         </div>
 
         {/* 3-button toggle */}
@@ -576,7 +609,7 @@ export default function FriendSetTrackerPage() {
                     <div className="text-left">
                       <div className="font-bold text-sm">{section.label}</div>
                       <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {section.cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0)}/{section.cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0)}
+                        {section.cards.reduce((s, c) => s + modeOwnedForCard(c.number), 0)}/{section.cards.reduce((s, c) => s + modeTotalForCard(c.number), 0)}
                       </div>
                     </div>
                     <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -615,7 +648,7 @@ export default function FriendSetTrackerPage() {
               </button>
             </div>
             <div className="space-y-2">
-              {(printingsByCard[pickingCard.number] || []).map((p) => {
+              {getActivePrints(pickingCard.number).map((p) => {
                 const isOwned = !!ownedPrintings[p.id]?.checked;
                 const v = valueOf(p.price_usd, currency);
                 return (

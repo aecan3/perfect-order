@@ -138,7 +138,7 @@ function LoginContent() {
             const res = await fetch("/api/anonymous-migration", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ entries }),
+              body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
             });
             if (res.ok) {
               const result = await res.json();
@@ -167,7 +167,7 @@ function LoginContent() {
           const res = await fetch("/api/anonymous-migration", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entries }),
+            body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
           });
           const responseText = await res.text();
           if (res.ok) {
