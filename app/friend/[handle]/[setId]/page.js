@@ -497,13 +497,13 @@ export default function FriendSetTrackerPage() {
             className="tabular-nums font-black leading-none"
             style={{ fontSize: 36, color: themePrimary, textShadow: `0 0 20px ${themePrimary}60` }}
           >
-            {ownedPrintingCount}
+            {ownedCardCount}
             <span className="font-black text-[var(--po-text-dim)]" style={{ fontSize: 24 }}>
-              /{totalPrintings}
+              /{totalCards}
             </span>
           </div>
           <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-1">
-            printings collected · {totalPrintings - ownedPrintingCount} to go
+            cards collected · {totalCards - ownedCardCount} to go
           </div>
         </div>
 
@@ -562,7 +562,7 @@ export default function FriendSetTrackerPage() {
                     <div className="text-left">
                       <div className="font-bold text-sm">{section.label}</div>
                       <div className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] mt-0.5">
-                        {section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0)}/{section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0)}
+                        {section.cards.filter((c) => isCardOwned(c.number)).length}/{section.cards.length}
                       </div>
                     </div>
                     <ChevronDown size={18} className={`text-[var(--po-text-dim)] transition-transform ${isOpen ? "rotate-180" : ""}`} />

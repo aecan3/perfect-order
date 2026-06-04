@@ -1441,8 +1441,8 @@ export default function SetTrackerPage() {
             {viewSections.map((section) => {
               const isOpen = !!openSections[section.id];
               const dot = RARITY_DOT[section.id] || "#ffffff";
-              const sectionOwned = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).filter((p) => ownedPrintings[p.id]?.checked).length, 0);
-              const sectionTotal = section.cards.reduce((n, c) => n + (printingsByCard[c.number] || []).length, 0);
+              const sectionOwned = section.cards.filter((c) => isCardOwned(c.number)).length;
+              const sectionTotal = section.cards.length;
               return (
                 <RaritySection
                   key={section.id}
