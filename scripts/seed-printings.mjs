@@ -66,6 +66,20 @@ async function main() {
   const cards = await fetchAllCards(onlySet);
   console.log(`Loaded ${cards.length} cards total.`);
 
+  // Guard the priceless fallback: if a card already has printing rows, skip
+  // the fallback even when TCGPlayer returns no prices (e.g. temporary delisting).
+  // One query per set run; falls back to empty set when running without a set arg
+  // (full reseed of new sets has no existing rows, so fallback works as intended).
+  let cardIdsWithPrintings = new Set();
+  if (onlySet) {
+    const { data: existing } = await supabase
+      .from("printings")
+      .select("card_id")
+      .eq("set_id", onlySet);
+    cardIdsWithPrintings = new Set((existing || []).map((p) => p.card_id));
+    console.log(`  ${cardIdsWithPrintings.size} cards already have printings in ${onlySet}.`);
+  }
+
   const byKey = {};
   for (const c of cards) {
     const k = `${c.set_id}::${c.number}`;
@@ -128,7 +142,7 @@ async function main() {
           });
         }
 
-        if (!Object.keys(prices).length) {
+        if (!Object.keys(prices).length && !cardIdsWithPrintings.has(card.id)) {
           printingsToInsert.push({
             id: `${card.id}-normal`,
             card_id: card.id,
