@@ -360,15 +360,30 @@ async function tryPpt(setId, allPrintings) {
 
 // Extract per-printing price from a PPT prices object.
 // Printing type is derived from the printing ID suffix (after setId-cardNumber-).
+// PPT variant keys use condition labels as nested keys; first condition entry's .price
+// is the Near Mint price (e.g. variants["1st Edition"]["Near Mint 1st Edition"].price).
 function pptVariantPrice(printingId, setId, cardNumber, prices) {
   const prefix = `${setId}-${cardNumber}-`;
   const type = printingId.startsWith(prefix) ? printingId.slice(prefix.length) : "";
   const v = prices.variants ?? {};
+
+  // Helper: returns the price of the first condition entry in a variant family, or null.
+  const firstConditionPrice = (variantKey) => {
+    const conditions = v[variantKey];
+    if (!conditions) return null;
+    const first = Object.values(conditions)[0];
+    return first?.price ?? null;
+  };
+
   switch (type) {
-    case "normal":           return v["Normal"]?.["Near Mint"]?.price           ?? prices.market ?? null;
-    case "holofoil":         return v["Holofoil"]?.["Near Mint Holofoil"]?.price ?? prices.market ?? null;
-    case "reverse_holofoil": return v["Reverse Holofoil"]?.["Near Mint Reverse Holofoil"]?.price ?? prices.market ?? null;
-    default:                 return prices.market ?? null;
+    case "normal":                return v["Normal"]?.["Near Mint"]?.price                   ?? prices.market ?? null;
+    case "holofoil":              return v["Holofoil"]?.["Near Mint Holofoil"]?.price         ?? prices.market ?? null;
+    case "reverse_holofoil":      return v["Reverse Holofoil"]?.["Near Mint Reverse Holofoil"]?.price ?? prices.market ?? null;
+    case "first_edition":         return firstConditionPrice("1st Edition")                  ?? prices.market ?? null;
+    case "first_edition_holofoil":return firstConditionPrice("1st Edition Holofoil")         ?? prices.market ?? null;
+    case "shadowless":            return firstConditionPrice("Unlimited")                     ?? prices.market ?? null;
+    case "shadowless_holofoil":   return firstConditionPrice("Unlimited Holofoil")            ?? prices.market ?? null;
+    default:                      return prices.market ?? null;
   }
 }
 
