@@ -1,6 +1,6 @@
 // Cache version — bump this any time you need to force-evict all cached
 // entries (e.g. after changing cache strategy or adding new precache URLs).
-const CACHE = "perfect-order-v25";
+const CACHE = "perfect-order-v26";
 
 // /data/au-localities.json is the static suburb autocomplete dataset (~134 KB gzipped).
 // Precached so suburb search works offline after first SW install.
@@ -44,6 +44,9 @@ self.addEventListener("fetch", (e) => {
 
   // Never intercept API routes — dynamic server-side handlers, no caching benefit.
   if (url.pathname.startsWith("/api/")) return;
+
+  // Never intercept Vercel Analytics beacons.
+  if (url.pathname.startsWith("/_vercel/")) return;
 
   // Navigate requests: NetworkFirst.
   // Always fetch fresh HTML — this is what carries the content-hashed chunk

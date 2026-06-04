@@ -1,6 +1,6 @@
 import './globals.css';
 import SwRegister from './sw-register';
-import { Analytics } from '@vercel/analytics/react';
+import { Analytics } from '@vercel/analytics/next';
 import { RefreshPricesProvider } from './RefreshPricesProvider';
 
 export const metadata = {
