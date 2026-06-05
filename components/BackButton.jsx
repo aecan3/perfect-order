@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 
 const cls = "inline-flex items-center gap-1.5 text-[var(--po-text-dim)] hover:text-[var(--po-green)] cursor-pointer text-sm py-2 px-1 bg-transparent border-0";
 
-export default function BackButton({ href, onBack, label }) {
+export default function BackButton({ href, replace, onBack, label }) {
   const router = useRouter();
   if (href) {
     return (
-      <Link href={href} className={cls}>
+      <Link href={href} replace={!!replace} className={cls}>
         <ArrowLeft size={18} />
         {label && <span>{label}</span>}
       </Link>

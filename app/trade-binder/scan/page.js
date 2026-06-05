@@ -489,7 +489,10 @@ export default function ScanPage() {
       <div style={{ padding: "0 16px 120px" }}>
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
-          <BackButton />
+          <BackButton
+            href={phase === "done" && userHandle ? `/trade-binder/${userHandle}` : undefined}
+            replace={phase === "done"}
+          />
         </div>
         <MSPageTitle>Scan Cards</MSPageTitle>
 
@@ -637,7 +640,7 @@ export default function ScanPage() {
             </div>
             {userHandle && (
               <button
-                onClick={() => router.push(`/trade-binder/${userHandle}`)}
+                onClick={() => router.replace(`/trade-binder/${userHandle}`)}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "13px 20px",
