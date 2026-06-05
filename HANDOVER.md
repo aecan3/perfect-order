@@ -275,8 +275,15 @@ Phase 4 (Trade Binder magnet acquisition flow) is fully shipped. Door A (anonymo
   3. `lib/queries/discover.js` line 83 — `.or("duplicate_count.gt.0,trade_flagged.eq.true")`
   4. `app/api/profile/[handle]/public-stats/route.js` line 66 — `.or("duplicate_count.gt.0,trade_flagged.eq.true")`
   Stage 1 verified end-to-end: flagged Doublade #98 (`me3-98-holofoil`, `duplicate_count=0`) via single-row UPDATE with full PK in WHERE — appeared in own binder AND public/anonymous binder. Unflagged; `trade_flagged = false` confirmed. **Key semantic distinction preserved:** `trade_flagged = true` on a single copy ("I have one but I'll trade it") is explicitly NOT collapsed to incrementing `duplicate_count` ("I have a spare"). Do not change this.
-  Stats/collection are unaffected: all collection-count paths gate on `checked = true` and/or `collection_tier = 'master'` — `trade_flagged` has no bearing on any of them. Confirmed safe.
   **Stages 2–4 still pending** — see §18 deferred items.
+
+- **Trade Binder binder-page overhaul (5 Jun 2026, commits `762a8e0`, `083c111`):** Four changes shipped together:
+  1. **`get_user_duplicates` RPC extended** (`20260605020000`) — WHERE now `(dup > 0 OR trade_flagged = true)`; returns `trade_flagged` column so the client distinguishes binder-only cards from dupe-fed ones. This fixed a gap: `commit_trade_cards` inserts with `dup=0, trade_flagged=true`; the old RPC excluded them entirely.
+  2. **`get_cards_count` amended** (`20260605050000`) — INNER JOIN user_sets → LEFT JOIN + WHERE `(us.set_id IS NOT NULL OR ce.trade_flagged = true)`. Flagged binder-only cards in deleted/untracked sets now count toward CARDS. Deleted-set non-flagged cards remain excluded. No double-count possible (WHERE predicate on a single row). Verified: raffertydall 1730, joshwatts94 75 unchanged; alex 190 → 192 (+2 flagged base1 cards).
+  3. **Remove action** — `DELETE /api/trade-binder/remove` deletes `trade_flagged=true, dup=0` rows only; guard prevents touching dupe-fed collection entries. X button shown only on own binder view for flagged-only cards; immediate local state update on success.
+  4. **`×N` quantity badges stripped** from all binder card tiles.
+  **Regression and fix within same session:** A first attempt added a hidden `user_sets` upsert inside `commit_trade_cards` and a backfill (`20260605030000`). The backfill created a `user_sets` row for alex/base1 using `added_at = hidden_at = NOW()`. Alex had 103 pre-existing checked base1 entries with no user_sets row (a deliberately deleted set) — the new row surfaced all of them, inflating CARDS from 190 to 293 (+103, not the predicted +2). The approach was reverted (`20260605040000`): backfill rows identified by `added_at = hidden_at` discriminator (legitimate user_sets rows always have `added_at` set at creation time, `hidden_at` set later or null — they are never equal). Final architecture is flag-based counting in `get_cards_count` with no user_sets side-effects from the binder flow.
+  **`commit_trade_cards` note:** does NOT create user_sets rows (intentional — binder adds must not resurrect deleted sets). Flagged entries count via the `trade_flagged` OR branch in `get_cards_count` instead.
 
 ### Earlier work that landed earlier in the project
 - Favourites redesign (3×2 grid, max 6, unified bottom sheet)
