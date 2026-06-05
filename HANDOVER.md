@@ -296,8 +296,7 @@ Phase 4 (Trade Binder magnet acquisition flow) is fully shipped. Door A (anonymo
   Sydney. Disclosed in the Privacy Policy.
 - **Resend region:** ap-northeast-1 (Tokyo). Disclosed in the Privacy Policy.
 - **Vercel:** global edge network, primary in US. Disclosed.
-- **Analytics:** Vercel Analytics is enabled and disclosed. Sentry is
-  disclosed in the policy but NOT YET WIRED IN — must-do item.
+- **Analytics:** Vercel Analytics is enabled and disclosed. Sentry is installed and receiving — errors-only (traces and replay both off), instrumented at funnel-critical catches as of 5 Jun 2026.
 - **Card data sources:** pokemontcg.io (names, set info, prices),
   Limitless TCG (image hotlinks). Documented in the policy.
 - **Affiliate scope:** eBay only currently. Policy is scoped accordingly.
@@ -862,7 +861,7 @@ All safe at current scale; flagged so they're not forgotten.
 - Axiom via Vercel marketplace.
 - Admin dashboard (sets returning `priceSource=none`, refresh durations,
   error rates); alerting.
-- **Wire Sentry error capture — move to next session (4 Jun 2026).** Two silent failures discovered today (anonymous migration zero-entries + setModes wipe) were both invisible without manual `SELECT` in Supabase Studio. Sentry is disclosed in the Privacy Policy but not yet wired to a real DSN. Until it is, any server-side throw inside a try/catch and any client-side swallowed error goes completely dark. Priority: move to next session before further beta expansion.
+- ~~**Wire Sentry error capture — DONE 5 Jun 2026.**~~ Errors-only (traces and replay off). Instrumented: anonymous migration HTTP errors + count mismatches (login + confirm), user_sets upsert failure, localStorage save errors (QuotaExceededError carved out), all five refresh-prices source catches. Verified live via deliberate test error through tunnel.
 
 ---
 

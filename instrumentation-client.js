@@ -10,15 +10,9 @@ Sentry.init({
   enabled: process.env.NODE_ENV === "production",
   environment: process.env.VERCEL_ENV || process.env.NODE_ENV,
 
-  integrations: [Sentry.replayIntegration({ maskAllText: true, blockAllMedia: true })],
-
-  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
-
-  // No idle session recording — only capture replays when an error occurs.
+  tracesSampleRate: 0,
   replaysSessionSampleRate: 0,
-  replaysOnErrorSampleRate: 1.0,
+  replaysOnErrorSampleRate: 0,
 
   sendDefaultPii: false,
 });
-
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

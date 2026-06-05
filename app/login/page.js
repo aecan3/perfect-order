@@ -8,6 +8,7 @@ import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
 import { PRIVACY_CONTENT, PRIVACY_LAST_UPDATED } from "@/content/legal/privacy";
 import { TOS_VERSION, PRIVACY_VERSION } from "@/lib/legalVersions";
+import * as Sentry from "@sentry/nextjs";
 
 const COUNTRIES = [
   { code: "AU", name: "Australia" },
@@ -140,14 +141,27 @@ function LoginContent() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
             });
-            if (res.ok) {
+            if (!res.ok) {
+              Sentry.captureMessage("anonymous-migration HTTP error (intent block)", {
+                level: "error",
+                tags: { path: "/api/anonymous-migration", status: res.status },
+              });
+            } else {
               const result = await res.json();
+              if (result.inserted !== entries.length) {
+                Sentry.captureMessage("anonymous-migration count mismatch (intent block)", {
+                  level: "warning",
+                  extra: { inserted: result.inserted, expected: entries.length },
+                });
+              }
               if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
               sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
             }
           }
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        Sentry.captureException(e, { tags: { location: "login-intent-migration" } });
+      }
       try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
       router.push("/");
       router.refresh();
@@ -170,8 +184,19 @@ function LoginContent() {
             body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
           });
           const responseText = await res.text();
-          if (res.ok) {
+          if (!res.ok) {
+            Sentry.captureMessage("anonymous-migration HTTP error (catch-all block)", {
+              level: "error",
+              tags: { path: "/api/anonymous-migration", status: res.status },
+            });
+          } else {
             const result = JSON.parse(responseText);
+            if (result.inserted !== entries.length) {
+              Sentry.captureMessage("anonymous-migration count mismatch (catch-all block)", {
+                level: "warning",
+                extra: { inserted: result.inserted, expected: entries.length },
+              });
+            }
             if (result.inserted === entries.length) {
               localStorage.removeItem("ms_anon_entries");
             }
@@ -182,7 +207,9 @@ function LoginContent() {
           }
         }
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      Sentry.captureException(e, { tags: { location: "login-catchall-migration" } });
+    }
 
     router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
     router.refresh();

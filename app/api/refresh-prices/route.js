@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { selectAllPrintings } from "@/lib/queries/printings";
+import * as Sentry from "@sentry/nextjs";
 
 // -- API bases ----------------------------------------------------------------
 const POKETRACE_BASE  = "https://api.poketrace.com/v1";
@@ -142,6 +143,7 @@ async function tryPokeTrace(slug, allPrintings) {
     }
   } catch (err) {
     console.warn(`[PokeTrace] probe failed for slug "${slug}": ${err.message} - skipping`);
+    Sentry.captureException(err, { tags: { location: "refresh-prices-poketrace-probe", setSlug: slug } });
     return null;
   }
 
@@ -231,6 +233,7 @@ async function tryPtcgio(setId, allPrintings) {
       requestsUsed++;
     } catch (err) {
       console.warn(`[ptcgio] fetch error for ${setId} page ${page}: ${err.message}`);
+      Sentry.captureException(err, { tags: { location: "refresh-prices-ptcgio", setId } });
       break;
     }
     if (!res.ok) break;
@@ -281,6 +284,7 @@ async function tryPpt(setId, allPrintings) {
       requestsUsed++;
     } catch (err) {
       console.warn(`[ppt/ptcgio] fetch error for ${setId} page ${page}: ${err.message}`);
+      Sentry.captureException(err, { tags: { location: "refresh-prices-ppt-ptcgio", setId } });
       break;
     }
     if (!res.ok) break;
@@ -418,6 +422,7 @@ async function tryPptPatterns(setId, pptSetId, allPrintings) {
       requestsUsed++;
     } catch (err) {
       console.warn(`[PPT Patterns] fetch error for ${setId} offset ${offset}: ${err.message}`);
+      Sentry.captureException(err, { tags: { location: "refresh-prices-ppt-patterns", setId } });
       break;
     }
 
@@ -584,6 +589,7 @@ async function tryPokeScope(setId, allPrintings) {
         }
       } catch (err) {
         console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
+        Sentry.captureException(err, { tags: { location: "refresh-prices-pokescope", setId } });
       }
     })
   );

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -86,6 +87,7 @@ export async function POST(request) {
 
   if (userSetsErr) {
     console.error("[migration] user_sets upsert failed:", JSON.stringify(userSetsErr));
+    Sentry.captureException(userSetsErr, { tags: { location: "anonymous-migration-user_sets" } });
     // Don't fail the whole migration — collection_entries succeeded.
     // Worst case: user sees empty MY SETS but cards exist and can re-add the set.
   }

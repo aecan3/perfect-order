@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
+import * as Sentry from "@sentry/nextjs";
 
 // Returns path if safe for internal redirect, null otherwise.
 // Accepts only paths starting with a single "/" — blocks external URLs and
@@ -152,8 +153,19 @@ function ConfirmContent() {
                   body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
                 });
                 const responseText = await res.text();
-                if (res.ok) {
+                if (!res.ok) {
+                  Sentry.captureMessage("anonymous-migration HTTP error (confirm page)", {
+                    level: "error",
+                    tags: { path: "/api/anonymous-migration", status: res.status },
+                  });
+                } else {
                   const result = JSON.parse(responseText);
+                  if (result.inserted !== entries.length) {
+                    Sentry.captureMessage("anonymous-migration count mismatch (confirm page)", {
+                      level: "warning",
+                      extra: { inserted: result.inserted, expected: entries.length },
+                    });
+                  }
                   if (result.inserted === entries.length) {
                     localStorage.removeItem("ms_anon_entries");
                   }
@@ -164,7 +176,9 @@ function ConfirmContent() {
                 }
               }
             }
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            Sentry.captureException(e, { tags: { location: "confirm-migration" } });
+          }
           router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
           router.refresh();
         }
