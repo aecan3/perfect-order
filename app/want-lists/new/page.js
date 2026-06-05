@@ -69,7 +69,7 @@ function NewWantListContent() {
 
       const [{ data: setsData }, { data: printingsData }, { data: cardsData }] = await Promise.all([
         supabase.from("sets").select("id, name, logo_url").in("id", setIds),
-        supabase.from("printings").select("id, card_number, set_id, printing_type, image_url, price_usd").in("set_id", setIds),
+        supabase.from("printings").select("id, card_number, set_id, printing_type, price_usd, card:cards(image_large)").in("set_id", setIds),
         supabase.from("cards").select("number, name, set_id").in("set_id", setIds),
       ]);
       if (cancelled) return;
@@ -100,7 +100,7 @@ function NewWantListContent() {
       for (const p of (printingsData || [])) {
         if (!printingsBySet[p.set_id]) printingsBySet[p.set_id] = [];
         printingsBySet[p.set_id].push(p);
-        printingDetailMap[p.id] = { image_url: p.image_url, price_usd: p.price_usd };
+        printingDetailMap[p.id] = { image_url: p.card?.image_large || null, price_usd: p.price_usd };
       }
 
       const missing = {};

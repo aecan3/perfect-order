@@ -36,7 +36,7 @@ export async function GET(_req, { params }) {
   const printingIds = [...new Set(cards.map(c => c.printing_id))];
   const { data: printings } = await service
     .from("printings")
-    .select("id, image_url, price_usd")
+    .select("id, price_usd, card:cards(image_large)")
     .in("id", printingIds);
 
   const printingMap = Object.fromEntries((printings || []).map(p => [p.id, p]));
@@ -48,7 +48,7 @@ export async function GET(_req, { params }) {
     owner: profile || null,
     cards: cards.map(c => ({
       ...c,
-      image_url: printingMap[c.printing_id]?.image_url ?? null,
+      image_url: printingMap[c.printing_id]?.card?.image_large ?? null,
       price_usd: printingMap[c.printing_id]?.price_usd ?? null,
     })),
   });
