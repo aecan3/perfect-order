@@ -18,15 +18,14 @@ async function getAnonClient() {
 }
 
 export async function GET(request, { params }) {
-  // Auth gate — requester must be logged in
+  // No auth gate — stats are public (counts only, no underlying rows).
+  // Anon users get mutual_count=0; logged-in users get real mutual count.
   const anonClient = await getAnonClient();
   const { data: { user } } = await anonClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { handle } = await params;
   const service = getServiceClient();
 
-  // Resolve handle → profile id (profiles table is publicly readable)
   const { data: profile } = await service
     .from("profiles")
     .select("id")
@@ -36,10 +35,8 @@ export async function GET(request, { params }) {
   if (!profile) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const targetId = profile.id;
-  const requesterId = user.id;
+  const requesterId = user?.id ?? null;
 
-  // All counts via service role — bypasses RLS so non-friends get real numbers.
-  // CRITICAL: return counts only, never underlying rows.
   const [
     { count: setsCount },
     { data: cardsCount },
@@ -64,19 +61,18 @@ export async function GET(request, { params }) {
       .from("favourites")
       .select("*", { count: "exact", head: true })
       .eq("user_id", targetId),
-    service
-      .from("friendships")
-      .select("user_a, user_b")
-      .or(`user_a.eq.${requesterId},user_b.eq.${requesterId}`)
-      .eq("status", "accepted"),
-    service
-      .from("friendships")
-      .select("user_a, user_b")
-      .or(`user_a.eq.${targetId},user_b.eq.${targetId}`)
-      .eq("status", "accepted"),
+    requesterId
+      ? service.from("friendships").select("user_a, user_b")
+          .or(`user_a.eq.${requesterId},user_b.eq.${requesterId}`)
+          .eq("status", "accepted")
+      : Promise.resolve({ data: [] }),
+    requesterId
+      ? service.from("friendships").select("user_a, user_b")
+          .or(`user_a.eq.${targetId},user_b.eq.${targetId}`)
+          .eq("status", "accepted")
+      : Promise.resolve({ data: [] }),
   ]);
 
-  // Mutual count: intersection of requester's and target's accepted friends
   const requesterFriendIds = new Set(
     (requesterFriendships || []).map(f => f.user_a === requesterId ? f.user_b : f.user_a)
   );

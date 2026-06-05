@@ -88,7 +88,8 @@ export async function proxy(request) {
     pathname.startsWith("/sets") ||    // set catalog (/sets)
     pathname.startsWith("/set/") ||    // per-set view — trailing slash is essential: without it /settings would match
     pathname.startsWith("/friend/") ||  // friend profile previews
-    pathname.startsWith("/wants/")      // public want-list pages (shared by link, no auth required)
+    pathname.startsWith("/wants/") ||    // public want-list pages (shared by link, no auth required)
+    pathname.startsWith("/api/profile/") // public-stats endpoint — serves anon friend-profile previews
   ) {
     return NextResponse.next();
   }

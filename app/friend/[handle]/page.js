@@ -14,6 +14,7 @@ import { ProfileView } from "@/components/profile/ProfileView";
 import { OverflowMenu } from "@/components/OverflowMenu";
 import { ReportUserForm } from "@/components/ReportUserForm";
 import { BlockConfirmModal } from "@/components/BlockConfirmModal";
+import * as Sentry from "@sentry/nextjs";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -73,8 +74,11 @@ export default function FriendOverviewPage() {
         setStats(publicStats);
         setMutualCount(mutual_count);
         setPublicHuntingCount(hunting_count);
-      } catch {
-        // silently fail — preview keeps zeros rather than erroring out
+      } catch (e) {
+        Sentry.captureMessage("[friend/public-stats] fetch failed", {
+          level: "error",
+          extra: { handle, error: e?.message },
+        });
       }
     })();
   }, [status, isFriend, isPendingFromMe, localPendingFromMe, handle]);
