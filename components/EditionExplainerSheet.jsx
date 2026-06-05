@@ -58,7 +58,7 @@ export function EditionExplainerSheet({ show, editionOptions = [], blockerOpen =
   return createPortal(
     <>
       <div
-        onClick={dismiss}
+        onClick={() => setVisible(false)}
         style={{
           position: "fixed", inset: 0,
           background: "rgba(0,0,0,0.5)",

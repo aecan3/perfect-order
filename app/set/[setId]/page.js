@@ -1367,7 +1367,7 @@ export default function SetTrackerPage() {
                 className="text-[10px] uppercase tracking-widest pl-2 pr-6 py-1.5 rounded-lg cursor-pointer appearance-none"
                 style={
                   editionMode !== "any"
-                    ? { background: "#a3e635", color: "#050507", border: "1px solid #a3e635", fontWeight: 700 }
+                    ? { background: themePrimary, color: "#050507", border: `1px solid ${themePrimary}`, fontWeight: 700 }
                     : { background: "var(--po-bg-soft)", color: "var(--po-text-dim)", border: "1px solid var(--po-border)" }
                 }
               >
@@ -1377,6 +1377,15 @@ export default function SetTrackerPage() {
                 {editionOptions.includes("unlimited") && <option value="unlimited">Edition: Unlimited</option>}
                 {editionOptions.includes("shadowless") && <option value="shadowless">Edition: Shadowless</option>}
               </select>
+              <ChevronDown
+                size={10}
+                strokeWidth={2.5}
+                style={{
+                  position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                  color: editionMode !== "any" ? "#050507" : "var(--po-text-dim)",
+                }}
+              />
             </div>
           )}
           <select
