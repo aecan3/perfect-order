@@ -6,6 +6,7 @@ import { getServiceClient } from "@/lib/supabase/service";
 import * as Sentry from "@sentry/nextjs";
 
 const LABEL_RE = /^[A-Za-z0-9'· ]{1,40}$/;
+const TITLE_RE = /^[A-Za-z0-9 '&·.,!?()-]{1,50}$/;
 
 async function getAnonClient() {
   const cookieStore = await cookies();
@@ -23,6 +24,11 @@ export async function POST(req) {
 
   const body = await req.json().catch(() => null);
   const cards = body?.cards;
+  const rawTitle = typeof body?.title === "string" ? body.title.trim() : "";
+  if (rawTitle && !TITLE_RE.test(rawTitle)) {
+    return NextResponse.json({ error: "invalid title" }, { status: 400 });
+  }
+  const title = rawTitle || null;
 
   if (!Array.isArray(cards) || cards.length === 0) {
     return NextResponse.json({ error: "cards required" }, { status: 400 });
@@ -53,7 +59,7 @@ export async function POST(req) {
 
   const { data: list, error: listErr } = await supabase
     .from("want_lists")
-    .insert({ user_id: user.id, slug })
+    .insert({ user_id: user.id, slug, title })
     .select("id")
     .single();
 

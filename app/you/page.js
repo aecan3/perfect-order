@@ -332,7 +332,7 @@ export default function YouPage() {
         </div>
 
         {wantLists.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
+          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0 12px" }}>
             No want lists yet.
           </div>
         ) : (
@@ -356,9 +356,13 @@ export default function YouPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--po-text)", marginBottom: 2 }}>
-                      {list.card_count} card{list.card_count !== 1 ? "s" : ""}
+                      {list.title || `${list.card_count} card${list.card_count !== 1 ? "s" : ""}`}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--po-text-faint)" }}>{dateStr}</div>
+                    <div style={{ fontSize: 11, color: "var(--po-text-faint)" }}>
+                      {list.title
+                        ? `${list.card_count} card${list.card_count !== 1 ? "s" : ""} · ${dateStr}`
+                        : dateStr}
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                     <button
@@ -398,11 +402,24 @@ export default function YouPage() {
             );
           })
         )}
+        <Link
+          href="/want-lists/new"
+          style={{
+            display: "block", textAlign: "center", padding: "12px 16px",
+            background: "none",
+            border: "0.5px solid var(--po-border)",
+            borderRadius: "var(--border-radius-md)",
+            color: "var(--po-text-dim)", fontSize: 13, fontWeight: 500,
+            textDecoration: "none",
+          }}
+        >
+          + Create Want List
+        </Link>
       </div>
 
       {/* Share Trade Binder */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={handleShare}
             style={{
@@ -439,19 +456,6 @@ export default function YouPage() {
             </button>
           )}
         </div>
-        <Link
-          href="/want-lists/new"
-          style={{
-            display: "block", textAlign: "center", padding: "12px 16px",
-            background: "none",
-            border: "0.5px solid var(--po-border)",
-            borderRadius: "var(--border-radius-md)",
-            color: "var(--po-text-dim)", fontSize: 13, fontWeight: 500,
-            textDecoration: "none",
-          }}
-        >
-          + Create Want List
-        </Link>
       </div>
 
       {/* QR sheet portal */}

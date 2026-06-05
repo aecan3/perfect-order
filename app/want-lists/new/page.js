@@ -28,6 +28,7 @@ function NewWantListContent() {
   const [loadingState, setLoadingState] = useState("loading");
 
   // Set picker
+  const [listTitle, setListTitle] = useState("");
   const [trackedSets, setTrackedSets] = useState([]);
   const [allMissingBySet, setAllMissingBySet] = useState({});
   const [selectedSetIds, setSelectedSetIds] = useState(new Set());
@@ -169,6 +170,7 @@ function NewWantListContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(listTitle.trim() ? { title: listTitle.trim() } : {}),
           cards: cards.map(c => ({
             set_id: c.set_id,
             card_number: c.card_number,
@@ -240,7 +242,9 @@ function NewWantListContent() {
           </div>
           <MSPageTitle>Want list created</MSPageTitle>
           <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 24 }}>
-            {submittedCount} missing slot{submittedCount !== 1 ? "s" : ""} · {dateStr}
+            {listTitle.trim()
+              ? `"${listTitle.trim()}" created · ${submittedCount} card${submittedCount !== 1 ? "s" : ""}`
+              : `${submittedCount} missing slot${submittedCount !== 1 ? "s" : ""} · ${dateStr}`}
           </p>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -473,9 +477,25 @@ function NewWantListContent() {
           <BackButton />
         </div>
         <MSPageTitle>New Want List</MSPageTitle>
-        <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 20 }}>
+        <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 16 }}>
           Select sets. A public snapshot of your missing card slots will be created.
         </p>
+
+        <input
+          type="text"
+          value={listTitle}
+          onChange={e => setListTitle(e.target.value)}
+          maxLength={50}
+          placeholder="Name your list (optional) — e.g. Non-holos, Perfect Order wants"
+          style={{
+            width: "100%", padding: "12px 14px", marginBottom: 20,
+            background: "rgba(244,244,246,0.04)",
+            border: "0.5px solid var(--po-border)",
+            borderRadius: "var(--border-radius-md)",
+            color: "var(--po-text)", fontSize: 14,
+            outline: "none", boxSizing: "border-box",
+          }}
+        />
 
         {trackedSets.length === 0 ? (
           <div style={{ padding: "3rem 0", textAlign: "center" }}>

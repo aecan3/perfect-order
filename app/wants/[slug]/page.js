@@ -48,6 +48,10 @@ export default async function WantListPage({ params }) {
   });
   const ownerName = profile?.display_name || profile?.handle || "Someone";
   const returnTo = encodeURIComponent(`/wants/${slug}`);
+  const heading = list.title || `${ownerName}'s Want List`;
+  const subheading = list.title
+    ? `by ${ownerName} · ${dateStr}`
+    : `${enriched.length} missing card${enriched.length !== 1 ? "s" : ""} · ${dateStr}`;
 
   return (
     <MSShell hideTabBar>
@@ -72,10 +76,10 @@ export default async function WantListPage({ params }) {
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", marginBottom: 4, lineHeight: 1.2 }}>
-            {ownerName}&apos;s Want List
+            {heading}
           </h1>
           <p style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
-            {enriched.length} missing card{enriched.length !== 1 ? "s" : ""} · {dateStr}
+            {subheading}
           </p>
         </div>
 
