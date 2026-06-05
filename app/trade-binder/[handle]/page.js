@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
@@ -83,6 +84,11 @@ export default function TradeBinderPage() {
   const [mounted, setMounted]           = useState(false);
   const [anonSelectedCard, setAnonSelectedCard] = useState(null);
   const [confirmIntent, setConfirmIntent] = useState(null);
+  const [pendingRemovals, setPendingRemovals] = useState([]);
+  const [fadingIds, setFadingIds] = useState(new Set());
+  const toastTimerRef = useRef(null);
+  const pendingRemovalsRef = useRef([]);
+  pendingRemovalsRef.current = pendingRemovals;
   const currency = "AUD";
 
   // ── Faceted options ─────────────────────────────────────────────────────────
@@ -227,6 +233,75 @@ export default function TradeBinderPage() {
   const togglePriceFilter  = (v) => setPriceFilter(s  => { const n = new Set(s); n.has(v) ? n.delete(v) : n.add(v); return n; });
   const clearFilters = () => { setSetFilter(new Set()); setRarityFilter(new Set()); setPriceFilter(new Set()); };
   const activeFilterCount = setFilter.size + rarityFilter.size + priceFilter.size;
+
+  const commitDeletions = (cards) => {
+    if (!cards.length) return;
+    setPendingRemovals([]);
+    if (toastTimerRef.current) { clearTimeout(toastTimerRef.current); toastTimerRef.current = null; }
+    Promise.all(
+      cards.map(card =>
+        fetch("/api/trade-binder/remove", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printing_id: card.printing_id }),
+        }).then(res => ({ card, ok: res.ok }))
+      )
+    ).then(results => {
+      const failed = results.filter(r => !r.ok).map(r => r.card);
+      if (failed.length > 0) {
+        setDuplicates(prev => {
+          const existing = new Set(prev.map(c => c.printing_id));
+          return [...prev, ...failed.filter(c => !existing.has(c.printing_id))];
+        });
+        Sentry.captureMessage("[binder-remove] client-side delete failed", {
+          level: "error",
+          extra: { count: failed.length, printingIds: failed.map(c => c.printing_id) },
+        });
+      }
+    });
+  };
+
+  const handleUndo = () => {
+    if (toastTimerRef.current) { clearTimeout(toastTimerRef.current); toastTimerRef.current = null; }
+    const toRestore = pendingRemovalsRef.current;
+    setPendingRemovals([]);
+    setDuplicates(prev => {
+      const existing = new Set(prev.map(c => c.printing_id));
+      return [...prev, ...toRestore.filter(c => !existing.has(c.printing_id))];
+    });
+  };
+
+  const handleRemove = (e, card) => {
+    e.stopPropagation();
+    setFadingIds(prev => new Set([...prev, card.printing_id]));
+    setTimeout(() => {
+      setDuplicates(prev => prev.filter(c => c.printing_id !== card.printing_id));
+      setFadingIds(prev => { const n = new Set(prev); n.delete(card.printing_id); return n; });
+    }, 200);
+    setPendingRemovals(prev =>
+      prev.some(c => c.printing_id === card.printing_id) ? prev : [...prev, card]
+    );
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      commitDeletions(pendingRemovalsRef.current);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      const pending = pendingRemovalsRef.current;
+      if (!pending.length) return;
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      pending.forEach(card => {
+        fetch("/api/trade-binder/remove", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printing_id: card.printing_id }),
+          keepalive: true,
+        });
+      });
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -507,6 +582,8 @@ export default function TradeBinderPage() {
                   background: "rgba(0,0,0,0.4)",
                   aspectRatio: "2.5/3.5",
                   cursor: isOwnPage ? "default" : "pointer",
+                  opacity: fadingIds.has(card.printing_id) ? 0.4 : 1,
+                  transition: "opacity 0.15s ease",
                   outline:
                     (!isAnonymous && !isOwnPage && selected.has(card.printing_id)) ||
                     (isAnonymous && anonSelectedCard?.printing_id === card.printing_id)
@@ -563,18 +640,7 @@ export default function TradeBinderPage() {
                 {/* Remove button — own binder, flagged-only cards only */}
                 {isOwnPage && card.trade_flagged && card.duplicate_count === 0 && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fetch("/api/trade-binder/remove", {
-                        method: "DELETE",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ printing_id: card.printing_id }),
-                      }).then((res) => {
-                        if (res.ok) {
-                          setDuplicates((prev) => prev.filter((c) => c.printing_id !== card.printing_id));
-                        }
-                      });
-                    }}
+                    onClick={(e) => handleRemove(e, card)}
                     style={{
                       position: "absolute", top: 5, right: 5,
                       width: 22, height: 22,
@@ -784,6 +850,31 @@ export default function TradeBinderPage() {
             </div>
 
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Optimistic-remove toast */}
+      {pendingRemovals.length > 0 && mounted && createPortal(
+        <div
+          onClick={handleUndo}
+          style={{
+            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+            zIndex: 300, display: "flex", alignItems: "center", gap: 4,
+            padding: "10px 16px",
+            background: "rgba(5,5,7,0.96)",
+            border: "1px solid rgba(200,255,74,0.35)",
+            borderRadius: 10,
+            fontFamily: '"IBM Plex Mono", monospace',
+            fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>
+            {pendingRemovals.length === 1 ? "Removed from binder" : `${pendingRemovals.length} removed`}
+          </span>
+          <span style={{ color: "var(--po-green)", fontWeight: 700 }}>&nbsp;— Undo</span>
         </div>,
         document.body
       )}
