@@ -54,6 +54,7 @@ export default function FriendOverviewPage() {
   const [localPendingFromMe, setLocalPendingFromMe] = useState(false);
   const [publicHuntingCount, setPublicHuntingCount] = useState(null);
   const [authResolved, setAuthResolved] = useState(false);
+  const [friendWantLists, setFriendWantLists] = useState([]);
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -232,6 +233,18 @@ export default function FriendOverviewPage() {
 
       if (cancelled) return;
 
+      // ── Friend want lists (friends-only, RPC enforces access) ─────
+      let wantListsData = [];
+      if (friendshipAccepted && viewerId) {
+        const { data: wlData } = await supabase.rpc("get_friend_want_lists", {
+          viewer: viewerId,
+          target: friendProfile.id,
+        });
+        if (!cancelled) wantListsData = wlData || [];
+      }
+
+      if (cancelled) return;
+
       // ── Derive final state ────────────────────────────────────────
       const sortedFavs = [...(favData || [])]
         .sort((a, b) => (Number(b.printing?.price_usd) || 0) - (Number(a.printing?.price_usd) || 0))
@@ -275,6 +288,7 @@ export default function FriendOverviewPage() {
           })
           .filter(Boolean)
       );
+      setFriendWantLists(wantListsData);
       setStatus("ok");
     })();
     return () => { cancelled = true; };
@@ -517,6 +531,48 @@ export default function FriendOverviewPage() {
         )}
       </div>
       )} {/* end (!isPreview || mutualCount > 0) */}
+
+      {/* ── Want Lists (friends-only) ──────────────────────────── */}
+      {friendWantLists.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700,
+            color: "var(--po-text-dim)",
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            marginBottom: 12,
+          }}>
+            Want Lists
+          </div>
+          {friendWantLists.map(list => {
+            const dateStr = new Date(list.created_at).toLocaleDateString("en-AU", {
+              day: "numeric", month: "short", year: "numeric",
+            });
+            return (
+              <Link
+                key={list.id}
+                href={`/wants/${list.slug}`}
+                style={{
+                  display: "block", textDecoration: "none",
+                  marginBottom: 8, padding: "12px 14px",
+                  background: "rgba(244,244,246,0.03)",
+                  border: "0.5px solid var(--po-border)",
+                  borderRadius: "var(--border-radius-md)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--po-text)", marginBottom: 2 }}>
+                  {list.title || `${list.card_count} card${list.card_count !== 1 ? "s" : ""}`}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--po-text-faint)" }}>
+                  {list.title
+                    ? `${list.card_count} card${list.card_count !== 1 ? "s" : ""} · ${dateStr}`
+                    : dateStr}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Collection (set list) ───────────────────────────────── */}
       <div>

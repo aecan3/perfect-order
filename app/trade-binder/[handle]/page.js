@@ -371,7 +371,7 @@ export default function TradeBinderPage() {
   const huntCount = duplicates.filter((d) => d.hunted_by_viewer).length;
 
   return (
-    <MSShell hideTabBar={isAnonymous || (!isOwnPage && selected.size > 0)}>
+    <MSShell hideTabBar={!isAnonymous && !isOwnPage && selected.size > 0} anonymousNav={isAnonymous}>
       <div style={{ padding: "0 16px 32px" }}>
 
         {/* Header */}
@@ -899,44 +899,6 @@ export default function TradeBinderPage() {
           onConfirm={handleConfirm}
           onCancel={handleConfirmCancel}
         />
-      )}
-
-      {/* Fixed bottom bar — sign in CTA for anonymous visitors */}
-      {isAnonymous && (
-        <div style={{
-          position: "fixed",
-          bottom: 0, left: 0, right: 0,
-          borderTop: "0.5px solid rgba(244,244,246,0.1)",
-          background: "rgba(5,5,7,0.95)",
-          backdropFilter: "blur(12px)",
-          padding: "12px 16px",
-          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
-        }}>
-          <div style={{ maxWidth: 384, margin: "0 auto" }}>
-            <button
-              onClick={() => router.push(`/login?returnTo=/trade-binder/${handle}`)}
-              style={{
-                width: "100%",
-                padding: "15px",
-                background: "var(--po-green)",
-                borderRadius: "var(--border-radius-md)",
-                color: "#050507",
-                fontWeight: 700,
-                fontSize: 15,
-                letterSpacing: "-0.01em",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <ArrowLeftRight size={15} />
-              Sign in to propose a trade
-            </button>
-          </div>
-        </div>
       )}
 
       {/* Fixed bottom selection bar — logged-in friend view only */}

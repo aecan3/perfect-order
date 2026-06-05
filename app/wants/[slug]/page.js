@@ -47,31 +47,13 @@ export default async function WantListPage({ params }) {
     day: "numeric", month: "short", year: "numeric",
   });
   const ownerName = profile?.display_name || profile?.handle || "Someone";
-  const returnTo = encodeURIComponent(`/wants/${slug}`);
   const heading = list.title || `${ownerName}'s Want List`;
   const subheading = list.title
     ? `by ${ownerName} · ${dateStr}`
     : `${enriched.length} missing card${enriched.length !== 1 ? "s" : ""} · ${dateStr}`;
 
   return (
-    <MSShell hideTabBar>
-      {/* Anon CTA */}
-      <div style={{ padding: "10px 16px 0" }}>
-        <a
-          href={`/welcome?returnTo=${returnTo}`}
-          style={{
-            display: "block", padding: "10px 16px",
-            background: "rgba(200,255,74,0.06)", border: "0.5px solid rgba(200,255,74,0.2)",
-            borderRadius: "var(--border-radius-md)",
-            fontSize: 12, textDecoration: "none",
-            color: "var(--po-text-dim)",
-          }}
-        >
-          Track your Pokémon collection ·{" "}
-          <span style={{ color: "var(--po-green)", fontWeight: 700 }}>Sign up free →</span>
-        </a>
-      </div>
-
+    <MSShell anonymousNav>
       <div style={{ padding: "16px 16px 80px" }}>
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
