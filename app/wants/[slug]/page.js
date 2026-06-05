@@ -5,6 +5,41 @@ import { notFound } from "next/navigation";
 import { MSShell } from "@/components/chrome/MSShell";
 import { WantListView } from "./WantListView";
 
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const service = getServiceClient();
+
+  const { data: list } = await service
+    .from("want_lists")
+    .select("id, title, created_at, user_id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (!list) return { title: "Want List" };
+
+  const [{ data: profile }, { count }] = await Promise.all([
+    service.from("profiles").select("handle, display_name").eq("id", list.user_id).maybeSingle(),
+    service.from("want_list_cards").select("id", { count: "exact", head: true }).eq("want_list_id", list.id),
+  ]);
+
+  const ownerName = profile?.display_name || profile?.handle || "Someone";
+  const cardCount = count ?? 0;
+  const listTitle = list.title || `${ownerName}'s Want List`;
+  const dateStr = new Date(list.created_at).toLocaleDateString("en-AU", {
+    day: "numeric", month: "short", year: "numeric",
+  });
+
+  const title = `${listTitle} · ${cardCount} card${cardCount === 1 ? "" : "s"}`;
+  const description = `${ownerName}'s want list with ${cardCount} card${cardCount === 1 ? "" : "s"} · ${dateStr}`;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, images: ["/brand/master-setter-stacked-email.png"] },
+    twitter: { card: "summary_large_image" },
+  };
+}
+
 export default async function WantListPage({ params }) {
   const { slug } = await params;
   const service = getServiceClient();

@@ -4,8 +4,12 @@ import { Analytics } from '@vercel/analytics/next';
 import { RefreshPricesProvider } from './RefreshPricesProvider';
 
 export const metadata = {
-  title: 'Master Setter',
-  description: 'Track your Pokemon TCG collection and trade with friends',
+  metadataBase: new URL('https://mastersettertcg.com'),
+  title: {
+    template: '%s · Master Setter',
+    default: 'Master Setter',
+  },
+  description: 'Track your Pokémon TCG collection and trade with friends.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -15,6 +19,14 @@ export const metadata = {
   icons: {
     icon: '/icon-192.png',
     apple: '/apple-touch-icon.png',
+  },
+  openGraph: {
+    siteName: 'Master Setter',
+    images: ['/brand/master-setter-stacked-email.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/brand/master-setter-stacked-email.png'],
   },
 };
 

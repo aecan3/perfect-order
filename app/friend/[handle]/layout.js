@@ -9,13 +9,11 @@ export async function generateMetadata({ params }) {
     .eq("handle", handle)
     .maybeSingle();
 
-  if (!profile) {
-    return { title: "Trade Binder — Master Setter" };
-  }
+  if (!profile) return { title: "Player Profile" };
 
   const displayName = profile.display_name || `@${profile.handle}`;
-  const title = `${displayName}'s Trade Binder — Master Setter`;
-  const description = `Browse ${displayName}'s tradeable Pokémon TCG cards on Master Setter.`;
+  const title = `${displayName}'s Collection`;
+  const description = `Browse ${displayName}'s Pokémon TCG collection on Master Setter.`;
 
   return {
     title,
@@ -23,18 +21,14 @@ export async function generateMetadata({ params }) {
     openGraph: {
       title,
       description,
-      type: "profile",
       images: ["/brand/master-setter-stacked-email.png"],
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description,
-      images: ["/brand/master-setter-stacked-email.png"],
     },
   };
 }
 
-export default function TradeBinderLayout({ children }) {
+export default function FriendLayout({ children }) {
   return children;
 }
