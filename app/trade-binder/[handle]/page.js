@@ -560,20 +560,37 @@ export default function TradeBinderPage() {
                   )}
                 </div>
 
-                {/* ×N duplicate badge */}
-                <div style={{
-                  position: "absolute", top: 5, left: 5,
-                  background: "rgba(0,0,0,0.72)",
-                  backdropFilter: "blur(4px)",
-                  borderRadius: 4,
-                  padding: "2px 5px",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "rgba(255,255,255,0.9)",
-                  letterSpacing: "0.02em",
-                }}>
-                  ×{card.duplicate_count}
-                </div>
+                {/* Remove button — own binder, flagged-only cards only */}
+                {isOwnPage && card.trade_flagged && card.duplicate_count === 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch("/api/trade-binder/remove", {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ printing_id: card.printing_id }),
+                      }).then((res) => {
+                        if (res.ok) {
+                          setDuplicates((prev) => prev.filter((c) => c.printing_id !== card.printing_id));
+                        }
+                      });
+                    }}
+                    style={{
+                      position: "absolute", top: 5, right: 5,
+                      width: 22, height: 22,
+                      background: "rgba(0,0,0,0.72)",
+                      backdropFilter: "blur(4px)",
+                      borderRadius: "50%",
+                      border: "none",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    aria-label="Remove from binder"
+                  >
+                    <X size={12} style={{ color: "rgba(255,255,255,0.85)" }} />
+                  </button>
+                )}
 
               </div>
             ))}
