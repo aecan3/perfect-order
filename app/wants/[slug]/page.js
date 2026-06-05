@@ -55,11 +55,12 @@ export default async function WantListPage({ params }) {
   const ownerName = profile?.display_name || profile?.handle || "Someone";
 
   return (
-    <MSShell anonymousNav>
+    <MSShell anonymousNav={!user}>
       <WantListView
         initialCards={enriched}
         isOwner={isOwner}
         listId={list.id}
+        slug={slug}
         initialTitle={list.title}
         ownerName={ownerName}
         dateStr={dateStr}

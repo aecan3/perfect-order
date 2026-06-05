@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { Pencil, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
@@ -11,7 +12,7 @@ function fmtPrice(priceUsd) {
   return `A$${val < 10 ? val.toFixed(2) : Math.round(val)}`;
 }
 
-export function WantListView({ initialCards, isOwner, listId, initialTitle, ownerName, dateStr }) {
+export function WantListView({ initialCards, isOwner, listId, slug, initialTitle, ownerName, dateStr }) {
   const supabase = createClient();
   const [cards, setCards] = useState(initialCards);
   const [title, setTitle] = useState(initialTitle);
@@ -122,6 +123,22 @@ export function WantListView({ initialCards, isOwner, listId, initialTitle, owne
         <p style={{ fontSize: 13, color: "var(--po-text-dim)", margin: 0 }}>
           {subheading}
         </p>
+        {isOwner && (
+          <Link
+            href={`/want-lists/new?addTo=${slug}`}
+            style={{
+              display: "inline-block", marginTop: 10,
+              padding: "5px 12px",
+              background: "rgba(200,255,74,0.06)",
+              border: "0.5px solid rgba(200,255,74,0.2)",
+              borderRadius: 6,
+              color: "var(--po-green)", fontSize: 12, fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            + Add cards
+          </Link>
+        )}
       </div>
 
       {/* Card grid */}

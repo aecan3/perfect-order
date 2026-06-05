@@ -24,11 +24,14 @@ function NewWantListContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
+  const addToSlug = searchParams.get("addTo");
+
   const [step, setStep] = useState("sets"); // "sets" | "cards" | "done"
   const [loadingState, setLoadingState] = useState("loading");
 
   // Set picker
   const [listTitle, setListTitle] = useState("");
+  const [addToTitle, setAddToTitle] = useState(null);
   const [trackedSets, setTrackedSets] = useState([]);
   const [allMissingBySet, setAllMissingBySet] = useState({});
   const [selectedSetIds, setSelectedSetIds] = useState(new Set());
@@ -104,10 +107,29 @@ function NewWantListContent() {
         printingDetailMap[p.id] = { image_url: p.card?.image_large || null, price_usd: p.price_usd };
       }
 
+      // For addTo mode: fetch existing list cards to exclude from candidate pool
+      let existingIds = new Set();
+      if (addToSlug) {
+        const { data: targetList } = await supabase
+          .from("want_lists")
+          .select("id, title")
+          .eq("slug", addToSlug)
+          .maybeSingle();
+        if (targetList) {
+          if (!cancelled) setAddToTitle(targetList.title);
+          const { data: existingCards } = await supabase
+            .from("want_list_cards")
+            .select("printing_id")
+            .eq("want_list_id", targetList.id);
+          existingIds = new Set((existingCards || []).map(c => c.printing_id));
+        }
+      }
+      if (cancelled) return;
+
       const missing = {};
       for (const us of (userSetsData || [])) {
         const slots = missingCardsForSet(us.set_id, printingsBySet[us.set_id] || [], owned, us.edition_mode);
-        missing[us.set_id] = slots.map(s => ({
+        missing[us.set_id] = slots.filter(s => !existingIds.has(s.printing_id)).map(s => ({
           ...s,
           set_name: setsMap[us.set_id]?.name || us.set_id,
           card_name: cardNameMap[`${us.set_id}-${s.card_number}`] || null,
@@ -161,6 +183,38 @@ function NewWantListContent() {
     next.has(printingId) ? next.delete(printingId) : next.add(printingId);
     return next;
   });
+
+  const addToList = async (cards) => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await fetch(`/api/want-lists/${addToSlug}/cards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cards: cards.map(c => ({
+            set_id: c.set_id,
+            card_number: c.card_number,
+            printing_id: c.printing_id,
+            edition_label: c.edition_label,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error || "Failed to add cards");
+      }
+      router.replace(`/wants/${addToSlug}`);
+    } catch (e) {
+      Sentry.captureMessage("[want-lists] addTo POST non-OK", {
+        level: "error",
+        extra: { error: e.message },
+      });
+      setCreateError(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const createWantList = async (cards) => {
     setCreating(true);
@@ -372,7 +426,7 @@ function NewWantListContent() {
           <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
             <BackButton onBack={() => setStep("sets")} />
           </div>
-          <MSPageTitle>Choose cards</MSPageTitle>
+          <MSPageTitle>{addToSlug ? "Choose cards to add" : "Choose cards"}</MSPageTitle>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <p style={{ fontSize: 13, color: "var(--po-text-dim)", margin: 0 }}>
               {selectedCount} of {selectedMissing.length} selected
@@ -473,7 +527,11 @@ function NewWantListContent() {
             <p style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 8, textAlign: "center" }}>{createError}</p>
           )}
           <button
-            onClick={() => { if (selectedCount > 0 && !creating) createWantList(finalCards); }}
+            onClick={() => {
+              if (selectedCount > 0 && !creating) {
+                addToSlug ? addToList(finalCards) : createWantList(finalCards);
+              }
+            }}
             disabled={selectedCount === 0 || creating}
             style={{
               width: "100%", padding: "15px",
@@ -485,7 +543,11 @@ function NewWantListContent() {
               opacity: creating ? 0.6 : 1,
             }}
           >
-            {creating ? "Creating…" : `Share ${selectedCount} card${selectedCount !== 1 ? "s" : ""}`}
+            {creating
+              ? (addToSlug ? "Adding…" : "Creating…")
+              : addToSlug
+                ? `Add ${selectedCount} card${selectedCount !== 1 ? "s" : ""}`
+                : `Share ${selectedCount} card${selectedCount !== 1 ? "s" : ""}`}
           </button>
         </div>
       </MSShell>
@@ -501,26 +563,32 @@ function NewWantListContent() {
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
           <BackButton />
         </div>
-        <MSPageTitle>New Want List</MSPageTitle>
+        <MSPageTitle>
+          {addToSlug ? `Add to '${addToTitle || addToSlug}'` : "New Want List"}
+        </MSPageTitle>
         <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 16 }}>
-          Select sets. A public snapshot of your missing card slots will be created.
+          {addToSlug
+            ? "Select sets to pull missing slots from. Already-listed cards are excluded."
+            : "Select sets. A public snapshot of your missing card slots will be created."}
         </p>
 
-        <input
-          type="text"
-          value={listTitle}
-          onChange={e => setListTitle(e.target.value)}
-          maxLength={50}
-          placeholder="Name your list (optional) — e.g. Non-holos, Perfect Order wants"
-          style={{
-            width: "100%", padding: "12px 14px", marginBottom: 20,
-            background: "rgba(244,244,246,0.04)",
-            border: "0.5px solid var(--po-border)",
-            borderRadius: "var(--border-radius-md)",
-            color: "var(--po-text)", fontSize: 14,
-            outline: "none", boxSizing: "border-box",
-          }}
-        />
+        {!addToSlug && (
+          <input
+            type="text"
+            value={listTitle}
+            onChange={e => setListTitle(e.target.value)}
+            maxLength={50}
+            placeholder="Name your list (optional) — e.g. Non-holos, Perfect Order wants"
+            style={{
+              width: "100%", padding: "12px 14px", marginBottom: 20,
+              background: "rgba(244,244,246,0.04)",
+              border: "0.5px solid var(--po-border)",
+              borderRadius: "var(--border-radius-md)",
+              color: "var(--po-text)", fontSize: 14,
+              outline: "none", boxSizing: "border-box",
+            }}
+          />
+        )}
 
         {trackedSets.length === 0 ? (
           <div style={{ padding: "3rem 0", textAlign: "center" }}>
@@ -599,7 +667,11 @@ function NewWantListContent() {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <button
-              onClick={() => { if (totalSlots > 0 && !overCap && !creating) createWantList(selectedMissing); }}
+              onClick={() => {
+                if (totalSlots > 0 && !overCap && !creating) {
+                  addToSlug ? addToList(selectedMissing) : createWantList(selectedMissing);
+                }
+              }}
               disabled={totalSlots === 0 || overCap || creating}
               style={{
                 width: "100%", padding: "15px",
@@ -611,7 +683,11 @@ function NewWantListContent() {
                 opacity: creating ? 0.6 : 1,
               }}
             >
-              {creating ? "Creating…" : `Share all ${totalSlots}`}
+              {creating
+                ? (addToSlug ? "Adding…" : "Creating…")
+                : addToSlug
+                  ? `Add all ${totalSlots}`
+                  : `Share all ${totalSlots}`}
             </button>
             <button
               onClick={() => {

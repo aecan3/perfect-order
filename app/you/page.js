@@ -346,15 +346,17 @@ export default function YouPage() {
             return (
               <div
                 key={list.id}
+                onClick={() => router.push(`/wants/${list.slug}`)}
                 style={{
                   marginBottom: 8, padding: "12px 14px",
                   background: "rgba(244,244,246,0.03)",
                   border: "0.5px solid var(--po-border)",
                   borderRadius: "var(--border-radius-md)",
+                  cursor: "pointer",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <Link href={`/wants/${list.slug}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--po-text)", marginBottom: 2 }}>
                       {list.title || `${list.card_count} card${list.card_count !== 1 ? "s" : ""}`}
                     </div>
@@ -363,10 +365,12 @@ export default function YouPage() {
                         ? `${list.card_count} card${list.card_count !== 1 ? "s" : ""} · ${dateStr}`
                         : dateStr}
                     </div>
-                  </Link>
+                  </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                     <button
-                      onClick={async () => {
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
                         await navigator.clipboard.writeText(wantUrl).catch(() => {});
                         setWantListCopied(list.slug);
                         setTimeout(() => setWantListCopied(null), 2000);
@@ -383,7 +387,7 @@ export default function YouPage() {
                       {copied ? "Copied!" : "Copy link"}
                     </button>
                     <button
-                      onClick={() => handleDeleteTap(list.slug, list.id)}
+                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteTap(list.slug, list.id); }}
                       style={{
                         padding: "6px 10px",
                         background: confirming ? "rgba(255,90,106,0.15)" : "rgba(244,244,246,0.06)",
