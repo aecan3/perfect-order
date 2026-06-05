@@ -72,7 +72,6 @@ export default function FriendFavouritesPage() {
       if (!friendship) { setStatus("not-friends"); return; }
 
       const { data: favData } = await supabase.rpc("get_friend_favourites", {
-        viewer: user.id,
         target: friendProfile.id,
       });
 

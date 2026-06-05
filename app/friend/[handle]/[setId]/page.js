@@ -262,7 +262,7 @@ export default function FriendSetTrackerPage() {
         supabase.from("cards").select("*").eq("set_id", setId).order("number", { ascending: true }),
         selectMasterPrintings(supabase).eq("set_id", setId).order("display_order", { ascending: true }),
         fetchFriendEntries(supabase, friendProfile.id, setId),
-        supabase.rpc("get_friend_favourites", { viewer: user.id, target: friendProfile.id }),
+        supabase.rpc("get_friend_favourites", { target: friendProfile.id }),
       ]);
 
       setSetRow(setData);

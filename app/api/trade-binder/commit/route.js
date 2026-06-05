@@ -1,7 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/service";
 
 async function getAnonClient() {
   const cookieStore = await cookies();
@@ -31,8 +30,7 @@ export async function POST(req) {
     }
   }
 
-  const service = getServiceClient();
-  const { error } = await service.rpc("commit_trade_cards", {
+  const { error } = await anonClient.rpc("commit_trade_cards", {
     p_user_id: user.id,
     p_cards:   body.cards,
   });

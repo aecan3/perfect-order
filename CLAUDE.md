@@ -96,6 +96,8 @@ Current strategies:
 
 - **Migration file discipline**: Any `CREATE`, `ALTER`, or `DROP` executed against the database via MCP must land as a migration file in `supabase/migrations/` in the same commit as the code that depends on it. DB and repo must never drift — this has happened twice (`edition_mode` column, `get_cards_count` RPC) and required retroactive fixes.
 
+- **SECURITY DEFINER functions — identity rule**: SECURITY DEFINER functions must never accept the acting user's identity as a parameter. Derive it from `auth.uid()` inside the function, return nothing (or raise) when `auth.uid() IS NULL`. Parameters may name the *subject* of a lookup (e.g. `target uuid` — whose data to fetch), never the *viewer* whose permissions gate access. Service-role call paths must be explicitly accounted for: `auth.uid() IS NULL` in that context, so either (a) the function must allow NULL if service-role access is intentional, or (b) — preferred — the call site must be changed to use the authenticated user's session client so `auth.uid()` is set. This rule exists because three SECURITY DEFINER functions were deployed with client-supplied viewer params that bypassed block/friendship/ownership checks (`get_friend_want_lists`, `get_friend_favourites`, `commit_trade_cards` — all fixed June 2026).
+
 ## Known large collections
 
 - **raffertydall**: ~1598 checked entries across 5 sets. Always test pagination and home-page count logic against this account — it exceeds the PostgREST 1000-row default and has historically exposed truncation bugs.

@@ -1295,17 +1295,19 @@ When picking this back up, suggested sequence:
 
   `get_friend_want_lists` was deployed with a two-param signature `(viewer uuid, target uuid)`. Because `viewer` was client-supplied and used as the identity in the block and friendship checks, any authenticated user could pass any UUID as `viewer` and read another user's friends' want lists, bypassing blocks and friendship requirements. Fixed by migration `20260606030000_fix_get_friend_want_lists_auth.sql`: the two-param overload is explicitly dropped (`DROP FUNCTION ... (uuid, uuid)`); the replacement is `get_friend_want_lists(target uuid)` — single parameter, `viewer := auth.uid()` derived inside the function, returns nothing when `auth.uid() IS NULL`. Call site in `app/friend/[handle]/page.js` updated to pass only `{ target: friendProfile.id }`.
 
-  **Open security items from the same audit (not yet fixed — each needs a dedicated migration):**
+  **Security fixes subsequently applied (all in same session):**
 
-  | Function | Risk | Pattern |
-  |---|---|---|
-  | `get_friend_favourites(viewer, target)` | **Same class as the fixed issue** — viewer client-supplied, used in block + friendship gate. Any authed user can impersonate any viewer. | Fix: derive viewer from `auth.uid()`, drop two-param overload |
-  | `commit_trade_cards(p_user_id, p_cards)` | **Write escalation** — p_user_id is the INSERT target, not enforced to equal `auth.uid()`. Any authed user can write cards to any other user's collection via a direct RPC call. Current call site uses service client (safe), but the function is publicly callable from the browser SDK. | Fix: `IF p_user_id != auth.uid() THEN RAISE EXCEPTION` |
-  | `get_block_peer_ids(viewer)` | Privacy leak — any authed user can enumerate any other user's block list | Fix: derive viewer from `auth.uid()` |
-  | `is_blocked(viewer, target)` | Minor privacy — block relationship between any two users is detectable | Low urgency |
-  | `get_user_duplicates(target_user, viewer)` | viewer only affects `hunted_by_viewer` boolean; no access gate at all (intentional — trade binder is public) | No access fix needed; viewer spoof only changes a decoration |
+  - `get_friend_favourites(viewer, target)` — **FIXED** (migration `20260606040000`). Same fix: drop two-param overload, recreate as `get_friend_favourites(target uuid)` with `viewer := auth.uid()`. Self-access path (viewer = target) preserved. Call sites in `friend/[handle]/favourites/page.js` and `friend/[handle]/[setId]/page.js` updated to pass `{ target }` only.
 
-  Address `get_friend_favourites` and `commit_trade_cards` before wider exposure.
+  - `commit_trade_cards(p_user_id, p_cards)` — **FIXED** (migration `20260606050000`). Chose option (b) — strict guard: `IF p_user_id IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION 'forbidden'`. The route (`app/api/trade-binder/commit/route.js`) was updated to call via `anonClient.rpc(...)` (the user's session client) instead of `service.rpc(...)`. This makes `auth.uid()` equal to `user.id` inside the function, satisfying the strict guard. `getServiceClient` import removed from the route. Service-role client is no longer used for this RPC.
+
+  **Remaining open items (not escalation — address opportunistically):**
+
+  | Function | Risk |
+  |---|---|
+  | `get_block_peer_ids(viewer)` | Privacy leak — any authed user can enumerate any other user's block list. Fix: derive viewer from `auth.uid()`. Address next time block-related code is touched. |
+  | `is_blocked(viewer, target)` | Minor info disclosure — block relationship between any two users is detectable. Low urgency. |
+  | `get_user_duplicates(target_user, viewer)` | viewer only affects `hunted_by_viewer` boolean; no access gate (intentional — trade binder is public). No access fix needed. |
 
 **Done since last handover (30 May 2026, session 18):**
 
