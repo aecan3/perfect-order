@@ -51,3 +51,6 @@ next-env.d.ts
 # Local diagnostic scripts (one-off debug tools)
 diag*.mjs
 UsersalexcAppData*
+
+# Local dev server log
+dev-server.log
