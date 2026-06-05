@@ -1665,6 +1665,23 @@ export default function SetTrackerPage() {
                   )} to complete
                 </div>
               </div>
+              <div className="mb-3 px-1">
+                <Link
+                  href={`/want-lists/new?sets=${setId}`}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    padding: "7px 12px",
+                    background: "rgba(200,255,74,0.06)",
+                    border: "0.5px solid rgba(200,255,74,0.25)",
+                    borderRadius: 8,
+                    color: "var(--po-green)",
+                    fontSize: 11, fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  + Create Want List
+                </Link>
+              </div>
               <div className="grid grid-cols-2 gap-3">{viewCards.map(renderCard)}</div>
             </div>
           ) : (

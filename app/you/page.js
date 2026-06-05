@@ -32,6 +32,10 @@ export default function YouPage() {
   const [qrOpen, setQrOpen] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
+  const [wantLists, setWantLists] = useState([]);
+  const [wantListCopied, setWantListCopied] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const confirmDeleteTimerRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +52,7 @@ export default function YouPage() {
         duplicatesData,
         { data: favData },
         { data: friendshipRows },
+        { data: wantListsData },
       ] = await Promise.all([
         supabase
           .from("profiles")
@@ -70,6 +75,11 @@ export default function YouPage() {
           .select("user_a, user_b")
           .or(`user_a.eq.${uid},user_b.eq.${uid}`)
           .eq("status", "accepted"),
+        supabase
+          .from("want_lists")
+          .select("id, slug, created_at, title")
+          .eq("user_id", uid)
+          .order("created_at", { ascending: false }),
       ]);
 
       if (cancelled) return;
@@ -92,6 +102,25 @@ export default function YouPage() {
 
       if (cancelled) return;
 
+      // Fetch per-list card counts (two-query split — PostgREST can't aggregate nested)
+      const listIds = (wantListsData || []).map(l => l.id);
+      let wantListsWithCount = (wantListsData || []).map(l => ({ ...l, card_count: 0 }));
+      if (listIds.length > 0) {
+        const { data: cardRows } = await supabase
+          .from("want_list_cards")
+          .select("want_list_id")
+          .in("want_list_id", listIds)
+          .limit(5000);
+        if (!cancelled) {
+          const countMap = {};
+          for (const r of (cardRows || [])) {
+            countMap[r.want_list_id] = (countMap[r.want_list_id] || 0) + 1;
+          }
+          wantListsWithCount = wantListsWithCount.map(l => ({ ...l, card_count: countMap[l.id] || 0 }));
+        }
+      }
+      if (cancelled) return;
+
       setUserId(uid);
       setProfile(profileData);
       setStats({
@@ -101,6 +130,7 @@ export default function YouPage() {
       });
       setFavourites(sortedFavs);
       setFriends({ count: friendIds.length, sample: sampleProfiles });
+      setWantLists(wantListsWithCount);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -173,6 +203,25 @@ export default function YouPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/welcome");
+  };
+
+  const handleDeleteWantList = async (slug, id) => {
+    clearTimeout(confirmDeleteTimerRef.current);
+    setConfirmDeleteId(null);
+    const res = await fetch(`/api/want-lists/${slug}`, { method: "DELETE" });
+    if (res.ok || res.status === 404) {
+      setWantLists(prev => prev.filter(l => l.id !== id));
+    }
+  };
+
+  const handleDeleteTap = (slug, id) => {
+    if (confirmDeleteId === id) {
+      handleDeleteWantList(slug, id);
+    } else {
+      clearTimeout(confirmDeleteTimerRef.current);
+      setConfirmDeleteId(id);
+      confirmDeleteTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 3500);
+    }
   };
 
   if (loading) {
@@ -269,43 +318,140 @@ export default function YouPage() {
         )}
       </Link>
 
-      {/* Share Trade Binder */}
-      <div style={{ marginBottom: 24, display: "flex", gap: 8 }}>
-        <button
-          onClick={handleShare}
-          style={{
-            flex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            padding: "13px 16px",
-            background: shareCopied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
-            border: "0.5px solid rgba(200,255,74,0.25)",
-            borderRadius: "var(--border-radius-md)",
-            cursor: "pointer",
-            transition: "background 0.15s",
-          }}
-        >
-          <Share2 size={16} style={{ color: "var(--po-green)", flexShrink: 0 }} />
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--po-green)" }}>
-            {shareCopied ? "Link copied!" : "Share my Trade Binder"}
+      {/* My Want Lists */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            color: "var(--po-text-dim)",
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+          }}>
+            My Want Lists
           </span>
-        </button>
-        {binderUrl && (
+        </div>
+
+        {wantLists.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--po-text-faint)", padding: "4px 0" }}>
+            No want lists yet.
+          </div>
+        ) : (
+          wantLists.map(list => {
+            const dateStr = new Date(list.created_at).toLocaleDateString("en-AU", {
+              day: "numeric", month: "short", year: "numeric",
+            });
+            const wantUrl = `${window.location.origin}/wants/${list.slug}`;
+            const confirming = confirmDeleteId === list.id;
+            const copied = wantListCopied === list.slug;
+            return (
+              <div
+                key={list.id}
+                style={{
+                  marginBottom: 8, padding: "12px 14px",
+                  background: "rgba(244,244,246,0.03)",
+                  border: "0.5px solid var(--po-border)",
+                  borderRadius: "var(--border-radius-md)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--po-text)", marginBottom: 2 }}>
+                      {list.card_count} card{list.card_count !== 1 ? "s" : ""}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--po-text-faint)" }}>{dateStr}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(wantUrl).catch(() => {});
+                        setWantListCopied(list.slug);
+                        setTimeout(() => setWantListCopied(null), 2000);
+                      }}
+                      style={{
+                        padding: "6px 10px",
+                        background: copied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
+                        border: "0.5px solid rgba(200,255,74,0.25)",
+                        borderRadius: 6,
+                        color: "var(--po-green)",
+                        fontSize: 11, fontWeight: 600, cursor: "pointer",
+                      }}
+                    >
+                      {copied ? "Copied!" : "Copy link"}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTap(list.slug, list.id)}
+                      style={{
+                        padding: "6px 10px",
+                        background: confirming ? "rgba(255,90,106,0.15)" : "rgba(244,244,246,0.06)",
+                        border: `0.5px solid ${confirming ? "rgba(255,90,106,0.4)" : "rgba(244,244,246,0.15)"}`,
+                        borderRadius: 6,
+                        color: confirming ? "var(--ms-danger)" : "var(--po-text-faint)",
+                        fontSize: 11, fontWeight: 600, cursor: "pointer",
+                        transition: "background 0.15s, border-color 0.15s, color 0.15s",
+                      }}
+                    >
+                      {confirming ? "Confirm?" : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Share Trade Binder */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <button
-            onClick={openQr}
-            aria-label="Show QR code"
+            onClick={handleShare}
             style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "13px",
-              background: "rgba(200,255,74,0.08)",
+              flex: 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "13px 16px",
+              background: shareCopied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
               border: "0.5px solid rgba(200,255,74,0.25)",
               borderRadius: "var(--border-radius-md)",
               cursor: "pointer",
-              flexShrink: 0,
+              transition: "background 0.15s",
             }}
           >
-            <QrCode size={16} style={{ color: "var(--po-green)" }} />
+            <Share2 size={16} style={{ color: "var(--po-green)", flexShrink: 0 }} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--po-green)" }}>
+              {shareCopied ? "Link copied!" : "Share my Trade Binder"}
+            </span>
           </button>
-        )}
+          {binderUrl && (
+            <button
+              onClick={openQr}
+              aria-label="Show QR code"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "13px",
+                background: "rgba(200,255,74,0.08)",
+                border: "0.5px solid rgba(200,255,74,0.25)",
+                borderRadius: "var(--border-radius-md)",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <QrCode size={16} style={{ color: "var(--po-green)" }} />
+            </button>
+          )}
+        </div>
+        <Link
+          href="/want-lists/new"
+          style={{
+            display: "block", textAlign: "center", padding: "12px 16px",
+            background: "none",
+            border: "0.5px solid var(--po-border)",
+            borderRadius: "var(--border-radius-md)",
+            color: "var(--po-text-dim)", fontSize: 13, fontWeight: 500,
+            textDecoration: "none",
+          }}
+        >
+          + Create Want List
+        </Link>
       </div>
 
       {/* QR sheet portal */}
