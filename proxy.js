@@ -75,6 +75,12 @@ const PUBLIC_PATHS = new Set([
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.
   "/monitoring",
+
+  // Attribution landing pages — must be public so logged-out users reach them.
+  // Each renders null and router.replace("/welcome") on mount; the Analytics
+  // component in the root layout records the pageview before the redirect fires.
+  "/start",   // TikTok
+  "/start2",  // Instagram
 ]);
 
 export async function proxy(request) {
