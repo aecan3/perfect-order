@@ -1273,6 +1273,40 @@ When picking this back up, suggested sequence:
 - **Picking modal** is duplicated inline in `app/friend/[handle]/favourites/page.js` and `app/friend/[handle]/[setId]/page.js`. Standard pattern — extract to a shared component on the third use site only.
 - **`marketplace_pool.printing_id` is TEXT, but most other printing references are UUID.** Inconsistency caught in session 19 during RPC iteration (commit d59cd33). All printing column types should be reviewed and aligned in a single migration. Workaround: when writing RPCs touching `marketplace_pool`, cast `printings.id::text` and use `text[]` parameters. Not blocking but bites future RPC authors.
 
+**Done since last handover (5 June 2026):**
+
+- **Shareable Want Lists** (multiple commits, 5–6 June 2026): Full feature from creation through edit and friend-visibility.
+
+  *Data model:* `want_lists` table (`id`, `user_id`, `slug`, `title`, `created_at`); `want_list_cards` table (`id`, `want_list_id`, `set_id`, `card_number`, `printing_id`, `edition_label`). Migration `20260606000000_want_lists.sql`. RLS: owner INSERT/SELECT/DELETE on `want_lists`; owner INSERT/SELECT/DELETE on `want_list_cards` (ownership via subquery join to `want_lists.user_id`). UPDATE policy and CHECK constraint on `title` added later — see security section below.
+
+  *Creation flow (`/want-lists/new`):* Set picker (multi-select, pre-selects `?sets=[setId]` deep-link from MISSING tab); optional title input (max 50 chars); "Share all" or "Choose specific cards →" step with per-card deselection grid (optimistic opacity toggle); "Select all / Deselect all" toggle on the card step. POST `/api/want-lists`: server-side validation (TITLE_RE `^[A-Za-z0-9 '&·.,!?()-]{1,50}$`, printing_id existence check, max 500 cards); snapshot is static — missing slots at creation time only. MISSING tab on `/set/[setId]` has a "+ Create Want List" chip deep-linking to the picker.
+
+  *Public page (`/wants/[slug]`):* Server RSC. Title-aware heading and subheading (`by ownerName · date` vs `N missing cards · date`). Owner detected server-side via session cookie; `isOwner` passed to `WantListView` client component. **Edit affordances (owner-only):** Pencil icon → inline title rename (Enter/Escape/Save/×; empty saves as `null`); X button per tile → optimistic card removal (DELETE via RLS). Anon/non-owner sees neither affordance. Empty-list state after all removals: "No cards in this list." Adding cards to an existing list is deliberately out of scope — doing so would require re-deriving the snapshot against the live collection, breaking the static-snapshot model. Create a new list instead.
+
+  *`/you` My Want Lists section:* Row text taps to `/wants/[slug]`; copy-link and delete buttons remain as siblings. Title shown as primary line when present; count + date as secondary. Two-query count (never nested PostgREST aggregate). Two-tap delete. `+ Create Want List` link below the section.
+
+  *Friend-visible want lists (`/friend/[handle]`):* "Want Lists" section in footer, friends-only via `get_friend_want_lists(target)` SECURITY DEFINER RPC. Section omits itself for anon/non-friend/empty. Row style mirrors `/you`. See security note below for the RPC fix.
+
+  *Anonymous tab bar:* All public pages (`/trade-binder/[handle]`, `/wants/[slug]`, `/friend/[handle]`) use `anonymousNav` MSShell prop — standard AnonymousTabBar instead of bespoke per-page CTAs. Removed trade binder full-width "Sign in to propose a trade" block and wants page "Track your Pokémon collection" banner.
+
+  *Proxy (`proxy.js`):* `/wants/` and `/api/profile/` prefix bypasses added. `/api/profile/` currently has exactly one route: `GET /api/profile/[handle]/public-stats`. That route does its own auth detection (anon client `getUser()`), serves real stats to everyone, and returns `mutual_count: 0` for unauthenticated requests — no hard auth gate at the route level.
+
+- **SECURITY DEFINER RPC audit and fix (5–6 June 2026):**
+
+  `get_friend_want_lists` was deployed with a two-param signature `(viewer uuid, target uuid)`. Because `viewer` was client-supplied and used as the identity in the block and friendship checks, any authenticated user could pass any UUID as `viewer` and read another user's friends' want lists, bypassing blocks and friendship requirements. Fixed by migration `20260606030000_fix_get_friend_want_lists_auth.sql`: the two-param overload is explicitly dropped (`DROP FUNCTION ... (uuid, uuid)`); the replacement is `get_friend_want_lists(target uuid)` — single parameter, `viewer := auth.uid()` derived inside the function, returns nothing when `auth.uid() IS NULL`. Call site in `app/friend/[handle]/page.js` updated to pass only `{ target: friendProfile.id }`.
+
+  **Open security items from the same audit (not yet fixed — each needs a dedicated migration):**
+
+  | Function | Risk | Pattern |
+  |---|---|---|
+  | `get_friend_favourites(viewer, target)` | **Same class as the fixed issue** — viewer client-supplied, used in block + friendship gate. Any authed user can impersonate any viewer. | Fix: derive viewer from `auth.uid()`, drop two-param overload |
+  | `commit_trade_cards(p_user_id, p_cards)` | **Write escalation** — p_user_id is the INSERT target, not enforced to equal `auth.uid()`. Any authed user can write cards to any other user's collection via a direct RPC call. Current call site uses service client (safe), but the function is publicly callable from the browser SDK. | Fix: `IF p_user_id != auth.uid() THEN RAISE EXCEPTION` |
+  | `get_block_peer_ids(viewer)` | Privacy leak — any authed user can enumerate any other user's block list | Fix: derive viewer from `auth.uid()` |
+  | `is_blocked(viewer, target)` | Minor privacy — block relationship between any two users is detectable | Low urgency |
+  | `get_user_duplicates(target_user, viewer)` | viewer only affects `hunted_by_viewer` boolean; no access gate at all (intentional — trade binder is public) | No access fix needed; viewer spoof only changes a decoration |
+
+  Address `get_friend_favourites` and `commit_trade_cards` before wider exposure.
+
 **Done since last handover (30 May 2026, session 18):**
 
 - **Collapsible Pending Sent + Friend Requests at top of /friends** (commit `8f090db`): The /friends page now shows two collapsible sections at the top — one for pending requests you've sent and one for incoming requests — instead of the previous flat list. Both sections are hidden when empty. Improves legibility when a user has multiple outstanding requests in either direction.

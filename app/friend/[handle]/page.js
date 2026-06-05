@@ -237,7 +237,6 @@ export default function FriendOverviewPage() {
       let wantListsData = [];
       if (friendshipAccepted && viewerId) {
         const { data: wlData } = await supabase.rpc("get_friend_want_lists", {
-          viewer: viewerId,
           target: friendProfile.id,
         });
         if (!cancelled) wantListsData = wlData || [];
