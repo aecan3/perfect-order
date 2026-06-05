@@ -354,7 +354,7 @@ export default function YouPage() {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <Link href={`/wants/${list.slug}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--po-text)", marginBottom: 2 }}>
                       {list.title || `${list.card_count} card${list.card_count !== 1 ? "s" : ""}`}
                     </div>
@@ -363,7 +363,7 @@ export default function YouPage() {
                         ? `${list.card_count} card${list.card_count !== 1 ? "s" : ""} · ${dateStr}`
                         : dateStr}
                     </div>
-                  </div>
+                  </Link>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                     <button
                       onClick={async () => {

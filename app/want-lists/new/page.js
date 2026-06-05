@@ -358,6 +358,14 @@ function NewWantListContent() {
   // ── Step 2: Card deselection grid ──────────────────────────────────────────
   if (step === "cards") {
     const selectedCount = finalCards.length;
+    const allSelected = deselectedIds.size === 0;
+    const toggleAll = () => {
+      if (allSelected) {
+        setDeselectedIds(new Set(selectedMissing.map(c => c.printing_id)));
+      } else {
+        setDeselectedIds(new Set());
+      }
+    };
     return (
       <MSShell hideTabBar>
         <div style={{ padding: "0 16px 120px" }}>
@@ -365,9 +373,26 @@ function NewWantListContent() {
             <BackButton onBack={() => setStep("sets")} />
           </div>
           <MSPageTitle>Choose cards</MSPageTitle>
-          <p style={{ fontSize: 13, color: "var(--po-text-dim)", marginBottom: 16 }}>
-            Tap to remove from your want list · {selectedCount} of {selectedMissing.length} selected
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: "var(--po-text-dim)", margin: 0 }}>
+              {selectedCount} of {selectedMissing.length} selected
+            </p>
+            {selectedMissing.length > 0 && (
+              <button
+                onClick={toggleAll}
+                style={{
+                  padding: "5px 10px",
+                  background: "rgba(244,244,246,0.06)",
+                  border: "0.5px solid var(--po-border)",
+                  borderRadius: 6,
+                  color: "var(--po-text-dim)", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {allSelected ? "Deselect all" : "Select all"}
+              </button>
+            )}
+          </div>
 
           {selectedMissing.length === 0 ? (
             <div style={{ padding: "3rem 0", textAlign: "center", color: "var(--po-text-dim)", fontSize: 14 }}>

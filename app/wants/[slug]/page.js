@@ -1,13 +1,9 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getServiceClient } from "@/lib/supabase/service";
 import { notFound } from "next/navigation";
 import { MSShell } from "@/components/chrome/MSShell";
-import { FindOnline } from "@/components/FindOnline";
-
-function fmtPrice(priceUsd) {
-  const val = Number(priceUsd) * 1.53;
-  if (!priceUsd || val <= 0) return null;
-  return `A$${val < 10 ? val.toFixed(2) : Math.round(val)}`;
-}
+import { WantListView } from "./WantListView";
 
 export default async function WantListPage({ params }) {
   const { slug } = await params;
@@ -20,6 +16,16 @@ export default async function WantListPage({ params }) {
     .maybeSingle();
 
   if (!list) notFound();
+
+  // Detect owner for edit affordances
+  const cookieStore = await cookies();
+  const anonClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+  const { data: { user } } = await anonClient.auth.getUser();
+  const isOwner = user?.id === list.user_id;
 
   const [{ data: profile }, { data: cards }] = await Promise.all([
     service.from("profiles").select("handle, display_name").eq("id", list.user_id).maybeSingle(),
@@ -47,88 +53,17 @@ export default async function WantListPage({ params }) {
     day: "numeric", month: "short", year: "numeric",
   });
   const ownerName = profile?.display_name || profile?.handle || "Someone";
-  const heading = list.title || `${ownerName}'s Want List`;
-  const subheading = list.title
-    ? `by ${ownerName} · ${dateStr}`
-    : `${enriched.length} missing card${enriched.length !== 1 ? "s" : ""} · ${dateStr}`;
 
   return (
     <MSShell anonymousNav>
-      <div style={{ padding: "16px 16px 80px" }}>
-        {/* Header */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--po-text)", marginBottom: 4, lineHeight: 1.2 }}>
-            {heading}
-          </h1>
-          <p style={{ fontSize: 13, color: "var(--po-text-dim)" }}>
-            {subheading}
-          </p>
-        </div>
-
-        {/* Card grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {enriched.map(card => {
-            const price = fmtPrice(card.price_usd);
-            return (
-              <div
-                key={card.id}
-                style={{
-                  position: "relative",
-                  borderRadius: "var(--border-radius-md)",
-                  overflow: "hidden",
-                  background: "rgba(0,0,0,0.4)",
-                  aspectRatio: "2.5/3.5",
-                }}
-              >
-                {card.image_url ? (
-                  <img
-                    src={card.image_url}
-                    alt={card.card_name || `#${card.card_number}`}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                ) : (
-                  <div style={{
-                    width: "100%", height: "100%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    padding: 8, textAlign: "center",
-                    fontSize: 8, color: "var(--po-text-faint)", lineHeight: 1.3,
-                  }}>
-                    {card.card_name || `#${card.card_number}`}
-                  </div>
-                )}
-
-                <FindOnline
-                  cardName={card.card_name || `#${card.card_number}`}
-                  collectorNumber={String(card.card_number)}
-                  userCountry="AU"
-                />
-
-                {/* Bottom overlay */}
-                <div style={{
-                  position: "absolute", inset: "auto 0 0",
-                  padding: "28px 6px 6px",
-                  background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)",
-                }}>
-                  <div style={{
-                    fontSize: 9, fontWeight: 800, color: "var(--po-green)",
-                    marginBottom: 1, lineHeight: 1.2,
-                  }}>
-                    {card.edition_label}
-                  </div>
-                  <div style={{ fontSize: 7, color: "rgba(255,255,255,0.5)" }}>
-                    #{card.card_number}
-                  </div>
-                  {price && (
-                    <div style={{ fontSize: 9, fontWeight: 900, color: "rgba(255,255,255,0.7)", marginTop: 1 }}>
-                      {price}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <WantListView
+        initialCards={enriched}
+        isOwner={isOwner}
+        listId={list.id}
+        initialTitle={list.title}
+        ownerName={ownerName}
+        dateStr={dateStr}
+      />
     </MSShell>
   );
 }
