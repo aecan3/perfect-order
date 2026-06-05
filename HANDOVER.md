@@ -861,7 +861,7 @@ All safe at current scale; flagged so they're not forgotten.
 - Axiom via Vercel marketplace.
 - Admin dashboard (sets returning `priceSource=none`, refresh durations,
   error rates); alerting.
-- ~~**Wire Sentry error capture — DONE 5 Jun 2026.**~~ Errors-only (traces and replay off). Instrumented: anonymous migration HTTP errors + count mismatches (login + confirm), user_sets upsert failure, localStorage save errors (QuotaExceededError carved out), all five refresh-prices source catches. Verified live via deliberate test error through tunnel.
+- ~~**Wire Sentry error capture — DONE 5 Jun 2026.**~~ Errors-only (traces and replay off). Instrumented: anonymous migration HTTP errors + count mismatches (login + confirm), user_sets upsert failure, localStorage save errors (QuotaExceededError carved out), all five refresh-prices source catches. Live tunnel verification pending.
 
 ---
 

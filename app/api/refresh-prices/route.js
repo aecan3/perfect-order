@@ -143,7 +143,12 @@ async function tryPokeTrace(slug, allPrintings) {
     }
   } catch (err) {
     console.warn(`[PokeTrace] probe failed for slug "${slug}": ${err.message} - skipping`);
-    Sentry.captureException(err, { tags: { location: "refresh-prices-poketrace-probe", setSlug: slug } });
+    // Warning not error: PokeTrace is a known-failing source for SV/SWSH-era sets.
+    Sentry.captureMessage("PokeTrace probe failed", {
+      level: "warning",
+      tags: { location: "refresh-prices-poketrace-probe", setSlug: slug },
+      extra: { error: err.message },
+    });
     return null;
   }
 
@@ -500,6 +505,8 @@ async function tryPokeScope(setId, allPrintings) {
   const numbers = [...printingsByNumber.keys()];
   const priceMap = new Map();
   let requestsUsed = 0;
+  let pokescopeFailures = 0;
+  let pokescopeSampleError = null;
 
   await Promise.all(
     numbers.map(async (cardNumber) => {
@@ -589,10 +596,19 @@ async function tryPokeScope(setId, allPrintings) {
         }
       } catch (err) {
         console.warn(`[PokeScope] Error for ${setId}-${cardNumber}:`, err.message);
-        Sentry.captureException(err, { tags: { location: "refresh-prices-pokescope", setId } });
+        pokescopeFailures++;
+        if (!pokescopeSampleError) pokescopeSampleError = err.message;
       }
     })
   );
+
+  if (pokescopeFailures > 0) {
+    Sentry.captureMessage("PokeScope fetch failures", {
+      level: "error",
+      tags: { location: "refresh-prices-pokescope", setId },
+      extra: { setId, failureCount: pokescopeFailures, sampleError: pokescopeSampleError },
+    });
+  }
 
   return priceMap.size > 0 ? { map: priceMap, requestsUsed } : null;
 }
