@@ -6,16 +6,12 @@ import Link from "next/link";
 import {
   Plus, EyeOff, Eye, Trash2,
   MoreHorizontal, ChevronDown, ChevronRight,
-  RefreshCw, Clock, MessageCircle, ArrowLeftRight, GripVertical,
+  RefreshCw, Clock, MessageCircle, GripVertical,
 } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { SortableSetCard } from "@/components/home/SortableSetCard";
 import { createClient } from "@/lib/supabase";
-import { getFriendIds } from "@/lib/queries/friends";
-import { getBlockIds } from "@/lib/queries/blocks";
-import { getDiscoverMatches } from "@/lib/queries/discover";
-import { useTableRefetch } from "@/lib/hooks/useTableRefetch";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { useRefreshPrices } from "@/app/RefreshPricesProvider";
@@ -101,27 +97,6 @@ export default function HomePage() {
   const [isReordering, setIsReordering] = useState(false);
   const [orderedSets, setOrderedSets] = useState([]);
   const preReorderRef = useRef([]);
-
-  // Discover panel
-  const [discoverCards, setDiscoverCards] = useState(null);
-  const [discoverModal, setDiscoverModal] = useState(null);
-
-  const loadHomeDiscover = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const [friendIds, blockIds] = await Promise.all([
-        getFriendIds(supabase, user.id),
-        getBlockIds(supabase, user.id),
-      ]);
-      const visibleFriendIds = friendIds.filter((id) => !blockIds.has(id));
-      if (!visibleFriendIds.length) { setDiscoverCards([]); return; }
-      const results = await getDiscoverMatches({ supabase, viewerUserId: user.id, friendIds: visibleFriendIds });
-      setDiscoverCards(results.slice(0, 20));
-    } catch {
-      setDiscoverCards([]);
-    }
-  };
 
   useEffect(() => {
     const c = localStorage.getItem("po:currency");
@@ -235,9 +210,6 @@ export default function HomePage() {
 
       setLoading(false);
 
-      // Non-blocking discover fetch — runs after main load so it doesn't delay the page
-      loadHomeDiscover();
-
       // Staggered count-up from zero — fires on every page load / navigate-back
       const loadTargets = {};
       enriched.forEach((set, i) => {
@@ -251,16 +223,6 @@ export default function HomePage() {
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }, []);
-
-  useTableRefetch({
-    supabase,
-    table: "collection_entries",
-    events: ["INSERT", "DELETE"],
-    filter: `user_id=eq.${user?.id}`,
-    channelName: `home-discover:${user?.id}`,
-    onChange: loadHomeDiscover,
-    enabled: !!user?.id,
-  });
 
   // ── Animation ────────────────────────────────────────────────────────────
   const startAnimations = (targets) => {
@@ -661,60 +623,6 @@ export default function HomePage() {
     );
   };
 
-  // ── Discover panel ────────────────────────────────────────────────────────
-  const renderDiscoverPanel = () => {
-    if (!discoverCards || discoverCards.length === 0) return null;
-
-    return (
-      <div className="rounded-2xl overflow-hidden border border-[var(--po-border)] bg-[var(--po-bg-soft)]">
-        <Link href="/discover" className="flex items-center gap-2 px-4 pt-3 pb-2">
-          <span
-            className="text-[9px] uppercase tracking-widest font-black px-2 py-0.5 rounded-full flex-shrink-0"
-            style={{ background: "var(--po-green)", color: "#050507" }}
-          >
-            NEW
-          </span>
-          <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-[var(--po-text-dim)] flex-1 truncate">
-            From your friends&rsquo; collections
-          </span>
-          <ChevronRight size={14} className="text-[var(--po-text-faint)] flex-shrink-0" />
-        </Link>
-        <div
-          className="flex gap-2 overflow-x-auto px-4 pb-3"
-          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
-        >
-          {discoverCards.map((card, i) => (
-            <button
-              key={i}
-              onClick={(e) => { e.stopPropagation(); setDiscoverModal(card); }}
-              className="flex-none relative rounded-lg overflow-hidden bg-black/40 text-left"
-              style={{ width: "calc(33.333% - 6px)", scrollSnapAlign: "start", aspectRatio: "2/3" }}
-            >
-              {card.imageUrl ? (
-                <img src={card.imageUrl} alt={card.cardName} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center p-1 text-center text-[8px] text-[var(--po-text-faint)] leading-tight">
-                  {card.cardName || card.setName}
-                </div>
-              )}
-              <div
-                className="absolute inset-x-0 bottom-0 px-1.5 py-1 flex items-end justify-between gap-1"
-                style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, transparent 100%)" }}
-              >
-                <span className="text-[8px] text-white/75 font-bold truncate min-w-0">@{card.friendHandle}</span>
-                {card.priceUsd > 0 && (
-                  <span className="text-[8px] font-black flex-shrink-0" style={{ color: "var(--po-green)" }}>
-                    {fmtMoney(card.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   // ── Portfolio banner ──────────────────────────────────────────────────────
   const renderBanner = () => {
     const totalSets = allSets.length;
@@ -854,8 +762,6 @@ export default function HomePage() {
           <PushNudge />
           {allSets.length > 0 && renderBanner()}
 
-          {renderDiscoverPanel()}
-
           <Link
             href="/sets"
             className="block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"
@@ -974,78 +880,6 @@ export default function HomePage() {
             </div>
           )}
         </div>
-
-        {/* Discover card action modal */}
-        {discoverModal && (
-          <div
-            className="fixed inset-0 z-30 bg-black/70 flex items-end justify-center"
-            onClick={() => setDiscoverModal(null)}
-          >
-            <div
-              className="w-full max-w-md bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-t-2xl p-5 pb-8 shadow-2xl overflow-y-auto"
-              style={{ maxHeight: "80vh" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="w-10 h-1 rounded-full bg-[var(--po-border-strong)] mx-auto mb-4" />
-              <div className="flex items-center gap-3 mb-5">
-                {discoverModal.imageUrl && (
-                  <img src={discoverModal.imageUrl} alt={discoverModal.cardName} className="w-12 h-16 object-cover rounded-lg flex-shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <p className="font-bold text-sm text-[var(--po-text)] truncate">{discoverModal.cardName}</p>
-                  <p className="text-[11px] text-[var(--po-text-dim)] truncate">{discoverModal.setName}</p>
-                  {discoverModal.priceUsd > 0 && (
-                    <p className="text-[11px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                      {fmtMoney(discoverModal.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <button
-                  onClick={() => {
-                    const requests = encodeURIComponent(JSON.stringify([{
-                      printingId: discoverModal.printingId,
-                      cardName: discoverModal.cardName,
-                      setName: discoverModal.setName,
-                      setId: discoverModal.setId,
-                      imageUrl: discoverModal.imageUrl,
-                      priceUsd: discoverModal.priceUsd,
-                    }]));
-                    setDiscoverModal(null);
-                    router.push(`/trade/new?with=${discoverModal.friendHandle}&requests=${requests}`);
-                  }}
-                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl font-black text-sm po-glow-green"
-                  style={{ background: "var(--po-green)", color: "#050507" }}
-                >
-                  <span className="flex items-center gap-2">
-                    <ArrowLeftRight size={14} />
-                    Propose Trade · @{discoverModal.friendHandle}
-                  </span>
-                </button>
-                <Link
-                  href={`/friend/${discoverModal.friendHandle}/${discoverModal.setId}?from=discover`}
-                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
-                  onClick={() => setDiscoverModal(null)}
-                >
-                  <span>View @{discoverModal.friendHandle}{"'"}s Collection</span>
-                  <ChevronRight size={16} className="text-[var(--po-text-faint)]" />
-                </Link>
-                <Link
-                  href={`/messages/${discoverModal.friendHandle}?card=${encodeURIComponent(JSON.stringify({ cardName: discoverModal.cardName, setName: discoverModal.setName, imageUrl: discoverModal.imageUrl, priceUsd: discoverModal.priceUsd }))}`}
-                  className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] text-sm font-bold text-[var(--po-text)] hover:border-[var(--po-green)] transition-colors"
-                  onClick={() => setDiscoverModal(null)}
-                >
-                  <span className="flex items-center gap-2">
-                    <MessageCircle size={14} />
-                    Message · @{discoverModal.friendHandle}
-                  </span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Confirm modal (Hide / Remove) */}
         {confirmAction && (
