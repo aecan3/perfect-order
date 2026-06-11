@@ -53,22 +53,46 @@ html, body {
    (90ms), release relaxes slower (160ms). :active is browser-managed:
    it does not engage once a touch becomes a scroll and cancels when the
    finger moves, so cells in scrolling grids don't flash while panning.
+
+   Dark theme: press states go LIGHTER, not darker. The highlight is a
+   ::after wash rather than box-shadow/filter because the card bubbles,
+   binder cells and home master cards set box-shadow INLINE (completion
+   glows, selection rings) — an :active box-shadow from this class would
+   lose to those inline styles and never show. The class sets
+   position: relative as the ::after containing block; elements with
+   their own inline position (absolute chips, fixed toasts) override it
+   and remain valid containing blocks. border-radius: inherit keeps the
+   wash inside rounded corners on surfaces without overflow: hidden.
+
    Colour/opacity transitions are listed too so elements that also use
    Tailwind's transition-colors keep their hover fades. */
 .ms-pressable {
   -webkit-tap-highlight-color: transparent;
   transform-origin: center;
+  position: relative;
   transition:
     transform 160ms ease,
-    filter 160ms ease,
     color 150ms ease,
     background-color 150ms ease,
     border-color 150ms ease,
     opacity 150ms ease;
 }
+.ms-pressable::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
 .ms-pressable:active {
-  transform: scale(0.97);
-  filter: brightness(0.92);
+  transform: scale(0.96);
+  transition-duration: 90ms;
+}
+.ms-pressable:active::after {
+  opacity: 1;
   transition-duration: 90ms;
 }
 
