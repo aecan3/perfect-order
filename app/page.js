@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -8,9 +8,15 @@ import {
   MoreHorizontal, ChevronDown, ChevronRight,
   RefreshCw, Clock, MessageCircle, GripVertical,
 } from "lucide-react";
-import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { SortableSetCard } from "@/components/home/SortableSetCard";
+import { SetCardTile } from "@/components/home/SetCardTile";
+
+// dnd-kit is code-split behind this lazy import: the chunk only downloads
+// when the user enters reorder mode. While it loads, the Suspense fallback
+// renders the same tiles statically (identical DOM via SetCardTile) so
+// there is no blank list and no layout shift — drag just isn't armed yet.
+const ReorderSetList = lazy(() =>
+  import("@/components/home/ReorderSetList").then((m) => ({ default: m.ReorderSetList }))
+);
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
@@ -273,11 +279,6 @@ export default function HomePage() {
   };
 
   // ── Drag-to-reorder ───────────────────────────────────────────────────────
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor)
-  );
-
   const enterReorderMode = () => {
     preReorderRef.current = orderedSets;
     setIsReordering(true);
@@ -298,16 +299,6 @@ export default function HomePage() {
       .from("user_set_preferences")
       .upsert(rows, { onConflict: "user_id,set_id" });
     setIsReordering(false);
-  };
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setOrderedSets((prev) => {
-      const oldIndex = prev.findIndex((s) => s.id === active.id);
-      const newIndex = prev.findIndex((s) => s.id === over.id);
-      return arrayMove(prev, oldIndex, newIndex);
-    });
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -794,15 +785,17 @@ export default function HomePage() {
                   Done
                 </button>
               </div>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={orderedSets.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <Suspense
+                fallback={
                   <div className="space-y-3">
                     {orderedSets.map((set) => (
-                      <SortableSetCard key={set.id} set={set} />
+                      <SetCardTile key={set.id} set={set} />
                     ))}
                   </div>
-                </SortableContext>
-              </DndContext>
+                }
+              >
+                <ReorderSetList sets={orderedSets} onReorder={setOrderedSets} />
+              </Suspense>
             </>
           ) : (
             <>

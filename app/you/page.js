@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Settings, LogOut, ChevronRight, Share2, QrCode } from "lucide-react";
-import QRCode from "react-qr-code";
+import { LazyQRCode } from "@/components/LazyQRCode";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
 import { ProfileView } from "@/components/profile/ProfileView";
@@ -494,7 +494,7 @@ export default function YouPage() {
             </p>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 12, padding: 16 }}>
-                <QRCode value={binderUrl} size={200} fgColor="#000000" bgColor="#ffffff" />
+                <LazyQRCode value={binderUrl} size={200} fgColor="#000000" bgColor="#ffffff" />
               </div>
             </div>
             <p style={{

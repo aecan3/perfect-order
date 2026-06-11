@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import QRCode from "react-qr-code";
+import { LazyQRCode } from "@/components/LazyQRCode";
 import { QrCode, Share2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { missingCardsForSet } from "@/lib/queries/wantList";
@@ -369,7 +369,7 @@ function NewWantListContent() {
               <div style={{ width: 40, height: 4, background: "rgba(244,244,246,0.18)", borderRadius: 2, margin: "0 auto 20px" }} />
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
                 <div style={{ background: "#fff", padding: 12, borderRadius: 12 }}>
-                  <QRCode value={wantUrl} size={180} fgColor="#000000" bgColor="#ffffff" />
+                  <LazyQRCode value={wantUrl} size={180} fgColor="#000000" bgColor="#ffffff" />
                 </div>
                 <p style={{ fontSize: 12, color: "var(--po-text-dim)", textAlign: "center", wordBreak: "break-all" }}>
                   {wantUrl}
