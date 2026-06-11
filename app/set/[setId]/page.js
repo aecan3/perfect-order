@@ -21,6 +21,10 @@ import { stripEditionPrefix, getEditionOptions, getAnonEditionMode, setAnonEditi
 import { useCollectionState } from "@/lib/hooks/useCollectionState";
 import { AnonymousCollectionBlocker, captureCollectionMigrationIntent } from "@/components/AnonymousCollectionBlocker";
 import { EditionExplainerSheet } from "@/components/EditionExplainerSheet";
+import { CardArt } from "@/components/set/CardArt";
+import { CardCell } from "@/components/set/CardCell";
+import { VirtualCardGrid } from "@/components/set/VirtualCardGrid";
+import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -412,37 +416,6 @@ function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onTog
 }
 
 
-function CardArt({ src, name, ownershipState, themePrimary }) {
-  const [failed, setFailed] = useState(false);
-  const imgClass =
-    ownershipState === "complete" ? "" :
-    ownershipState === "partial"  ? "opacity-60" :
-    "grayscale opacity-55";
-  if (failed || !src) {
-    return (
-      <div
-        className={`w-full h-full flex flex-col items-center justify-center px-2 text-center ${imgClass}`}
-        style={{ background: `linear-gradient(135deg, ${themePrimary}33, #050507)` }}
-      >
-        <div className="text-[11px] font-bold leading-tight line-clamp-3" style={{ color: themePrimary }}>
-          {name || "—"}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <img
-      src={src}
-      alt={name}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className={`w-full h-full object-cover transition-all duration-300 ${imgClass}`}
-    />
-  );
-}
-
 function AchievementToast({ toast, onDismiss }) {
   const [visible, setVisible] = useState(false);
   const isGm = toast.type === "grand_master";
@@ -542,6 +515,35 @@ export default function SetTrackerPage() {
     });
     return map;
   }, [printingsByCard]);
+
+  // Active prints per card with stable array identities — CardCell receives
+  // these arrays as props, so they must only change identity when the
+  // underlying data or edition mode actually changes, or memoised cells
+  // would re-render on every page state change.
+  const activePrintsByCard = useMemo(() => {
+    if (editionMode === "any" || editionMode === "all") return printingsByCard;
+    const map = {};
+    for (const [num, prints] of Object.entries(printingsByCard)) {
+      map[num] = prints.filter((p) => p.printing_type.startsWith(editionMode));
+    }
+    return map;
+  }, [printingsByCard, editionMode]);
+  const getActivePrints = (cardNumber) => activePrintsByCard[cardNumber] || [];
+
+  // Stable callback identities for CardCell (same trick as ownedPrintingsRef:
+  // the ref is reassigned every render in the body below, the memoised
+  // wrappers never change, so memoised cells don't re-render when handler
+  // closures are rebuilt).
+  const cellHandlersRef = useRef({});
+  const cellHandlers = useMemo(() => ({
+    onTapCard: (c) => cellHandlersRef.current.onTapCard(c),
+    onOpenPicker: (c) => cellHandlersRef.current.onOpenPicker(c),
+    onToggleFavourite: (c, printingId, isFav) => cellHandlersRef.current.onToggleFavourite(c, printingId, isFav),
+    onDupChange: (printingId, delta) => cellHandlersRef.current.onDupChange(printingId, delta),
+    onFlagToggle: (printingId) => cellHandlersRef.current.onFlagToggle(printingId),
+  }), []);
+
+  useScrollRestoration({ key: `/set/${setId}:${view}`, ready: authChecked && !!setRow });
 
   const anonCollection = useCollectionState({ isAnonymous, setId, printingsMap });
 
@@ -964,12 +966,8 @@ export default function SetTrackerPage() {
   const totalSlots = cards.reduce((s, c) => s + (cardSlotKeys[c.number]?.size || 0), 0);
   const ownedSlotCount = cards.reduce((s, c) => s + (cardOwnedSlotKeys[c.number]?.size || 0), 0);
 
-  // Edition mode helpers — filter/count based on current edition_mode
-  const getActivePrints = (cardNumber) => {
-    const prints = printingsByCard[cardNumber] || [];
-    if (editionMode === "any" || editionMode === "all") return prints;
-    return prints.filter((p) => p.printing_type.startsWith(editionMode));
-  };
+  // Edition mode helpers — getActivePrints lives above with the hooks (it
+  // reads the activePrintsByCard memo so CardCell gets stable array props).
   const modeOwnedForCard = (cardNumber) => {
     if (editionMode === "any") return cardOwnedSlotKeys[cardNumber]?.size || 0;
     return getActivePrints(cardNumber).filter((p) => ownedPrintings[p.id]?.checked).length;
@@ -1049,6 +1047,68 @@ export default function SetTrackerPage() {
         .filter((s) => s.displayCards.length > 0)
     : sections.map((s) => ({ ...s, displayCards: s.cards }));
 
+  // Cell-facing handlers: reassigned every render so they close over current
+  // state; CardCell receives the stable wrappers from cellHandlers (memoised
+  // above). The anonymous/authed branching lives here, never in the cell.
+  cellHandlersRef.current = {
+    onTapCard: (card) => {
+      const prints = getActivePrints(card.number);
+      if (isAnonymous) {
+        if (prints.length === 1) {
+          if (ownedPrintings[prints[0].id]?.checked) {
+            anonCollection.updateQuantity(prints[0].id, 0);
+          } else {
+            anonCollection.addPrinting(prints[0].id);
+          }
+        } else {
+          setPickingCard(card);
+        }
+        return;
+      }
+      if (prints.length === 1) togglePrinting(prints[0]);
+      else setPickingCard(card);
+    },
+    onOpenPicker: (card) => setPickingCard(card),
+    onToggleFavourite: async (card, favPrintId, isFav) => {
+      if (!user) { setBlockerTrigger("auth_required"); return; }
+      if (isFav) {
+        setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
+        supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
+      } else if (favourites.size >= 6) {
+        setFavSheet({ targetPrintingId: favPrintId, cardName: card.name });
+      } else {
+        setFavourites((prev) => new Set([...prev, favPrintId]));
+        supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(async () => {
+          // Enqueue for pool refresh if not already in marketplace_pool
+          const { data: poolMatch } = await supabase
+            .from("marketplace_pool")
+            .select("printing_id")
+            .eq("printing_id", favPrintId)
+            .maybeSingle();
+          if (!poolMatch) {
+            await supabase.from("pool_requests").upsert(
+              { printing_id: favPrintId, user_id: user.id },
+              { onConflict: "printing_id,user_id", ignoreDuplicates: true }
+            );
+          }
+        });
+        clearTimeout(favToastTimerRef.current);
+        setFavToast(true);
+        favToastTimerRef.current = setTimeout(() => setFavToast(false), 2000);
+      }
+    },
+    onDupChange: (printingId, delta) => {
+      if (isAnonymous) {
+        const cur = ownedPrintings[printingId];
+        const currentQty = cur?.checked ? (cur.duplicate_count || 0) + 1 : 0;
+        anonCollection.updateQuantity(printingId, Math.max(0, currentQty + delta));
+      } else {
+        handleDupChange(printingId, delta);
+      }
+    },
+    onFlagToggle: (printingId) => handleFlagToggle(printingId),
+  };
+
   const renderCard = (card) => {
     const prints = getActivePrints(card.number);
     const checkedCount = modeOwnedForCard(card.number);
@@ -1060,251 +1120,36 @@ export default function SetTrackerPage() {
     const minPriceUsd = prints.reduce((m, p) => Math.min(m, p.price_usd > 0 ? p.price_usd : Infinity), Infinity);
     const cardPrice = Number.isFinite(minPriceUsd) ? valueOf(minPriceUsd, currency) : null;
     const bucket = rarityBucket(card.rarity, card.subtypes, card.number, setRow?.total, card.supertype);
-    const tint = RARITY_TINT[bucket];
-    const photoEntry = prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url);
-    const photo = photoEntry?.photo_url;
-    const photoImgClass =
-      completionState === "complete" ? "" :
-      completionState === "partial"  ? "opacity-60" :
-      "grayscale opacity-30";
-    const isJustCollected = view === "missing" && justCollected.has(card.number);
+    const firstEntry = prints.length > 0 ? ownedPrintings[prints[0].id] : undefined;
 
     return (
-      <div key={card.id} className="flex flex-col">
-        <div
-          onClick={() => {
-            if (isAnonymous) {
-              if (prints.length === 1) {
-                if (ownedPrintings[prints[0].id]?.checked) {
-                  anonCollection.updateQuantity(prints[0].id, 0);
-                } else {
-                  anonCollection.addPrinting(prints[0].id);
-                }
-              } else {
-                setPickingCard(card);
-              }
-              return;
-            }
-            if (prints.length === 1) togglePrinting(prints[0]);
-            else setPickingCard(card);
-          }}
-          className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
-          style={{
-            boxShadow: isJustCollected
-              ? "0 0 0 2px #22c55e, 0 0 18px rgba(34,197,94,0.5)"
-              : completionState === "complete"
-              ? `0 4px 20px rgba(0,0,0,0.5), 0 0 16px ${tint ? tint.replace(/[\d.]+\)$/, "0.4)") : "rgba(255,255,255,0.12)"}`
-              : "0 2px 10px rgba(0,0,0,0.4)",
-          }}
-        >
-          {photo ? (
-            <img
-              src={photo}
-              alt={card.name}
-              loading="lazy"
-              decoding="async"
-              className={`w-full h-full object-cover transition-all duration-300 ${photoImgClass}`}
-            />
-          ) : (
-            <CardArt src={card.image_small || card.image_large} name={card.name} ownershipState={completionState} themePrimary={themePrimary} />
-          )}
-          {completionState !== "complete" && tint && (
-            <div className="absolute inset-0 pointer-events-none" style={{ background: tint }} />
-          )}
-          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-            {String(card.number).padStart(3, "0")}
-          </div>
-          {completionState === "complete" && (
-            <div
-              className="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center"
-              style={{ background: themePrimary, color: "#000", boxShadow: `0 0 8px ${themePrimary}80` }}
-            >
-              <Check size={16} strokeWidth={3} />
-            </div>
-          )}
-          {completionState === "partial" && (
-            <div
-              className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
-              style={{ background: `${themePrimary}30`, color: themePrimary, border: `1px solid ${themePrimary}80` }}
-            >
-              {checkedCount}/{modeTotal}
-            </div>
-          )}
-          {cardPrice !== null && (
-            <div
-              className="absolute bottom-1 right-1 bg-black/70 text-[9px] px-1 py-0.5 rounded font-mono leading-none"
-              style={{ color: themePrimary }}
-            >
-              {fmtMoney(cardPrice, currency)}
-            </div>
-          )}
-          {prints.length === 1 && ownedPrintings[prints[0].id]?.trade_flagged && (
-            <div
-              className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded leading-none"
-              style={{ background: "rgba(200,255,74,0.18)", color: "#c8ff4a", border: "1px solid rgba(200,255,74,0.45)" }}
-            >
-              TRADE
-            </div>
-          )}
-          {completionState !== "complete" && (
-            <FindOnline
-              cardName={card.name}
-              collectorNumber={card.number && setRow.total
-                ? `${String(card.number).padStart(3, "0")}/${String(setRow.total).padStart(3, "0")}`
-                : card.number ? String(card.number).padStart(3, "0") : ""}
-              rarity={card.rarity}
-              userCountry={userCountry}
-            />
-          )}
-          {completionState !== "complete" && prints.length > 0 && (() => {
-            const favPrintId = prints[0].id;
-            const isFav = favourites.has(favPrintId);
-            return (
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  if (!user) { setBlockerTrigger("auth_required"); return; }
-                  if (isFav) {
-                    setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
-                    supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
-                  } else if (favourites.size >= 6) {
-                    setFavSheet({ targetPrintingId: favPrintId, cardName: card.name });
-                  } else {
-                    setFavourites((prev) => new Set([...prev, favPrintId]));
-                    supabase.from("favourites").insert({ user_id: user.id, printing_id: favPrintId }).then(async () => {
-                      // Enqueue for pool refresh if not already in marketplace_pool
-                      const { data: poolMatch } = await supabase
-                        .from("marketplace_pool")
-                        .select("printing_id")
-                        .eq("printing_id", favPrintId)
-                        .maybeSingle();
-                      if (!poolMatch) {
-                        await supabase.from("pool_requests").upsert(
-                          { printing_id: favPrintId, user_id: user.id },
-                          { onConflict: "printing_id,user_id", ignoreDuplicates: true }
-                        );
-                      }
-                    });
-                    clearTimeout(favToastTimerRef.current);
-                    setFavToast(true);
-                    favToastTimerRef.current = setTimeout(() => setFavToast(false), 2000);
-                  }
-                }}
-                style={{
-                  position: "absolute",
-                  top: 6,
-                  right: 6,
-                  zIndex: 10,
-                  background: "rgba(7,7,10,0.75)",
-                  backdropFilter: "blur(4px)",
-                  border: "none",
-                  borderRadius: "50%",
-                  width: 26,
-                  height: 26,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  fontSize: 15,
-                  color: isFav ? "#FFB830" : "rgba(244,244,246,0.35)",
-                  lineHeight: 1,
-                }}
-              >
-                {isFav ? "★" : "☆"}
-              </button>
-            );
-          })()}
-        </div>
-        {prints.length === 1 ? (
-          checkedCount > 0 && (
-            <div
-              className="flex items-center justify-center gap-1 mt-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {(ownedPrintings[prints[0].id]?.duplicate_count || 0) > 0 && (
-                <>
-                  <button
-                    onClick={() => {
-                      if (isAnonymous) {
-                        const currentQty = ownedPrintings[prints[0].id]?.checked
-                          ? (ownedPrintings[prints[0].id]?.duplicate_count || 0) + 1
-                          : 0;
-                        anonCollection.updateQuantity(prints[0].id, Math.max(0, currentQty - 1));
-                      } else {
-                        handleDupChange(prints[0].id, -1);
-                      }
-                    }}
-                    className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
-                  >
-                    −
-                  </button>
-                  <span
-                    className="text-[10px] font-bold tabular-nums w-4 text-center"
-                    style={{ color: themePrimary }}
-                  >
-                    {ownedPrintings[prints[0].id]?.duplicate_count || 0}
-                  </span>
-                </>
-              )}
-              <button
-                onClick={() => {
-                  if (isAnonymous) {
-                    const currentQty = ownedPrintings[prints[0].id]?.checked
-                      ? (ownedPrintings[prints[0].id]?.duplicate_count || 0) + 1
-                      : 0;
-                    anonCollection.updateQuantity(prints[0].id, currentQty + 1);
-                  } else {
-                    handleDupChange(prints[0].id, 1);
-                  }
-                }}
-                className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
-              >
-                +
-              </button>
-              {!isAnonymous && (() => {
-                const isFlagged = !!ownedPrintings[prints[0].id]?.trade_flagged;
-                return (
-                  <button
-                    onClick={() => handleFlagToggle(prints[0].id)}
-                    title={isFlagged ? "Remove from trade binder" : "Add to trade binder"}
-                    className="w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center leading-none"
-                    style={{
-                      background: isFlagged ? "rgba(200,255,74,0.15)" : "var(--po-bg-soft)",
-                      border: `1px solid ${isFlagged ? "#c8ff4a" : "var(--po-border)"}`,
-                      color: isFlagged ? "#c8ff4a" : "var(--po-text-dim)",
-                    }}
-                  >
-                    ⇄
-                  </button>
-                );
-              })()}
-            </div>
-          )
-        ) : (
-          <div
-            style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 4, cursor: "pointer" }}
-            onClick={(e) => { e.stopPropagation(); setPickingCard(card); }}
-          >
-            {prints.map((p) => {
-              const isOwnedDot = !!ownedPrintings[p.id]?.checked;
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: isOwnedDot ? themePrimary : "transparent",
-                    border: `1.5px solid ${isOwnedDot ? themePrimary : "var(--po-border)"}`,
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <CardCell
+        key={card.id}
+        card={card}
+        prints={prints}
+        checkedCount={checkedCount}
+        modeTotal={modeTotal}
+        completionState={completionState}
+        priceLabel={cardPrice !== null ? fmtMoney(cardPrice, currency) : null}
+        photoUrl={prints.map((p) => ownedPrintings[p.id]).find((e) => e?.photo_url)?.photo_url || null}
+        tint={RARITY_TINT[bucket]}
+        dotPattern={prints.map((p) => (ownedPrintings[p.id]?.checked ? "1" : "0")).join("")}
+        dupCount={firstEntry?.duplicate_count || 0}
+        tradeFlagged={!!firstEntry?.trade_flagged}
+        isFav={prints.length > 0 ? favourites.has(prints[0].id) : false}
+        isJustCollected={view === "missing" && justCollected.has(card.number)}
+        collectorNumber={card.number && setRow.total
+          ? `${String(card.number).padStart(3, "0")}/${String(setRow.total).padStart(3, "0")}`
+          : card.number ? String(card.number).padStart(3, "0") : ""}
+        themePrimary={themePrimary}
+        userCountry={userCountry}
+        isAnonymous={isAnonymous}
+        onTapCard={cellHandlers.onTapCard}
+        onOpenPicker={cellHandlers.onOpenPicker}
+        onToggleFavourite={cellHandlers.onToggleFavourite}
+        onDupChange={cellHandlers.onDupChange}
+        onFlagToggle={cellHandlers.onFlagToggle}
+      />
     );
   };
 
@@ -1652,9 +1497,7 @@ export default function SetTrackerPage() {
             )}
           </div>
         ) : view === "binder" ? (
-          <div className="grid grid-cols-2 gap-3">
-            {viewCards.map(renderCard)}
-          </div>
+          <VirtualCardGrid items={viewCards} renderItem={renderCard} />
         ) : (
           // Missing view
           viewCards.length > 0 ? (
@@ -1689,7 +1532,7 @@ export default function SetTrackerPage() {
                   + Create Want List
                 </Link>
               </div>
-              <div className="grid grid-cols-2 gap-3">{viewCards.map(renderCard)}</div>
+              <VirtualCardGrid items={viewCards} renderItem={renderCard} />
             </div>
           ) : (
             <div className="text-center text-[var(--po-text-dim)] text-sm py-12">All cards collected — nothing missing!</div>

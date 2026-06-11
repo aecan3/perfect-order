@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
 
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
@@ -145,6 +146,8 @@ export default function SetBrowserPage() {
   const [wizardExistingCount, setWizardExistingCount] = useState(0);
   // delete-confirmation sub-modal
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+
+  useScrollRestoration({ key: "/sets", ready: !loading });
 
   // Scroll lock while wizard is open
   useEffect(() => {
