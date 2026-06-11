@@ -271,7 +271,7 @@ export default function SetBrowserPage() {
     // proxy.js, so prefetch never lands on an auth redirect.
     router.prefetch(`/set/${set.id}`);
 
-    // Cases 1, 3, 4: set not in user_sets â€" check for orphaned collection_entries
+    // Cases 1, 3, 4: set not in user_sets - check for orphaned collection_entries
     const { count } = await supabase
       .from("collection_entries")
       .select("*", { count: "exact", head: true })
