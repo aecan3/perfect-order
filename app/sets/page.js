@@ -265,6 +265,12 @@ export default function SetBrowserPage() {
       return;
     }
 
+    // Every wizard path ends at /set/[id] (fresh/resume push immediately,
+    // full/partial push from the final step) — warm the route's RSC payload
+    // while the user works through the steps. /set/ is a public prefix in
+    // proxy.js, so prefetch never lands on an auth redirect.
+    router.prefetch(`/set/${set.id}`);
+
     // Cases 1, 3, 4: set not in user_sets â€" check for orphaned collection_entries
     const { count } = await supabase
       .from("collection_entries")
