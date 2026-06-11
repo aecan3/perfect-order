@@ -1,6 +1,7 @@
 import './globals.css';
 import SwRegister from './sw-register';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { RefreshPricesProvider } from './RefreshPricesProvider';
 
 export const metadata = {
@@ -55,6 +56,7 @@ export default function RootLayout({ children }) {
           {children}
         </RefreshPricesProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
