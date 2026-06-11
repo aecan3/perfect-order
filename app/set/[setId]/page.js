@@ -1545,7 +1545,10 @@ export default function SetTrackerPage() {
                   sectionTotal={sectionTotal}
                   onToggle={() => toggleSection(section.id)}
                 >
-                  {section.displayCards.map(renderCard)}
+                  {/* Only build cell elements for open sections — collapsed
+                      sections previously created (but never mounted) every
+                      cell's element tree on every render. */}
+                  {isOpen ? section.displayCards.map(renderCard) : null}
                 </RaritySection>
               );
             })}
