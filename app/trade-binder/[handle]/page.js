@@ -85,7 +85,14 @@ export default function TradeBinderPage() {
   const toastTimerRef = useRef(null);
   const pendingRemovalsRef = useRef([]);
   pendingRemovalsRef.current = pendingRemovals;
-  const currency = "AUD";
+  const [currency, setCurrency] = useState("AUD");
+
+  // Respect the global currency preference (no selector on this page).
+  // Anonymous viewers (public proxy prefix) simply get the AUD default.
+  useEffect(() => {
+    const c = localStorage.getItem("po:currency");
+    if (c && RATES[c]) setCurrency(c);
+  }, []);
 
   // ── Faceted options ─────────────────────────────────────────────────────────
   // Each section ignores ITS OWN filter when computing which options to show,
