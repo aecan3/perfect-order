@@ -19,6 +19,8 @@ export function FriendDupeTile({ dupe, onTap }) {
         <img
           src={dupe.imageUrl}
           alt={dupe.cardName}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
@@ -46,6 +48,8 @@ export function FriendDupeTile({ dupe, onTap }) {
           <img
             src={dupe.setLogoUrl}
             alt={dupe.setName || "Set"}
+            loading="lazy"
+            decoding="async"
             style={{ height: "18px", width: "auto", maxWidth: "48px", display: "block" }}
           />
         ) : (

@@ -24,6 +24,8 @@ export function MarketplaceTile({ listing, onTap }) {
         <img
           src={cardArt}
           alt={listing.card_name || listing.title || "Marketplace listing"}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
@@ -49,6 +51,8 @@ export function MarketplaceTile({ listing, onTap }) {
           <img
             src={listing.set_logo_url}
             alt={listing.set_name || "Set"}
+            loading="lazy"
+            decoding="async"
             style={{ height: "18px", width: "auto", maxWidth: "48px", display: "block" }}
           />
         ) : (

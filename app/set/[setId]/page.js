@@ -434,6 +434,8 @@ function CardArt({ src, name, ownershipState, themePrimary }) {
     <img
       src={src}
       alt={name}
+      loading="lazy"
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       className={`w-full h-full object-cover transition-all duration-300 ${imgClass}`}
@@ -1099,10 +1101,12 @@ export default function SetTrackerPage() {
             <img
               src={photo}
               alt={card.name}
+              loading="lazy"
+              decoding="async"
               className={`w-full h-full object-cover transition-all duration-300 ${photoImgClass}`}
             />
           ) : (
-            <CardArt src={card.image_large} name={card.name} ownershipState={completionState} themePrimary={themePrimary} />
+            <CardArt src={card.image_small || card.image_large} name={card.name} ownershipState={completionState} themePrimary={themePrimary} />
           )}
           {completionState !== "complete" && tint && (
             <div className="absolute inset-0 pointer-events-none" style={{ background: tint }} />

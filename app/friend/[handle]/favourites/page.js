@@ -172,6 +172,8 @@ export default function FriendFavouritesPage() {
                       <img
                         src={card.image_large}
                         alt={card.name}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover"
                       />
                     ) : (

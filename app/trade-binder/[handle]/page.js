@@ -598,6 +598,8 @@ export default function TradeBinderPage() {
                   <img
                     src={card.image_url}
                     alt={card.card_name}
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   />
                 ) : (
@@ -632,6 +634,8 @@ export default function TradeBinderPage() {
                     <img
                       src={card.set_logo_url}
                       alt={card.set_name}
+                      loading="lazy"
+                      decoding="async"
                       style={{ height: 22, width: "auto", objectFit: "contain", flexShrink: 0, opacity: 0.8 }}
                     />
                   )}
