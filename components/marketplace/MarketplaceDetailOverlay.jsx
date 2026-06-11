@@ -120,6 +120,7 @@ export function MarketplaceDetailOverlay({ listing, onClose }) {
           href={listing.listing_url}
           target="_blank"
           rel="noopener noreferrer sponsored"
+          className="ms-pressable"
           style={{
             display: "block", width: "100%", padding: "12px 0",
             textAlign: "center", fontSize: 14, fontWeight: 700,
@@ -135,6 +136,7 @@ export function MarketplaceDetailOverlay({ listing, onClose }) {
         <button
           type="button"
           onClick={handleClose}
+          className="ms-pressable"
           style={{
             display: "block", width: "100%", marginTop: 12, padding: "12px 0",
             textAlign: "center", fontSize: 14, color: "#a1a1aa",

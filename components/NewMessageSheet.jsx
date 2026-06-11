@@ -99,6 +99,7 @@ export function NewMessageSheet({ open, onClose }) {
           </span>
           <button
             onClick={onClose}
+            className="ms-pressable"
             style={{
               background: "none", border: "none", cursor: "pointer",
               color: "var(--po-text-dim)", padding: 4,
@@ -151,6 +152,7 @@ export function NewMessageSheet({ open, onClose }) {
               <Link
                 href="/discover"
                 onClick={onClose}
+                className="ms-pressable"
                 style={{
                   display: "inline-block",
                   padding: "10px 20px",
@@ -174,6 +176,7 @@ export function NewMessageSheet({ open, onClose }) {
             <button
               key={p.id}
               onClick={() => select(p.handle)}
+              className="ms-pressable"
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 12,
                 padding: "10px 16px", background: "none", border: "none",

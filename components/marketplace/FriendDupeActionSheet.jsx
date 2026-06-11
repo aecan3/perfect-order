@@ -95,6 +95,7 @@ export function FriendDupeActionSheet({ dupe, onClose }) {
           <button
             type="button"
             onClick={handleTrade}
+            className="ms-pressable"
             style={{
               width: "100%", padding: "14px 16px",
               background: "var(--po-green)", borderRadius: 10,
@@ -108,6 +109,7 @@ export function FriendDupeActionSheet({ dupe, onClose }) {
           <button
             type="button"
             onClick={handleMessage}
+            className="ms-pressable"
             style={{
               width: "100%", padding: "14px 16px",
               background: "none", borderRadius: 10,
@@ -122,6 +124,7 @@ export function FriendDupeActionSheet({ dupe, onClose }) {
           <button
             type="button"
             onClick={handleViewProfile}
+            className="ms-pressable"
             style={{
               width: "100%", padding: "14px 16px",
               background: "none", borderRadius: 10,
@@ -138,6 +141,7 @@ export function FriendDupeActionSheet({ dupe, onClose }) {
         <button
           type="button"
           onClick={handleClose}
+          className="ms-pressable"
           style={{
             display: "block", width: "100%", marginTop: 12, padding: "12px 0",
             textAlign: "center", fontSize: 14, color: "#a1a1aa",
