@@ -26,7 +26,7 @@ export function MSHeader({ unreadCount = 0, scrolled = false, anonymous = false 
           <Link
             href="/favourites"
             aria-label="Favourites"
-            className="ms-icon-btn"
+            className="ms-icon-btn ms-pressable"
             style={{
               width: 40,
               height: 40,
@@ -47,7 +47,7 @@ export function MSHeader({ unreadCount = 0, scrolled = false, anonymous = false 
           <Link
             href="/notifications"
             aria-label="Notifications"
-            className="ms-icon-btn"
+            className="ms-icon-btn ms-pressable"
             style={{
               width: 40,
               height: 40,

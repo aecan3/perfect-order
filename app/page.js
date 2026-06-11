@@ -448,7 +448,7 @@ export default function HomePage() {
         >
           <button
             onClick={() => setMenuState((p) => ({ ...p, [set.id]: !p[set.id] }))}
-            className="w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80"
+            className="ms-pressable w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/80"
             aria-label="More options"
           >
             <MoreHorizontal size={14} />
@@ -457,13 +457,13 @@ export default function HomePage() {
             <div className="absolute right-0 top-full mt-1 bg-[var(--po-bg-soft)] border border-[var(--po-border)] rounded-lg shadow-xl overflow-hidden min-w-[130px]">
               <button
                 onClick={() => { setMenuState({}); setConfirmAction({ type: "hide", setId: set.id, setName: set.name }); }}
-                className="w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-[var(--po-border)] flex items-center gap-2"
+                className="ms-pressable w-full px-4 py-2.5 text-left text-sm text-amber-400 hover:bg-[var(--po-border)] flex items-center gap-2"
               >
                 <EyeOff size={14} /> Hide
               </button>
               <button
                 onClick={() => { setMenuState({}); setConfirmAction({ type: "remove", setId: set.id, setName: set.name }); }}
-                className="w-full px-4 py-2.5 text-left text-sm text-rose-400 hover:bg-[var(--po-border)] flex items-center gap-2"
+                className="ms-pressable w-full px-4 py-2.5 text-left text-sm text-rose-400 hover:bg-[var(--po-border)] flex items-center gap-2"
               >
                 <Trash2 size={14} /> Remove
               </button>
@@ -484,7 +484,7 @@ export default function HomePage() {
         >
           <Link
             href={`/set/${set.id}`}
-            className="block"
+            className="ms-pressable block"
             onClick={(e) => {
               if (swipeState[set.id]) {
                 e.preventDefault();
@@ -567,14 +567,14 @@ export default function HomePage() {
           <div className="absolute inset-y-0 left-full flex">
             <button
               onClick={() => setConfirmAction({ type: "hide", setId: set.id, setName: set.name })}
-              className="w-20 bg-amber-600 hover:bg-amber-500 flex flex-col items-center justify-center gap-1 text-white"
+              className="ms-pressable w-20 bg-amber-600 hover:bg-amber-500 flex flex-col items-center justify-center gap-1 text-white"
             >
               <EyeOff size={16} />
               <span className="text-[10px] uppercase tracking-widest font-bold">Hide</span>
             </button>
             <button
               onClick={() => setConfirmAction({ type: "remove", setId: set.id, setName: set.name })}
-              className="w-20 bg-rose-700 hover:bg-rose-600 flex flex-col items-center justify-center gap-1 text-white"
+              className="ms-pressable w-20 bg-rose-700 hover:bg-rose-600 flex flex-col items-center justify-center gap-1 text-white"
             >
               <Trash2 size={16} />
               <span className="text-[10px] uppercase tracking-widest font-bold">Remove</span>
@@ -695,7 +695,7 @@ export default function HomePage() {
           )}
           <button
             onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
-            className="relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"
+            className="ms-pressable relative w-full h-full flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"
             style={{
               color: refreshDone ? "var(--po-green)" : refreshing ? "var(--po-text)" : "var(--po-text-dim)",
             }}
@@ -755,7 +755,7 @@ export default function HomePage() {
 
           <Link
             href="/sets"
-            className="block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"
+            className="ms-pressable block w-full bg-[var(--po-bg-soft)] border-2 border-dashed border-[var(--po-border)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] rounded-2xl py-6 text-center font-bold uppercase tracking-widest text-sm text-[var(--po-text-dim)] transition-colors"
           >
             <Plus size={20} className="inline mr-1 -mt-1" />
             Add a set
@@ -770,7 +770,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <button
                   onClick={cancelReorder}
-                  className="text-xs font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+                  className="ms-pressable text-xs font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
                 >
                   Cancel
                 </button>
@@ -779,7 +779,7 @@ export default function HomePage() {
                 </span>
                 <button
                   onClick={saveOrder}
-                  className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                  className="ms-pressable text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
                   style={{ background: "var(--po-green)", color: "#050507" }}
                 >
                   Done
@@ -803,7 +803,7 @@ export default function HomePage() {
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
                     onClick={enterReorderMode}
-                    className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+                    className="ms-pressable flex items-center gap-1.5 text-[11px] font-bold text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
                   >
                     <GripVertical size={13} />
                     Edit Order
@@ -818,7 +818,7 @@ export default function HomePage() {
             <div className="pt-2">
               <button
                 onClick={() => setShowHidden((v) => !v)}
-                className="w-full flex items-center justify-between px-1 py-2 text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
+                className="ms-pressable w-full flex items-center justify-between px-1 py-2 text-[var(--po-text-dim)] hover:text-[var(--po-text)] transition-colors"
               >
                 <span className="text-xs uppercase tracking-widest font-bold">
                   Hidden Sets ({hiddenSets.length})
@@ -859,7 +859,7 @@ export default function HomePage() {
                           </div>
                           <button
                             onClick={() => executeUnhide(set.id)}
-                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] text-xs font-bold uppercase tracking-widest transition-colors"
+                            className="ms-pressable flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--po-border)] text-[var(--po-text-dim)] hover:text-[var(--po-text)] text-xs font-bold uppercase tracking-widest transition-colors"
                           >
                             <Eye size={12} />
                             Unhide
@@ -897,13 +897,13 @@ export default function HomePage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setConfirmAction(null)}
-                  className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
+                  className="ms-pressable flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => confirmAction.type === "hide" ? executeHide(confirmAction.setId) : executeRemove(confirmAction.setId)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${confirmAction.type === "hide" ? "bg-amber-600" : "bg-rose-700"}`}
+                  className={`ms-pressable flex-1 py-2 rounded-lg text-sm font-bold text-white ${confirmAction.type === "hide" ? "bg-amber-600" : "bg-rose-700"}`}
                 >
                   {confirmAction.type === "hide" ? "Hide it" : "Remove it"}
                 </button>

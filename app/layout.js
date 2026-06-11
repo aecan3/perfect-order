@@ -1,5 +1,6 @@
 import './globals.css';
 import SwRegister from './sw-register';
+import { TouchActiveShim } from '@/components/TouchActiveShim';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { RefreshPricesProvider } from './RefreshPricesProvider';
@@ -52,6 +53,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <SwRegister />
+        <TouchActiveShim />
         <RefreshPricesProvider>
           {children}
         </RefreshPricesProvider>

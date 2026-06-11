@@ -92,7 +92,7 @@ export function MSTabBar({ active, unreadMessages = 0 }) {
             key={id}
             href={href}
             aria-current={isActive ? "page" : undefined}
-            className="ms-tab-link"
+            className="ms-tab-link ms-pressable"
             style={{
               flex: 1,
               height: 64,

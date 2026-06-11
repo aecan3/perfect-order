@@ -138,6 +138,7 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
         {/* eBay */}
         <button
           onClick={handleEbayClick}
+          className="ms-pressable"
           style={{
             width: "100%",
             display: "flex",
@@ -219,6 +220,7 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
 
         <button
           onClick={handleClose}
+          className="ms-pressable"
           style={{
             width: "100%",
             marginTop: 12,
@@ -241,7 +243,7 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
 
   return (
     <>
-      <button onClick={handleOpen} style={chipStyle}>
+      <button onClick={handleOpen} className="ms-pressable" style={chipStyle}>
         <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />

@@ -45,7 +45,7 @@ function CardCellInner({
     <div className="flex flex-col">
       <div
         onClick={() => onTapCard(card)}
-        className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none active:scale-[0.98] transition-transform"
+        className="ms-pressable relative aspect-[2.5/3.5] rounded-lg overflow-hidden cursor-pointer select-none"
         style={{
           boxShadow: isJustCollected
             ? "0 0 0 2px #22c55e, 0 0 18px rgba(34,197,94,0.5)"
@@ -118,6 +118,7 @@ function CardCellInner({
               e.preventDefault();
               onToggleFavourite(card, first.id, isFav);
             }}
+            className="ms-pressable"
             style={{
               position: "absolute",
               top: 6,
@@ -152,7 +153,7 @@ function CardCellInner({
               <>
                 <button
                   onClick={() => onDupChange(first.id, -1)}
-                  className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+                  className="ms-pressable w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
                 >
                   −
                 </button>
@@ -166,7 +167,7 @@ function CardCellInner({
             )}
             <button
               onClick={() => onDupChange(first.id, 1)}
-              className="w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
+              className="ms-pressable w-5 h-5 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-xs flex items-center justify-center leading-none hover:text-[var(--po-text)]"
             >
               +
             </button>
@@ -174,7 +175,7 @@ function CardCellInner({
               <button
                 onClick={() => onFlagToggle(first.id)}
                 title={tradeFlagged ? "Remove from trade binder" : "Add to trade binder"}
-                className="w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center leading-none"
+                className="ms-pressable w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center leading-none"
                 style={{
                   background: tradeFlagged ? "rgba(200,255,74,0.15)" : "var(--po-bg-soft)",
                   border: `1px solid ${tradeFlagged ? "#c8ff4a" : "var(--po-border)"}`,
@@ -188,6 +189,7 @@ function CardCellInner({
         )
       ) : (
         <div
+          className="ms-pressable"
           style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 4, cursor: "pointer" }}
           onClick={(e) => { e.stopPropagation(); onOpenPicker(card); }}
         >

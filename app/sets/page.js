@@ -483,7 +483,7 @@ export default function SetBrowserPage() {
             <button
               key={s}
               onClick={() => setSeriesFilter(s)}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+              className={`ms-pressable text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
                 seriesFilter === s
                   ? "bg-[var(--po-green)] text-black font-bold"
                   : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
@@ -538,14 +538,14 @@ export default function SetBrowserPage() {
                 {isAnonymous ? (
                   <Link
                     href={`/set/${set.id}`}
-                    className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)]"
+                    className="ms-pressable px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)]"
                   >
                     View
                   </Link>
                 ) : isActive ? (
                   <Link
                     href={`/set/${set.id}`}
-                    className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold flex items-center gap-1"
+                    className="ms-pressable px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold flex items-center gap-1"
                     style={{ background: primary, color: bg }}
                   >
                     <Check size={12} />
@@ -554,7 +554,7 @@ export default function SetBrowserPage() {
                 ) : (
                   <button
                     onClick={() => handleAddTap(set)}
-                    className="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] flex items-center gap-1"
+                    className="ms-pressable px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-widest font-bold bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] hover:text-[var(--po-green)] flex items-center gap-1"
                   >
                     {isHidden ? (
                       <>
@@ -599,7 +599,7 @@ export default function SetBrowserPage() {
               {wizardStep > 1 && (
                 <button
                   onClick={() => setWizardStep((s) => s - 1)}
-                  className="text-[var(--po-text-dim)] hover:text-[var(--po-text)] flex-shrink-0"
+                  className="ms-pressable text-[var(--po-text-dim)] hover:text-[var(--po-text)] flex-shrink-0"
                 >
                   <ChevronLeft size={20} />
                 </button>
@@ -642,7 +642,7 @@ export default function SetBrowserPage() {
                       <button
                         onClick={resumeExisting}
                         disabled={wizardBusy}
-                        className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                        className="ms-pressable w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
                         style={{ background: wPrimary, color: wBg }}
                       >
                         {wizardBusy ? "Loading..." : "Pick up where you left off"}
@@ -652,7 +652,7 @@ export default function SetBrowserPage() {
                       <button
                         onClick={() => setConfirmDeleteVisible(true)}
                         disabled={wizardBusy}
-                        className="w-full py-3 rounded-xl font-bold text-sm border border-red-800/60 text-red-400 hover:border-red-600 hover:text-red-300 transition-colors disabled:opacity-50"
+                        className="ms-pressable w-full py-3 rounded-xl font-bold text-sm border border-red-800/60 text-red-400 hover:border-red-600 hover:text-red-300 transition-colors disabled:opacity-50"
                       >
                         Start completely fresh
                       </button>
@@ -687,7 +687,7 @@ export default function SetBrowserPage() {
                       key={id}
                       onClick={() => selectMode(id)}
                       disabled={wizardBusy}
-                      className="w-full text-left p-4 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] hover:border-[var(--po-green)] transition-colors disabled:opacity-50"
+                      className="ms-pressable w-full text-left p-4 rounded-xl border border-[var(--po-border)] bg-[var(--po-bg)] hover:border-[var(--po-green)] transition-colors disabled:opacity-50"
                     >
                       <div className="font-bold text-sm text-[var(--po-text)]">{title}</div>
                       <div className="text-[11px] text-[var(--po-text-dim)] mt-0.5">{desc}</div>
@@ -732,7 +732,7 @@ export default function SetBrowserPage() {
                           key={b.id}
                           onClick={() => toggleBucket(b.id)}
                           disabled={wizardBusy}
-                          className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors disabled:opacity-50 ${
+                          className={`ms-pressable w-full flex items-center gap-3 p-3 rounded-xl border transition-colors disabled:opacity-50 ${
                             sel
                               ? "border-[var(--po-green)] bg-[var(--po-bg)]"
                               : "border-[var(--po-border)] bg-[var(--po-bg)]"
@@ -760,14 +760,14 @@ export default function SetBrowserPage() {
                     <button
                       onClick={skipPartial}
                       disabled={wizardBusy}
-                      className="flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
+                      className="ms-pressable flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
                     >
                       Skip â€" start empty
                     </button>
                     <button
                       onClick={confirmPartial}
                       disabled={wizardBusy || !selectedBuckets.size}
-                      className="flex-[2] py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:bg-[var(--po-bg-soft)] disabled:text-[var(--po-text-dim)]"
+                      className="ms-pressable flex-[2] py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:bg-[var(--po-bg-soft)] disabled:text-[var(--po-text-dim)]"
                       style={selectedBuckets.size ? { background: wPrimary, color: wBg } : undefined}
                     >
                       {wizardBusy
@@ -799,7 +799,7 @@ export default function SetBrowserPage() {
                   </div>
                   <button
                     onClick={() => router.push(`/set/${wizardSet.id}`)}
-                    className="w-full py-3 rounded-xl font-bold text-sm"
+                    className="ms-pressable w-full py-3 rounded-xl font-bold text-sm"
                     style={{ background: wPrimary, color: wBg }}
                   >
                     Open set tracker
@@ -839,13 +839,13 @@ export default function SetBrowserPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setConfirmDeleteVisible(false)}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)]"
+                    className="ms-pressable flex-1 py-2.5 rounded-xl text-sm font-bold border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={confirmDeleteExisting}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-700 hover:bg-red-600 text-white"
+                    className="ms-pressable flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-700 hover:bg-red-600 text-white"
                   >
                     Delete &amp; continue
                   </button>

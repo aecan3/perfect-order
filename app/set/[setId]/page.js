@@ -353,7 +353,7 @@ function RaritySection({ section, isOpen, dot, sectionOwned, sectionTotal, onTog
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--po-border)", background: "var(--po-bg-soft)" }}>
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3">
+      <button onClick={onToggle} className="ms-pressable w-full flex items-center gap-3 px-4 py-3">
         <span
           className={`flex-shrink-0 rounded-full${dotPop ? " po-dot-pop" : ""}`}
           style={{ width: 8, height: 8, background: dot, boxShadow: `0 0 10px ${dot}` }}
@@ -1178,6 +1178,7 @@ export default function SetTrackerPage() {
       {favToast && (
         <Link
           href="/favourites"
+          className="ms-pressable"
           style={{
             position: "fixed",
             bottom: 24,
@@ -1250,7 +1251,7 @@ export default function SetTrackerPage() {
           {!isAnonymous && (
             <button
               onClick={() => setResetConfirm(true)}
-              className="text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
+              className="ms-pressable text-[10px] uppercase tracking-widest px-2 py-1.5 rounded-lg border border-[var(--po-border)]"
               style={{ color: "var(--po-text-dim)" }}
             >
               Reset
@@ -1357,7 +1358,7 @@ export default function SetTrackerPage() {
               <button
                 key={v}
                 onClick={() => switchView(v)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] rounded-lg transition-colors"
+                className="ms-pressable flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] rounded-lg transition-colors"
                 style={{
                   background: active ? themePrimary : "transparent",
                   color: active ? "#000" : "var(--po-text-dim)",
@@ -1518,6 +1519,7 @@ export default function SetTrackerPage() {
               <div className="mb-3 px-1">
                 <Link
                   href={`/want-lists/new?sets=${setId}`}
+                  className="ms-pressable"
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     padding: "7px 12px",
@@ -1568,14 +1570,14 @@ export default function SetTrackerPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => { setResetConfirm(false); setResetTyped(""); }}
-                className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
+                className="ms-pressable flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
               >
                 Cancel
               </button>
               <button
                 onClick={reset}
                 disabled={resetTyped.trim().toUpperCase() !== setRow.code.toUpperCase()}
-                className="flex-1 py-2 bg-rose-700 disabled:bg-rose-900 disabled:opacity-50 text-white rounded-lg text-sm font-bold"
+                className="ms-pressable flex-1 py-2 bg-rose-700 disabled:bg-rose-900 disabled:opacity-50 text-white rounded-lg text-sm font-bold"
               >
                 Reset everything
               </button>
@@ -1632,7 +1634,7 @@ export default function SetTrackerPage() {
                         }
                         setFavSheet(null);
                       }}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg border"
+                      className="ms-pressable text-xs font-bold px-3 py-1.5 rounded-lg border"
                       style={{ color: "#f87171", borderColor: "rgba(248,113,113,0.3)" }}
                     >
                       Remove
@@ -1641,7 +1643,7 @@ export default function SetTrackerPage() {
                 );
               })}
             </div>
-            <button onClick={() => setFavSheet(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-4">Cancel</button>
+            <button onClick={() => setFavSheet(null)} className="ms-pressable w-full py-2 text-xs text-[var(--po-text-dim)] mt-4">Cancel</button>
           </div>
         </div>
       )}
@@ -1654,7 +1656,7 @@ export default function SetTrackerPage() {
                 {pickingCard.name}
                 <span className="text-[var(--po-text-dim)] font-normal ml-1">#{String(pickingCard.number).padStart(3, "0")}</span>
               </h2>
-              <button onClick={() => setPickingCard(null)} className="text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
+              <button onClick={() => setPickingCard(null)} className="ms-pressable text-[var(--po-text-dim)] hover:text-[var(--po-green)]">
                 <X size={20} />
               </button>
             </div>
@@ -1693,7 +1695,7 @@ export default function SetTrackerPage() {
                         }
                       }
                     }}
-                    className="flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0 cursor-pointer"
+                    className="ms-pressable flex items-center justify-between py-2.5 border-b border-[var(--po-border)] last:border-0 cursor-pointer"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
@@ -1737,7 +1739,7 @@ export default function SetTrackerPage() {
                               }
                             }}
                             disabled={dc === 0}
-                            className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center disabled:opacity-30"
+                            className="ms-pressable w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center disabled:opacity-30"
                           >
                             −
                           </button>
@@ -1756,7 +1758,7 @@ export default function SetTrackerPage() {
                                 handleDupChange(p.id, 1);
                               }
                             }}
-                            className="w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center"
+                            className="ms-pressable w-7 h-7 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] text-sm flex items-center justify-center"
                           >
                             +
                           </button>
@@ -1764,7 +1766,7 @@ export default function SetTrackerPage() {
                       )}
                       <button
                         onClick={(e) => triggerPhoto(p, e)}
-                        className="w-8 h-8 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center"
+                        className="ms-pressable w-8 h-8 rounded-full bg-[var(--po-bg-soft)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center"
                         aria-label="Add photo"
                       >
                         <Camera size={14} />
@@ -1775,7 +1777,7 @@ export default function SetTrackerPage() {
                           <button
                             onClick={(e) => { e.stopPropagation(); handleFlagToggle(p.id); }}
                             title={isFlagged ? "Remove from trade binder" : "Add to trade binder"}
-                            className="w-8 h-8 rounded-full text-sm font-bold flex items-center justify-center"
+                            className="ms-pressable w-8 h-8 rounded-full text-sm font-bold flex items-center justify-center"
                             style={{
                               background: isFlagged ? "rgba(200,255,74,0.15)" : "var(--po-bg-soft)",
                               border: `1px solid ${isFlagged ? "#c8ff4a" : "var(--po-border)"}`,
@@ -1802,7 +1804,7 @@ export default function SetTrackerPage() {
                 inline
               />
             </div>
-            <button onClick={() => setPickingCard(null)} className="w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
+            <button onClick={() => setPickingCard(null)} className="ms-pressable w-full py-2 text-xs text-[var(--po-text-dim)] mt-1">
               Close
             </button>
           </div>
@@ -1829,7 +1831,7 @@ export default function SetTrackerPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setDupConfirmPrinting(null)}
-                className="flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
+                className="ms-pressable flex-1 py-2 bg-[var(--po-bg)] border border-[var(--po-border)] rounded-lg text-sm font-bold text-[var(--po-text)]"
               >
                 Cancel
               </button>
@@ -1846,7 +1848,7 @@ export default function SetTrackerPage() {
                     .eq("card_number", printing.card_number)
                     .eq("printing_id", printing.id);
                 }}
-                className="flex-1 py-2 bg-rose-700 text-white rounded-lg text-sm font-bold"
+                className="ms-pressable flex-1 py-2 bg-rose-700 text-white rounded-lg text-sm font-bold"
               >
                 Remove
               </button>

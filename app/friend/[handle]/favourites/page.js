@@ -165,7 +165,7 @@ export default function FriendFavouritesPage() {
                 <div
                   key={printing.id}
                   onClick={() => setPickingItem(printing)}
-                  className="flex flex-col cursor-pointer select-none active:scale-[0.98] transition-transform"
+                  className="ms-pressable flex flex-col cursor-pointer select-none"
                 >
                   <div className="relative aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-md">
                     {card.image_large ? (

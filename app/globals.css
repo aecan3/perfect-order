@@ -48,6 +48,30 @@ html, body {
   outline-offset: 2px;
 }
 
+/* ── Pressed-state feedback (shared) ────────────────────────── */
+/* Single press treatment for every tappable surface. Press-in is fast
+   (90ms), release relaxes slower (160ms). :active is browser-managed:
+   it does not engage once a touch becomes a scroll and cancels when the
+   finger moves, so cells in scrolling grids don't flash while panning.
+   Colour/opacity transitions are listed too so elements that also use
+   Tailwind's transition-colors keep their hover fades. */
+.ms-pressable {
+  -webkit-tap-highlight-color: transparent;
+  transform-origin: center;
+  transition:
+    transform 160ms ease,
+    filter 160ms ease,
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
+}
+.ms-pressable:active {
+  transform: scale(0.97);
+  filter: brightness(0.92);
+  transition-duration: 90ms;
+}
+
 body {
   /* Atmospheric lime glow from top of viewport */
   background-image: radial-gradient(80% 35% at 50% 0%, rgba(200, 255, 74, 0.07) 0%, transparent 65%);

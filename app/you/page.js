@@ -247,6 +247,7 @@ export default function YouPage() {
     <Link
       href="/settings"
       aria-label="Settings"
+      className="ms-pressable"
       style={{ color: "var(--po-text-dim)" }}
     >
       <Settings size={20} />
@@ -256,7 +257,7 @@ export default function YouPage() {
   const footer = (
     <>
       {/* Friends face-pile — whole card taps to /friends */}
-      <Link href="/friends" style={{ marginBottom: 24, display: "block", textDecoration: "none", color: "inherit" }}>
+      <Link href="/friends" className="ms-pressable" style={{ marginBottom: 24, display: "block", textDecoration: "none", color: "inherit" }}>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           marginBottom: 12,
@@ -347,6 +348,7 @@ export default function YouPage() {
               <div
                 key={list.id}
                 onClick={() => router.push(`/wants/${list.slug}`)}
+                className="ms-pressable"
                 style={{
                   marginBottom: 8, padding: "12px 14px",
                   background: "rgba(244,244,246,0.03)",
@@ -375,6 +377,7 @@ export default function YouPage() {
                         setWantListCopied(list.slug);
                         setTimeout(() => setWantListCopied(null), 2000);
                       }}
+                      className="ms-pressable"
                       style={{
                         padding: "6px 10px",
                         background: copied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
@@ -388,6 +391,7 @@ export default function YouPage() {
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteTap(list.slug, list.id); }}
+                      className="ms-pressable"
                       style={{
                         padding: "6px 10px",
                         background: confirming ? "rgba(255,90,106,0.15)" : "rgba(244,244,246,0.06)",
@@ -408,6 +412,7 @@ export default function YouPage() {
         )}
         <Link
           href="/want-lists/new"
+          className="ms-pressable"
           style={{
             display: "block", textAlign: "center", padding: "12px 16px",
             background: "none",
@@ -426,6 +431,7 @@ export default function YouPage() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={handleShare}
+            className="ms-pressable"
             style={{
               flex: 1,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -446,6 +452,7 @@ export default function YouPage() {
             <button
               onClick={openQr}
               aria-label="Show QR code"
+              className="ms-pressable"
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
                 padding: "13px",
@@ -514,6 +521,7 @@ export default function YouPage() {
                   console.error("Clipboard write failed:", e);
                 }
               }}
+              className="ms-pressable"
               style={{
                 width: "100%",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -534,6 +542,7 @@ export default function YouPage() {
             <button
               type="button"
               onClick={closeQr}
+              className="ms-pressable"
               style={{
                 display: "block", width: "100%", padding: "12px 0",
                 textAlign: "center", fontSize: 14, color: "#a1a1aa",
@@ -551,6 +560,7 @@ export default function YouPage() {
       <div style={{ borderTop: "0.5px solid rgba(244,244,246,0.08)", paddingTop: 20 }}>
         <Link
           href="/settings"
+          className="ms-pressable"
           style={{
             display: "flex", alignItems: "center", gap: 14,
             padding: "14px 0",
@@ -566,6 +576,7 @@ export default function YouPage() {
         </Link>
         <button
           onClick={handleSignOut}
+          className="ms-pressable"
           style={{
             width: "100%", display: "flex", alignItems: "center", gap: 14,
             padding: "14px 0",

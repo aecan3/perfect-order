@@ -654,7 +654,7 @@ export default function FriendOverviewPage() {
                 <Link
                   key={set.id}
                   href={`/friend/${handle}/${set.id}`}
-                  className="block rounded-2xl overflow-hidden border border-[var(--po-border)] active:scale-[0.99] transition-transform"
+                  className="ms-pressable block rounded-2xl overflow-hidden border border-[var(--po-border)]"
                   style={{ background: `linear-gradient(135deg, ${bg} 0%, #0a0e0a 100%)` }}
                 >
                   {inner}

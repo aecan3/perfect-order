@@ -12,7 +12,7 @@ export function FriendDupeTile({ dupe, onTap }) {
     <button
       type="button"
       onClick={() => onTap(dupe)}
-      className="relative block w-full overflow-hidden rounded-lg bg-black/40"
+      className="ms-pressable relative block w-full overflow-hidden rounded-lg bg-black/40"
       style={{ aspectRatio: "2.5/3.5" }}
     >
       {dupe.imageUrl ? (

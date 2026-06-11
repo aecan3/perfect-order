@@ -205,7 +205,7 @@ export default function FriendsPage() {
                           setShowSuggestions(false);
                           router.push(`/friend/${s.handle}`);
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--po-bg)] transition-colors flex items-center gap-2"
+                        className="ms-pressable w-full text-left px-3 py-2.5 hover:bg-[var(--po-bg)] transition-colors flex items-center gap-2"
                       >
                         <Avatar profile={s} size={28} />
                         <div className="min-w-0 flex-1">
@@ -227,7 +227,7 @@ export default function FriendsPage() {
             <button
               type="submit"
               disabled={!query.trim()}
-              className="px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex-shrink-0"
+              className="ms-pressable px-4 py-2 bg-[var(--po-green)] text-black rounded-lg font-bold uppercase tracking-widest text-xs disabled:opacity-50 flex-shrink-0"
             >
               Search
             </button>
@@ -241,7 +241,7 @@ export default function FriendsPage() {
               type="button"
               onClick={() => setRequestsOpen((v) => !v)}
               aria-expanded={requestsOpen}
-              className="w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
+              className="ms-pressable w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
             >
               {requestsOpen ? "▾" : "▸"} Friend requests ({incoming.length})
             </button>
@@ -265,14 +265,14 @@ export default function FriendsPage() {
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => accept(f.id)}
-                          className="w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"
+                          className="ms-pressable w-8 h-8 rounded-full bg-[var(--po-green)] text-black flex items-center justify-center po-glow-green"
                           aria-label="Accept"
                         >
                           <Check size={16} />
                         </button>
                         <button
                           onClick={() => remove(f.id)}
-                          className="w-8 h-8 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center hover:border-rose-700 hover:text-rose-400"
+                          className="ms-pressable w-8 h-8 rounded-full bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] flex items-center justify-center hover:border-rose-700 hover:text-rose-400"
                           aria-label="Reject"
                         >
                           <X size={16} />
@@ -293,7 +293,7 @@ export default function FriendsPage() {
               type="button"
               onClick={() => setSentOpen((v) => !v)}
               aria-expanded={sentOpen}
-              className="w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
+              className="ms-pressable w-full text-left text-xs uppercase tracking-widest text-[var(--po-text-dim)] mb-2 bg-transparent border-0 p-0 cursor-pointer"
             >
               {sentOpen ? "▾" : "▸"} Pending sent ({outgoing.length})
             </button>
@@ -314,7 +314,7 @@ export default function FriendsPage() {
                       </div>
                       <button
                         onClick={() => remove(f.id)}
-                        className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
+                        className="ms-pressable px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
                       >
                         Cancel
                       </button>
@@ -350,21 +350,21 @@ export default function FriendsPage() {
                     <div className="flex gap-2">
                       <Link
                         href={`/friend/${p.handle}`}
-                        className="px-3 py-1.5 bg-[var(--po-green)] text-black rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1"
+                        className="ms-pressable px-3 py-1.5 bg-[var(--po-green)] text-black rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1"
                       >
                         <Eye size={12} />
                         View
                       </Link>
                       <Link
                         href={`/messages/${p.handle}`}
-                        className="w-8 h-8 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg flex items-center justify-center hover:border-[var(--po-green)] hover:text-[var(--po-green)]"
+                        className="ms-pressable w-8 h-8 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg flex items-center justify-center hover:border-[var(--po-green)] hover:text-[var(--po-green)]"
                         aria-label={`Message ${p.handle}`}
                       >
                         <MessageCircle size={14} />
                       </Link>
                       <button
                         onClick={() => { if (confirm(`Unfriend ${p.handle}?`)) remove(f.id); }}
-                        className="px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
+                        className="ms-pressable px-3 py-1.5 bg-[var(--po-bg)] border border-[var(--po-border)] text-[var(--po-text-dim)] rounded-lg text-xs font-bold uppercase tracking-widest hover:border-rose-700 hover:text-rose-400"
                       >
                         Remove
                       </button>

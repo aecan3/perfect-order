@@ -13,7 +13,7 @@ export function MarketplaceTile({ listing, onTap }) {
     <button
       type="button"
       onClick={() => onTap(listing)}
-      className="relative block w-full overflow-hidden rounded-lg"
+      className="ms-pressable relative block w-full overflow-hidden rounded-lg"
       style={{
         aspectRatio: "2.5/3.5",
         boxShadow:

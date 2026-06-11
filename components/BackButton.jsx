@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const cls = "inline-flex items-center gap-1.5 text-[var(--po-text-dim)] hover:text-[var(--po-green)] cursor-pointer text-sm py-2 px-1 bg-transparent border-0";
+const cls = "ms-pressable inline-flex items-center gap-1.5 text-[var(--po-text-dim)] hover:text-[var(--po-green)] cursor-pointer text-sm py-2 px-1 bg-transparent border-0";
 
 export default function BackButton({ href, replace, onBack, label }) {
   const router = useRouter();

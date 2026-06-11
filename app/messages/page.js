@@ -75,6 +75,7 @@ export default function InboxPage() {
         <MSPageTitle>Messages</MSPageTitle>
         <button
           onClick={() => setComposeOpen(true)}
+          className="ms-pressable"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 36, height: 36,
@@ -107,7 +108,7 @@ export default function InboxPage() {
               <Link
                 key={convo.peer_id}
                 href={`/messages/${convo.profile?.handle || convo.peer_id}`}
-                className="flex items-center gap-3 py-3.5 hover:bg-[var(--po-bg-soft)] -mx-2 px-2 rounded-xl transition-colors"
+                className="ms-pressable flex items-center gap-3 py-3.5 hover:bg-[var(--po-bg-soft)] -mx-2 px-2 rounded-xl transition-colors"
               >
                 {/* Avatar placeholder */}
                 <div

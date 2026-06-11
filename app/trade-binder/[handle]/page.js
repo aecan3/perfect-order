@@ -386,6 +386,7 @@ export default function TradeBinderPage() {
         {isOwnPage && (
           <Link
             href="/trade-binder/add"
+            className="ms-pressable"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               padding: "13px 16px", marginBottom: SCAN_ENABLED ? 8 : 16,
@@ -422,6 +423,7 @@ export default function TradeBinderPage() {
         {!isOwnPage && targetProfile && (
           <Link
             href={`/friend/${handle}`}
+            className="ms-pressable"
             style={{
               display: "block",
               textAlign: "center",
@@ -478,7 +480,7 @@ export default function TradeBinderPage() {
               <button
                 onClick={() => setSortOpen(o => !o)}
                 style={{ position: "relative", zIndex: 50 }}
-                className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
+                className="ms-pressable text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border border-[var(--po-border)]"
               >
                 Sort: {SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? "Price ↓"}
               </button>
@@ -496,6 +498,7 @@ export default function TradeBinderPage() {
                     <button
                       key={opt.value}
                       onClick={() => { setSortBy(opt.value); setSortOpen(false); }}
+                      className="ms-pressable"
                       style={{
                         width: "100%", display: "block",
                         padding: "11px 16px",
@@ -519,7 +522,7 @@ export default function TradeBinderPage() {
             {/* Filter button */}
             <button
               onClick={openFilter}
-              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap border ${
+              className={`ms-pressable text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full whitespace-nowrap border ${
                 activeFilterCount > 0
                   ? "bg-[var(--po-green)] text-black font-bold border-[var(--po-green)]"
                   : "bg-[var(--po-bg-soft)] text-[var(--po-text-dim)] border-[var(--po-border)]"
@@ -546,6 +549,7 @@ export default function TradeBinderPage() {
             </p>
             <button
               onClick={clearFilters}
+              className="ms-pressable"
               style={{
                 background: "none",
                 border: "1px solid var(--po-border)",
@@ -575,6 +579,7 @@ export default function TradeBinderPage() {
                   if (isAnonymous) setAnonSelectedCard(card);
                   else if (!isOwnPage) toggleSelect(card.printing_id);
                 }}
+                className={isOwnPage && !isAnonymous ? undefined : "ms-pressable"}
                 style={{
                   position: "relative",
                   borderRadius: "var(--border-radius-md)",
@@ -645,6 +650,7 @@ export default function TradeBinderPage() {
                 {isOwnPage && card.trade_flagged && card.duplicate_count === 0 && (
                   <button
                     onClick={(e) => handleRemove(e, card)}
+                    className="ms-pressable"
                     style={{
                       position: "absolute", top: 5, right: 5,
                       width: 22, height: 22,
@@ -700,6 +706,7 @@ export default function TradeBinderPage() {
               <span style={{ fontWeight: 700, fontSize: 16, color: "var(--po-text)" }}>Filters</span>
               <button
                 onClick={closeFilter}
+                className="ms-pressable"
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--po-text-dim)", display: "flex", alignItems: "center", padding: 4 }}
               >
                 <X size={20} />
@@ -713,6 +720,7 @@ export default function TradeBinderPage() {
               <div style={{ borderBottom: "1px solid var(--po-border)" }}>
                 <button
                   onClick={() => setSectionsOpen(s => ({ ...s, set: !s.set }))}
+                  className="ms-pressable"
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
@@ -725,6 +733,7 @@ export default function TradeBinderPage() {
                   <button
                     key={set_id}
                     onClick={() => toggleSetFilter(set_id)}
+                    className="ms-pressable"
                     style={{
                       width: "100%", display: "flex", alignItems: "center", gap: 12,
                       padding: "11px 20px", background: "none", border: "none",
@@ -748,6 +757,7 @@ export default function TradeBinderPage() {
               <div style={{ borderBottom: "1px solid var(--po-border)" }}>
                 <button
                   onClick={() => setSectionsOpen(s => ({ ...s, rarity: !s.rarity }))}
+                  className="ms-pressable"
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
@@ -760,6 +770,7 @@ export default function TradeBinderPage() {
                   <button
                     key={rarity}
                     onClick={() => toggleRarityFilter(rarity)}
+                    className="ms-pressable"
                     style={{
                       width: "100%", display: "flex", alignItems: "center", gap: 12,
                       padding: "11px 20px", background: "none", border: "none",
@@ -783,6 +794,7 @@ export default function TradeBinderPage() {
               <div>
                 <button
                   onClick={() => setSectionsOpen(s => ({ ...s, price: !s.price }))}
+                  className="ms-pressable"
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "14px 20px", background: "none", border: "none", cursor: "pointer",
@@ -795,6 +807,7 @@ export default function TradeBinderPage() {
                   <button
                     key={bucket}
                     onClick={() => togglePriceFilter(bucket)}
+                    className="ms-pressable"
                     style={{
                       width: "100%", display: "flex", alignItems: "center", gap: 12,
                       padding: "11px 20px", background: "none", border: "none",
@@ -824,6 +837,7 @@ export default function TradeBinderPage() {
             }}>
               <button
                 onClick={clearFilters}
+                className="ms-pressable"
                 style={{
                   padding: "13px 16px",
                   background: "none",
@@ -838,6 +852,7 @@ export default function TradeBinderPage() {
               </button>
               <button
                 onClick={closeFilter}
+                className="ms-pressable"
                 style={{
                   flex: 1,
                   padding: "13px 16px",
@@ -862,6 +877,7 @@ export default function TradeBinderPage() {
       {pendingRemovals.length > 0 && mounted && createPortal(
         <div
           onClick={handleUndo}
+          className="ms-pressable"
           style={{
             position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
             zIndex: 300, display: "flex", alignItems: "center", gap: 4,
@@ -923,6 +939,7 @@ export default function TradeBinderPage() {
               </span>
               <button
                 onClick={() => setSelected(new Set())}
+                className="ms-pressable"
                 style={{ fontSize: 12, fontWeight: 700, color: "var(--po-text-dim)", background: "none", border: "none", cursor: "pointer" }}
               >
                 Clear
@@ -943,6 +960,7 @@ export default function TradeBinderPage() {
                 ));
                 router.push(`/trade/new?with=${handle}&requests=${requests}`);
               }}
+              className="ms-pressable"
               style={{
                 width: "100%",
                 padding: "15px",

@@ -67,6 +67,7 @@ function AnonymousTabBar() {
     >
       <Link
         href="/sets"
+        className="ms-pressable"
         style={{
           flex: 1,
           height: 64,
@@ -91,6 +92,7 @@ function AnonymousTabBar() {
       </Link>
       <Link
         href="/welcome"
+        className="ms-pressable"
         style={{
           flex: 2,
           display: "flex",
@@ -249,6 +251,7 @@ export function MSShell({ activeTab: propActiveTab, unreadCount: propUnreadCount
       {indicatorVisible && (
         <button
           type="button"
+          className="ms-pressable"
           onClick={onIndicatorTap}
           aria-label={
             refreshing
