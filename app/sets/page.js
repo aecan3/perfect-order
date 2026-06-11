@@ -359,7 +359,7 @@ export default function SetBrowserPage() {
     return rows.length;
   };
 
-  // "Pick up where you left off" â€" re-add set, navigate with existing data intact
+  // "Pick up where you left off" - re-add set, navigate with existing data intact
   const resumeExisting = async () => {
     if (!wizardSet?.id) return;
     setWizardBusy(true);
@@ -717,7 +717,7 @@ export default function SetBrowserPage() {
                     className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
                     style={{ background: wPrimary, color: wBg }}
                   >
-                    {wizardBusy ? "Addingâ€¦" : `Mark all ${wizardPrintings.length} as collected`}
+                    {wizardBusy ? "Adding…" : `Mark all ${wizardPrintings.length} as collected`}
                   </button>
                 </div>
 
@@ -762,7 +762,7 @@ export default function SetBrowserPage() {
                       disabled={wizardBusy}
                       className="ms-pressable flex-1 py-3 rounded-xl font-bold text-sm border border-[var(--po-border)] text-[var(--po-text-dim)] hover:border-[var(--po-green)] disabled:opacity-50"
                     >
-                      Skip â€" start empty
+                      Skip — start empty
                     </button>
                     <button
                       onClick={confirmPartial}
@@ -771,7 +771,7 @@ export default function SetBrowserPage() {
                       style={selectedBuckets.size ? { background: wPrimary, color: wBg } : undefined}
                     >
                       {wizardBusy
-                        ? "Addingâ€¦"
+                        ? "Adding…"
                         : selectedBuckets.size
                         ? `Apply selection (${selectedCount})`
                         : "Select rarities"}
@@ -811,7 +811,7 @@ export default function SetBrowserPage() {
             {/* Working overlay */}
             {wizardBusy && wizardStep < 3 && (
               <div className="absolute inset-0 flex items-center justify-center rounded-t-2xl bg-[var(--po-bg-soft)]/80 z-10">
-                <span className="text-sm text-[var(--po-text-dim)]">Workingâ€¦</span>
+                <span className="text-sm text-[var(--po-text-dim)]">Working…</span>
               </div>
             )}
           </div>
