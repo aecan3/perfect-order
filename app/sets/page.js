@@ -13,7 +13,7 @@ import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
 const RATES = {
   AUD: { rate: 1.53, symbol: "A$" },
   USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "Â£"  },
+  GBP: { rate: 0.79, symbol: "£"  },
 };
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
@@ -92,7 +92,7 @@ const BUCKET_ORDER = [
 ];
 const BUCKET_LABELS = {
   common: "Common", uncommon: "Uncommon", rare: "Rare", rare_holo: "Rare Holo",
-  gx: "GX", full_art: "Full Art", prism_star: "Prism Star â—‡", shining: "Shining",
+  gx: "GX", full_art: "Full Art", prism_star: "Prism Star ◇", shining: "Shining",
   rainbow_rare: "Rainbow Rare", secret_rare: "Secret Rare",
   v: "V", vmax: "VMAX", vstar: "VSTAR", v_full_art: "Full Art V",
   alt_art: "Alt Art", gold_rare: "Gold Rare", amazing_rare: "Amazing Rare",
@@ -202,7 +202,7 @@ export default function SetBrowserPage() {
     })();
   }, [router, supabase]);
 
-  // â"€â"€ Wizard derived values â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Wizard derived values ─────────────────────────────────────────────────
 
   const wizardBuckets = useMemo(() => {
     if (!wizardPrintings.length) return [];
@@ -232,7 +232,7 @@ export default function SetBrowserPage() {
     }).length;
   }, [wizardPrintings, selectedBuckets, wizardSet]);
 
-  // â"€â"€ Browser derived values â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Browser derived values ────────────────────────────────────────────────
 
   const seriesList = useMemo(() => {
     const s = new Set(allSets.map((x) => x.series).filter(Boolean));
@@ -252,11 +252,11 @@ export default function SetBrowserPage() {
     });
   }, [allSets, query, seriesFilter]);
 
-  // â"€â"€ Wizard actions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Wizard actions ────────────────────────────────────────────────────────
 
   const handleAddTap = async (set) => {
     if (!user) return;
-    // Case 2: set is hidden â†' unhide and navigate, no wizard
+    // Case 2: set is hidden → unhide and navigate, no wizard
     if (hiddenSetIds.has(set.id)) {
       await supabase.from("user_sets")
         .update({ hidden_at: null })
@@ -367,7 +367,7 @@ export default function SetBrowserPage() {
     router.push(`/set/${wizardSet.id}`);
   };
 
-  // Confirmed delete of existing entries â†' clear warning, continue with wizard
+  // Confirmed delete of existing entries → clear warning, continue with wizard
   const confirmDeleteExisting = async () => {
     if (!user?.id || !wizardSet?.id) return;
     setConfirmDeleteVisible(false);
@@ -440,7 +440,7 @@ export default function SetBrowserPage() {
     });
   };
 
-  // â"€â"€ Render â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const isAnonymous = !user;
 
@@ -575,7 +575,7 @@ export default function SetBrowserPage() {
         )}
       </div>
 
-      {/* Setup wizard bottom sheet â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+      {/* Setup wizard bottom sheet ───────────────────────────────────────── */}
       {wizardSet && (
         <>
           <div className="fixed inset-0 z-40 bg-black/60" onClick={closeWizard} />
@@ -816,7 +816,7 @@ export default function SetBrowserPage() {
             )}
           </div>
 
-          {/* â"€â"€ Delete confirmation sub-modal â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+          {/* ── Delete confirmation sub-modal ─────────────────────────────── */}
           {confirmDeleteVisible && (
             <>
               <div
