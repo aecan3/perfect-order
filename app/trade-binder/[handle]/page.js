@@ -16,6 +16,7 @@ import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import BackButton from "@/components/BackButton";
+import { RATES } from "@/lib/currency";
 
 const rarityRankOf = (rarity) => {
   const bucket = rarityBucket(rarity, [], 0, 0);
@@ -50,11 +51,6 @@ const PRICE_BUCKET_LABELS = {
   "150+":   "$150+",
 };
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 
 function fmtMoney(priceUsd, currency) {
   const { rate, symbol } = RATES[currency] || RATES.AUD;

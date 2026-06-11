@@ -9,12 +9,8 @@ import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
+import { RATES } from "@/lib/currency";
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
   if (v >= 100) return `${sym}${v.toFixed(0)}`;

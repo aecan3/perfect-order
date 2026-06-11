@@ -24,12 +24,8 @@ import { useRefreshPrices } from "@/app/RefreshPricesProvider";
 import PasskeyNudge from "@/components/PasskeyNudge";
 import PushNudge from "@/components/PushNudge";
 import { getSlotKey } from "@/lib/edition-utils";
+import { RATES, CURRENCY_OPTIONS } from "@/lib/currency";
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
@@ -742,9 +738,9 @@ export default function HomePage() {
             onChange={(e) => switchCurrency(e.target.value)}
             className="text-[10px] uppercase tracking-widest text-[var(--po-text-dim)] px-2 py-1 border border-[var(--po-border)] rounded bg-[var(--po-bg)] cursor-pointer"
           >
-            <option value="AUD">AUD</option>
-            <option value="USD">USD</option>
-            <option value="GBP">GBP</option>
+            {CURRENCY_OPTIONS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
 

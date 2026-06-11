@@ -11,6 +11,7 @@ import { MSShell } from "@/components/chrome/MSShell";
 import { OverflowMenu } from "@/components/OverflowMenu";
 import { ReportUserForm } from "@/components/ReportUserForm";
 import { BlockConfirmModal } from "@/components/BlockConfirmModal";
+import { RATES } from "@/lib/currency";
 
 const fmtTime = (ts) =>
   new Date(ts).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -18,11 +19,6 @@ const fmtTime = (ts) =>
 const fmtDate = (ts) =>
   new Date(ts).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";

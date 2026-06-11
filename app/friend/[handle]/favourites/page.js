@@ -10,12 +10,8 @@ import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import { Avatar } from "@/components/Avatar";
+import { RATES } from "@/lib/currency";
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";

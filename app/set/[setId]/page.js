@@ -25,12 +25,8 @@ import { CardArt } from "@/components/set/CardArt";
 import { CardCell } from "@/components/set/CardCell";
 import { VirtualCardGrid } from "@/components/set/VirtualCardGrid";
 import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
+import { RATES, CURRENCY_OPTIONS, CURRENCY_TO_COUNTRY } from "@/lib/currency";
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
 const daysSince = (ts) => Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000);
 const isStale = (ts) => ts && daysSince(ts) > 7;
@@ -1031,7 +1027,7 @@ export default function SetTrackerPage() {
 
   const themePrimary = setRow.theme_primary || "#b9ff3c";
   const themeSecondary = setRow.theme_secondary || "#c084fc";
-  const userCountry = { AUD: "AU", USD: "US", GBP: "UK" }[currency] || "AU";
+  const userCountry = CURRENCY_TO_COUNTRY[currency] || "AU";
 
   const missingFilter = (card) => {
     if (justCollected.has(card.number)) return true;
@@ -1244,9 +1240,9 @@ export default function SetTrackerPage() {
             className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
             style={{ color: "var(--po-text-dim)" }}
           >
-            <option value="AUD">AUD</option>
-            <option value="USD">USD</option>
-            <option value="GBP">GBP</option>
+            {CURRENCY_OPTIONS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
           {!isAnonymous && (
             <button

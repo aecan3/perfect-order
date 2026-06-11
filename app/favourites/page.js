@@ -9,12 +9,8 @@ import { FindOnline } from "@/components/FindOnline";
 import { selectAllPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { RATES, CURRENCY_OPTIONS, CURRENCY_TO_COUNTRY } from "@/lib/currency";
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
   if (v >= 100) return `${sym}${v.toFixed(0)}`;
@@ -39,7 +35,7 @@ export default function FavouritesPage() {
   const [currency, setCurrency] = useState("AUD");
   const [activeCard, setActiveCard] = useState(null);
   const [mounted, setMounted] = useState(false);
-  const userCountry = { AUD: "AU", USD: "US", GBP: "UK" }[currency] || "AU";
+  const userCountry = CURRENCY_TO_COUNTRY[currency] || "AU";
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -199,9 +195,9 @@ export default function FavouritesPage() {
           className="text-[10px] uppercase tracking-widest px-2 py-1.5 border border-[var(--po-border)] rounded-lg bg-[var(--po-bg-soft)] cursor-pointer"
           style={{ color: "var(--po-text-dim)" }}
         >
-          <option value="AUD">AUD</option>
-          <option value="USD">USD</option>
-          <option value="GBP">GBP</option>
+          {CURRENCY_OPTIONS.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
       </div>
 

@@ -6,6 +6,7 @@ import { ArrowLeftRight, Check, AlertTriangle, ChevronDown, Search, X } from "lu
 import { createClient } from "@/lib/supabase";
 import BackButton from "@/components/BackButton";
 import { MSShell } from "@/components/chrome/MSShell";
+import { RATES } from "@/lib/currency";
 
 const BATCH = 200;
 async function fetchInBatches(supabase, table, select, ids) {
@@ -18,11 +19,6 @@ async function fetchInBatches(supabase, table, select, ids) {
   return results.flatMap((r) => r.data);
 }
 
-const RATES = {
-  AUD: { rate: 1.53, symbol: "A$" },
-  USD: { rate: 1.0,  symbol: "$"  },
-  GBP: { rate: 0.79, symbol: "£"  },
-};
 const fmtMoney = (usd, currency) => {
   const { rate, symbol } = RATES[currency] || RATES.AUD;
   const v = (usd || 0) * rate;
