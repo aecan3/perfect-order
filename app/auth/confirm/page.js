@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { MasterSetterLogo } from "@/components/MasterSetterLogo";
 import * as Sentry from "@sentry/nextjs";
+import { track, EVENTS, identifyOnSignup, hasFired, markFired } from "@/lib/track";
 
 // Returns path if safe for internal redirect, null otherwise.
 // Accepts only paths starting with a single "/" — blocks external URLs and
@@ -141,6 +142,9 @@ function ConfirmContent() {
           // regardless of intentType. Handles cases where the intent param was
           // dropped in the Supabase redirect chain, or a prior attempt failed.
           // Idempotent via ON CONFLICT DO NOTHING.
+          // migrationResult is captured here and read after the guard so
+          // signup_completed can fire even on a zero-entry signup (migration skipped).
+          let migrationResult = null;
           try {
             const raw = localStorage.getItem("ms_anon_entries");
             if (raw) {
@@ -160,6 +164,7 @@ function ConfirmContent() {
                   });
                 } else {
                   const result = JSON.parse(responseText);
+                  migrationResult = result;
                   if (result.inserted !== entries.length) {
                     Sentry.captureMessage("anonymous-migration count mismatch (confirm page)", {
                       level: "warning",
@@ -179,6 +184,22 @@ function ConfirmContent() {
           } catch (e) {
             Sentry.captureException(e, { tags: { location: "confirm-migration" } });
           }
+
+          // signup_completed — genuine new-account completion (email confirmed).
+          // Fires once per session, unconditionally — lifted out of the migration
+          // guard so zero-entry signups still count. migrationResult is null when
+          // no migration ran, hence the ?? defaults. identifyOnSignup is skipped
+          // only if the user id is somehow missing.
+          if (user?.id) identifyOnSignup(user.id);
+          if (!hasFired("signup_completed")) {
+            track(EVENTS.SIGNUP_COMPLETED, {
+              migrated_entries: migrationResult?.inserted ?? 0,
+              migrated_set_ids: migrationResult?.setIds ?? [],
+              source: "confirm",
+            });
+            markFired("signup_completed");
+          }
+
           router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
           router.refresh();
         }

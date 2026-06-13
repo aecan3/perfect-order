@@ -9,6 +9,7 @@ import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
 import { PRIVACY_CONTENT, PRIVACY_LAST_UPDATED } from "@/content/legal/privacy";
 import { TOS_VERSION, PRIVACY_VERSION } from "@/lib/legalVersions";
 import * as Sentry from "@sentry/nextjs";
+import { track, EVENTS, identifyOnSignup } from "@/lib/track";
 
 const COUNTRIES = [
   { code: "AU", name: "Australia" },
@@ -86,6 +87,14 @@ function LoginContent() {
   // Shared post-signin routing used by both password and passkey sign-in.
   // Checks intent, runs migration if needed, then redirects.
   async function resolvePostSignin() {
+    // Identity stitch for the signed-in user (covers both password and passkey
+    // callers). This is a signin path, not signup — NO signup_completed here.
+    // identifyOnSignup is idempotent server-side (first-link-wins via onConflict),
+    // so calling it on every signin is harmless; it links returning users who
+    // predate analytics to their current anon_id.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) identifyOnSignup(user.id);
+
     let intent = null;
     try {
       const raw = sessionStorage.getItem("ms_anon_intent");
@@ -242,6 +251,21 @@ function LoginContent() {
     setError(null);
 
     if (mode === "signup") {
+      // signup_started — fire once per signup submit attempt, before validation
+      // and the signUp call. Not gated on success so the funnel can later measure
+      // form-error drop-off. intent_type is best-effort (sessionStorage intent,
+      // then ?intentType); null if not resolvable at submit time.
+      let startedIntentType = null;
+      try {
+        const raw = sessionStorage.getItem("ms_anon_intent");
+        if (raw) startedIntentType = JSON.parse(raw)?.type ?? null;
+      } catch { /* ignore */ }
+      if (!startedIntentType) startedIntentType = searchParams.get("intentType");
+      track(EVENTS.SIGNUP_STARTED, {
+        intent_type: startedIntentType || null,
+        source_path: document.referrer || window.location.pathname,
+      });
+
       if (!/^[a-z0-9_]{3,20}$/.test(handle)) {
         setError("Handle must be 3-20 chars: lowercase letters, numbers, underscores only.");
         setLoading(false);
