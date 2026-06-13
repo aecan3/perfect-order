@@ -153,6 +153,18 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, reason: "stash write failed" }, { status: 500 });
     }
 
+    // Best-effort opportunistic cleanup — backstop to the hourly pg_cron sweep.
+    // Fire-and-forget: never blocks or fails the write; errors swallowed to Sentry.
+    // Covers active signup traffic; pg_cron covers quiet periods. Neither alone is
+    // load-bearing.
+    admin
+      .from("pending_anon_stash")
+      .delete()
+      .lt("expires_at", new Date().toISOString())
+      .then(() => {}, (e) =>
+        Sentry.captureException(e, { tags: { location: "anon-stash-lazy-cleanup" } })
+      );
+
     return NextResponse.json({ ok: true, stored: mergedEntries.length, truncated });
   } catch (e) {
     Sentry.captureException(e, { tags: { location: "anon-stash-throw" } });

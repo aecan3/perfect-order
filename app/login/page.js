@@ -77,6 +77,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [stashedCollection, setStashedCollection] = useState(false); // had anon entries at signup-start → show the 24h hold notice
   const [legalModal, setLegalModal] = useState(null); // null | "terms" | "privacy"
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeyError, setPasskeyError] = useState(null);
@@ -309,6 +310,7 @@ function LoginContent() {
         const parsed = raw ? JSON.parse(raw) : null;
         const entries = parsed?.entries ?? [];
         if (entries.length > 0) {
+          setStashedCollection(true); // gates the 24h hold notice on the confirm screen
           await fetch("/api/anon-stash", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -385,6 +387,11 @@ function LoginContent() {
             <p className="text-xs text-[var(--po-text-dim)]">
               Check your spam folder if you don't see it within a minute.
             </p>
+            {stashedCollection && (
+              <p className="text-xs text-[var(--po-text-dim)]">
+                We'll hold the cards you added for 24 hours — confirm within that time to keep them.
+              </p>
+            )}
           </div>
           <button
             onClick={() => { setAwaitingConfirmation(false); setMode("signin"); }}
