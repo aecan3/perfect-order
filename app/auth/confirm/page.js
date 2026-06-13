@@ -64,15 +64,21 @@ function ConfirmContent() {
       });
 
       if (otpError) {
-        // If verifyOtp failed but a session already exists, the first
-        // invocation succeeded (StrictMode double-mount consumed the token).
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        // verifyOtp can fail because the token was already CONSUMED by a prior
+        // successful confirm — a StrictMode double-mount, a re-mount (e.g. a stray
+        // router.refresh), or the back button. That is NOT a bad link when the
+        // user is already authenticated: a consumed token + an established session
+        // means "already confirmed." Check authoritatively via getUser (validates
+        // the JWT server-side, unlike getSession which can read a momentarily-stale
+        // local value) and only fail when there is genuinely no session.
+        // Invariant: a user WITH a valid session is never shown "invalid".
+        const { data: { user: existingUser } } = await supabase.auth.getUser();
+        if (!existingUser) {
           setErrorMsg(otpError.message);
           setStatus("invalid");
           return;
         }
-        // Session exists from first invocation — fall through to profile step.
+        // Session already established by the first invocation — fall through.
       }
 
       // Session is now established. Create the profile row using the handle
@@ -237,13 +243,17 @@ function ConfirmContent() {
                 ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
                 : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           await runPostConfirmMigrationAndAnalytics();
+          // Navigating away to /messages — do NOT router.refresh() the current
+          // /auth/confirm route. Refreshing it mid-navigation re-mounts this page
+          // and re-runs the one-shot confirm() against the now-consumed token → a
+          // false "invalid" / stranded user. The destination fetches its own data.
           router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
-          router.refresh();
         } else {
           await runPostConfirmMigrationAndAnalytics();
 
+          // Navigating away — no router.refresh() (same re-mount race as the
+          // propose_trade branch above); the destination loads its own data.
           router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
-          router.refresh();
         }
       }, 800);
     }
