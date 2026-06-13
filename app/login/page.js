@@ -9,7 +9,7 @@ import { TERMS_CONTENT, TERMS_LAST_UPDATED } from "@/content/legal/terms";
 import { PRIVACY_CONTENT, PRIVACY_LAST_UPDATED } from "@/content/legal/privacy";
 import { TOS_VERSION, PRIVACY_VERSION } from "@/lib/legalVersions";
 import * as Sentry from "@sentry/nextjs";
-import { track, EVENTS, identifyOnSignup } from "@/lib/track";
+import { track, EVENTS, identifyOnSignup, getAnonId } from "@/lib/track";
 
 const COUNTRIES = [
   { code: "AU", name: "Australia" },
@@ -298,6 +298,34 @@ function LoginContent() {
       }
 
       const agreedAt = new Date().toISOString();
+
+      // Cross-device stash: persist the anonymous collection server-side keyed by
+      // email BEFORE signUp, so a confirm on a different device can still migrate
+      // it. Best-effort — awaited for ordering but fully try/caught so it can NEVER
+      // block or fail signup. ms_anon_entries is left intact (same-device confirm
+      // still uses it as the PART 2 fallback).
+      try {
+        const raw = localStorage.getItem("ms_anon_entries");
+        const parsed = raw ? JSON.parse(raw) : null;
+        const entries = parsed?.entries ?? [];
+        if (entries.length > 0) {
+          await fetch("/api/anon-stash", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              email: email.trim().toLowerCase(),
+              entries,
+              setModes: parsed?.setModes ?? {},
+              anon_id: getAnonId(),
+              started_at: parsed?.startedAt ?? null,
+            }),
+          });
+        }
+      } catch (e) {
+        // Stash is best-effort; never block signup. Log only.
+        Sentry.captureException(e, { tags: { location: "anon-stash-write" } });
+      }
 
       const { error: signUpError } = await supabase.auth.signUp({
         email,

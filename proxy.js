@@ -77,6 +77,12 @@ const PUBLIC_PATHS = new Set([
   // when present. Must be public or logged-out funnel events would 307 to /welcome.
   "/api/track",
 
+  // Cross-device onboarding stash — anonymous visitors POST their collection here
+  // at signup-start (before any session exists), keyed by email, so a confirm on a
+  // different device can still migrate it. Writes go via the service-role client.
+  // Must be public or the unauthenticated signup-start POST would 307 to /welcome.
+  "/api/anon-stash",
+
   // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.
