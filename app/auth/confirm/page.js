@@ -138,63 +138,97 @@ function ConfirmContent() {
           router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
           router.refresh();
         } else {
-          // Catch-all: always attempt migration if localStorage has anonymous data,
-          // regardless of intentType. Handles cases where the intent param was
-          // dropped in the Supabase redirect chain, or a prior attempt failed.
-          // Idempotent via ON CONFLICT DO NOTHING.
-          // migrationResult is captured here and read after the guard so
-          // signup_completed can fire even on a zero-entry signup (migration skipped).
-          let migrationResult = null;
+          // Cross-device onboarding: the SERVER STASH (keyed by the confirmed
+          // user's email) is the source of truth; localStorage is a same-device
+          // fallback used only when the stash migrated nothing (e.g. the
+          // signup-start stash write failed but this device still holds the data).
+          let effectiveMigrated = 0;
+          let effectiveSetIds = [];
+          let stashedAnonId = null; // original signup-device anon_id, if recovered
+
+          // 1. Consume the server-side stash (authenticated via the session cookie).
+          //    Resilient: ANY failure (network / 401 / 500) falls through to the
+          //    localStorage fallback — the user must always reach the app.
           try {
-            const raw = localStorage.getItem("ms_anon_entries");
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              const entries = (parsed.entries || []).filter((e) => e.setId);
-              if (entries.length > 0) {
-                const res = await fetch("/api/anonymous-migration", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
-                });
-                const responseText = await res.text();
-                if (!res.ok) {
-                  Sentry.captureMessage("anonymous-migration HTTP error (confirm page)", {
-                    level: "error",
-                    tags: { path: "/api/anonymous-migration", status: res.status },
-                  });
-                } else {
-                  const result = JSON.parse(responseText);
-                  migrationResult = result;
-                  if (result.inserted !== entries.length) {
-                    Sentry.captureMessage("anonymous-migration count mismatch (confirm page)", {
-                      level: "warning",
-                      extra: { inserted: result.inserted, expected: entries.length },
-                    });
-                  }
-                  if (result.inserted === entries.length) {
-                    localStorage.removeItem("ms_anon_entries");
-                  }
-                  sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
-                    count: result.inserted,
-                    setIds: result.setIds || [],
-                  }));
-                }
-              }
+            const res = await fetch("/api/anon-stash/consume", { method: "POST" });
+            if (res.ok) {
+              const data = await res.json();
+              effectiveMigrated = data.migrated ?? 0;
+              effectiveSetIds = data.setIds ?? [];
+              stashedAnonId = data.anon_id ?? null;
+            } else {
+              Sentry.captureMessage("anon-stash consume HTTP error (confirm page)", {
+                level: "warning",
+                tags: { path: "/api/anon-stash/consume", status: res.status },
+              });
             }
           } catch (e) {
-            Sentry.captureException(e, { tags: { location: "confirm-migration" } });
+            Sentry.captureException(e, { tags: { location: "confirm-stash-consume" } });
           }
 
-          // signup_completed — genuine new-account completion (email confirmed).
-          // Fires once per session, unconditionally — lifted out of the migration
-          // guard so zero-entry signups still count. migrationResult is null when
-          // no migration ran, hence the ?? defaults. identifyOnSignup is skipped
-          // only if the user id is somehow missing.
-          if (user?.id) identifyOnSignup(user.id);
+          // 2. FALLBACK: only when the stash migrated nothing, migrate any local
+          //    ms_anon_entries via the existing /api/anonymous-migration path.
+          if (effectiveMigrated === 0) {
+            try {
+              const raw = localStorage.getItem("ms_anon_entries");
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                const entries = (parsed.entries || []).filter((e) => e.setId);
+                if (entries.length > 0) {
+                  const res = await fetch("/api/anonymous-migration", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ entries, setModes: parsed.setModes || {} }),
+                  });
+                  const responseText = await res.text();
+                  if (!res.ok) {
+                    Sentry.captureMessage("anonymous-migration HTTP error (confirm page)", {
+                      level: "error",
+                      tags: { path: "/api/anonymous-migration", status: res.status },
+                    });
+                  } else {
+                    const result = JSON.parse(responseText);
+                    if (result.inserted !== entries.length) {
+                      Sentry.captureMessage("anonymous-migration count mismatch (confirm page)", {
+                        level: "warning",
+                        extra: { inserted: result.inserted, expected: entries.length },
+                      });
+                    }
+                    effectiveMigrated = result.inserted ?? 0;
+                    effectiveSetIds = result.setIds ?? [];
+                  }
+                }
+              }
+            } catch (e) {
+              Sentry.captureException(e, { tags: { location: "confirm-migration" } });
+            }
+          }
+
+          // 3. After a successful migrate via EITHER path, clear local entries (so a
+          //    later same-device visit doesn't re-migrate / re-toast) and surface the
+          //    "restored N cards" toast with the single effective count.
+          if (effectiveMigrated > 0) {
+            try { localStorage.removeItem("ms_anon_entries"); } catch (e) { /* ignore */ }
+            sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
+              count: effectiveMigrated,
+              setIds: effectiveSetIds,
+            }));
+          }
+
+          // 4. Identity stitch — CRITICAL cross-device FIX. If the stash was consumed
+          //    and carried an anon_id, link the ORIGINAL signup-device anon_id ->
+          //    user_id. Otherwise (consume failed / no stash / fallback) pass undefined
+          //    so identifyOnSignup uses the local anon_id (on same-device, that IS the
+          //    original signup anon_id).
+          if (user?.id) identifyOnSignup(user.id, stashedAnonId || undefined);
+
+          // 5. signup_completed — genuine new-account completion (email confirmed).
+          // Fires once per session, unconditionally (even a zero-entry signup), with
+          // the single effective migration count from whichever path ran.
           if (!hasFired("signup_completed")) {
             track(EVENTS.SIGNUP_COMPLETED, {
-              migrated_entries: migrationResult?.inserted ?? 0,
-              migrated_set_ids: migrationResult?.setIds ?? [],
+              migrated_entries: effectiveMigrated,
+              migrated_set_ids: effectiveSetIds,
               source: "confirm",
             });
             markFired("signup_completed");
