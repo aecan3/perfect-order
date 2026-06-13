@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { track, EVENTS } from "@/lib/track";
 
 export function MarketplaceDetailOverlay({ listing, onClose }) {
   const [mounted, setMounted] = useState(false);
@@ -116,11 +117,30 @@ export function MarketplaceDetailOverlay({ listing, onClose }) {
         </p>
 
         {/* View on eBay CTA */}
+        {/* customid attribution (anon_id → eBay click→purchase correlation) is NOT
+            threaded here: marketplace listing URLs are cached and SHARED across
+            users, so a per-user customid can't be baked at ingestion and would
+            require click-time href rewriting (breaks the keep-href/rel-intact
+            constraint). Tracked as a future follow-up. We do fire ebay_click on
+            the click below; track() carries anon_id internally. */}
         <a
           href={listing.listing_url}
           target="_blank"
           rel="noopener noreferrer sponsored"
           className="ms-pressable"
+          onClick={() => {
+            track(EVENTS.EBAY_CLICK, {
+              set_id: listing.set_id ?? null,
+              card_name: listing.card_name ?? null,
+              collector_number: null,
+              rarity: null,
+              user_country: marketToCountry(listing.marketplace_id),
+              campaign_id: null, // lives inside listing_url; omit
+              printing_id: listing.printing_id ?? null,
+              surface: "marketplace_listing",
+              listing_url: listing.listing_url ?? null,
+            });
+          }}
           style={{
             display: "block", width: "100%", padding: "12px 0",
             textAlign: "center", fontSize: 14, fontWeight: 700,
@@ -155,4 +175,13 @@ function formatPrice(amount, currency) {
   const n = Number(amount);
   if (Number.isNaN(n)) return "";
   return `${currency || "USD"} ${n.toFixed(2)}`;
+}
+
+// Marketplace id (e.g. "EBAY_AU") → FindOnline-style country code, so the
+// ebay_click user_country lines up across both surfaces. eBay's site code is
+// "GB"; FindOnline/lib/ebay uses "UK", so map that one. null when absent.
+function marketToCountry(marketplaceId) {
+  if (!marketplaceId) return null;
+  const code = marketplaceId.replace(/^EBAY_/, "");
+  return code === "GB" ? "UK" : code;
 }

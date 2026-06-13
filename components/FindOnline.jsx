@@ -46,6 +46,8 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
       rarity: rarity ?? null,
       user_country: userCountry ?? null,
       campaign_id: ebayCampaignId(userCountry),
+      printing_id: null, // generic eBay search is card-level, not a specific printing
+      surface: "find_online_search",
     });
     window.open(ebayUrl, "_blank", "noopener,noreferrer");
     setIsOpen(false);
