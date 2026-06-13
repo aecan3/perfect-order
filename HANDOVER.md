@@ -1866,3 +1866,73 @@ Post-launch experiments. No Feed milestone depends on them.
 - **M6:** Default state per event type — confirm push above or revise.
 - **M8:** Default-tab promotion strategy — A/B by cohort, hard switch, or
   per-user toggle.
+
+---
+
+## MESSAGE REQUESTS (FB/IG-style) — DESIGNED, NOT BUILT (parked 13 Jun 2026)
+
+**Why:** Messaging + trading are friends-only. A user who signs up via a
+trade-invite link has zero friends, so the entire trade-invite acquisition
+path (tap card in someone's binder → sign up → reach the sharer) currently
+dead-ends. Verified: test17 signed up via trade-invite, confirmed fine
+(not stranded — the ebdd1f8 confirm fix works), but landed on /sets with
+no way to contact the sharer.
+
+**Current trade-invite confirm state (post-ebdd1f8):** the propose_trade
+branch in /auth/confirm fires signup_completed + migration + identity
+stitch correctly, then router.push to /messages/[sharerHandle]. That route
+is friends-gated, so a brand-new user is bounced to /sets. NOT stranded
+(the stranding bug is fixed), but lands nowhere purposeful. The
+message-requests feature below is what gives that landing a purpose.
+(Open sub-question never resolved: whether test17 reached /messages and
+bounced, OR the intentType/sharerHandle params were dropped in the
+Supabase redirect chain so the catch-all ran. Either way the
+message-requests build supersedes it — the trade-invite confirm will route
+to the compose popup, not /messages.)
+
+**Designed behaviour (decisions locked with Alex 13 Jun 2026):**
+- General feature: ANY non-friend can send a message request (trade-invite
+  signup is just the first caller).
+- Flow: sender composes a message with a card attached; single button
+  "Send message & friend request" creates TWO linked things — a standalone
+  friend request AND a pending message held in the recipient's message-
+  requests inbox.
+- Recipient has a SEPARATE message-requests inbox (FB/IG-style side
+  button) — NOT mixed into friend message threads.
+- ACCEPT (atomic): friend request accepted (now friends) + the held
+  message materialises into normal messages as UNREAD from the new friend
+  + the request row is consumed/deleted.
+- DECLINE: silently drops both the held message and the friend request.
+  No block, no notice to sender.
+- One pending request per sender→recipient pair. If one already exists, a
+  re-send does NOT create a duplicate and does NOT re-notify. (Resolve at
+  build time: does re-send no-op entirely, or update the held message text
+  but stay un-renotified? Alex's wording implies the existing request
+  persists and re-sends are quietly absorbed with no new notification.)
+- NOTIFICATIONS: a NEW message request raises a general notification + a
+  messenger-style notification. Re-sends raise nothing.
+
+**Suggested build sequence (each a diagnose-first part, commit + verify
+between):**
+- PART 1 — data model + RPCs (no UI). New message_requests table (sender,
+  recipient, message body, attached card/printing_id, status, timestamps);
+  one-pending-pair constraint; RLS (no client policies, service-role/RPC
+  only, per house pattern); SECURITY DEFINER RPCs deriving sender from
+  auth.uid() (NEVER as a param — house security rule): create_message_request
+  (idempotent on pair), accept_message_request (atomic: accept friendship +
+  materialise message as unread + delete request), decline_message_request
+  (delete request + friend request). PART 1 audit MUST first map the
+  existing friendship + messages schema before adding this third related
+  table.
+- PART 2 — compose popup (message + attached card + "Send message & friend
+  request") + rewire the trade-invite confirm path to land here instead of
+  /messages/[handle].
+- PART 3 — message-requests inbox UI (separate side button), accept/decline,
+  accept→message-materialises on recipient side.
+- PART 4 — notifications (general + messenger on new request; no-renotify
+  rule).
+
+**Start point for next session:** PART 1 audit — how are friendships
+modelled (table, statuses, the accept flow), how are messages modelled
+(table, unread semantics), and where does the friends-gate live (proxy +
+in-page). Then design message_requests to sit alongside both.
