@@ -93,6 +93,12 @@ const PUBLIC_PATHS = new Set([
   // component in the root layout records the pageview before the redirect fires.
   "/start",   // TikTok
   "/start2",  // Instagram
+
+  // Short canonical referral links (publish these in social bios/descriptions) —
+  // same render-null → referral_landing → /sets pattern as /start, /start2 above.
+  "/tt",   // TikTok    (source: tiktok)
+  "/ig",   // Instagram (source: instagram)
+  "/yt",   // YouTube   (source: youtube)
 ]);
 
 export async function proxy(request) {
