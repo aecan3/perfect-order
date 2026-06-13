@@ -8,11 +8,15 @@ import { redirect } from "next/navigation";
 // to the admin. Read-only; always fresh per request.
 export const dynamic = "force-dynamic";
 
-const ALLOWED_DAYS = [7, 30, 90];
+const ALLOWED_DAYS = [1, 7, 30, 90];
 const MONO = '"IBM Plex Mono", monospace';
 const SANS = '"IBM Plex Sans", system-ui, sans-serif';
 
 const fmt = (n) => (Number(n) || 0).toLocaleString("en-AU");
+
+// Window naming: days=1 is the 24h view; everything else is "last N days".
+const windowLabel = (days) => (days === 1 ? "last 24 hours" : `last ${days} days`);
+const windowChip = (days) => (days === 1 ? "24h" : `${days}d`);
 
 function surfaceLabel(key) {
   if (key === "find_online_search") return "Find Online (search)";
@@ -116,7 +120,7 @@ function TrendRow({ label, data, valueKey, first }) {
 export default async function AnalyticsDashboardPage({ searchParams }) {
   const sp = (await searchParams) || {};
   const daysRaw = Number(sp.days);
-  const days = ALLOWED_DAYS.includes(daysRaw) ? daysRaw : 30;
+  const days = ALLOWED_DAYS.includes(daysRaw) ? daysRaw : 1; // default = 24h
 
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -149,7 +153,8 @@ export default async function AnalyticsDashboardPage({ searchParams }) {
 
   const started = Number(f.signups_started) || 0;
   const completed = Number(f.signups_completed) || 0;
-  const startedToCompleted = started > 0 ? Math.round((completed / started) * 100) : null;
+  // started>0 & completed=0 → "—" (cleaner than a misleading 0%); started=0 → hide.
+  const conversionLabel = started > 0 ? (completed > 0 ? `${Math.round((completed / started) * 100)}%` : "—") : null;
 
   const acqMax = Math.max(1, ...acquisition.map((a) => Number(a.signups) || 0));
   const surfaceMax = Math.max(1, ...surfaces.map((s) => Number(s.clicks) || 0));
@@ -187,7 +192,7 @@ export default async function AnalyticsDashboardPage({ searchParams }) {
                   color: active ? "var(--po-green)" : "var(--po-text-dim)",
                   background: active ? "rgba(200,255,74,0.08)" : "transparent",
                 }}>
-                  {d}d
+                  {windowChip(d)}
                 </a>
               );
             })}
@@ -196,16 +201,22 @@ export default async function AnalyticsDashboardPage({ searchParams }) {
 
         {/* FUNNEL */}
         <Section
-          title={`Funnel · last ${days} days`}
-          right={startedToCompleted != null ? (
+          title={`Funnel · ${windowLabel(days)}`}
+          right={conversionLabel != null ? (
             <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--po-text-dim)" }}>
-              started→completed <span style={{ color: "var(--po-green)" }}>{startedToCompleted}%</span>
+              started→completed <span style={{ color: "var(--po-green)" }}>{conversionLabel}</span>
             </span>
           ) : null}
         >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 10 }}>
             {funnelStages.map((s, i) => (
-              <StatCard key={i} label={s.label} value={fmt(s.value)} accent={s.accent} sub={s.test ? "incl. test traffic" : null} />
+              <StatCard
+                key={i}
+                label={s.label}
+                value={fmt(s.value)}
+                accent={s.accent && (Number(s.value) || 0) > 0}
+                sub={s.test ? "incl. test traffic" : null}
+              />
             ))}
           </div>
         </Section>
@@ -238,7 +249,7 @@ export default async function AnalyticsDashboardPage({ searchParams }) {
         </Section>
 
         {/* DAILY TREND */}
-        <Section title={`Daily trend · last ${days} days (Sydney)`}>
+        <Section title={`Daily trend · ${windowLabel(days)} (Sydney)`}>
           <div style={{ background: "var(--po-bg-soft)", border: "1px solid var(--po-border)", borderRadius: 12, padding: "4px 16px 12px" }}>
             <TrendRow first label="Signups" data={daily} valueKey="signups" />
             <TrendRow label="eBay clicks" data={daily} valueKey="ebay_clicks" />
