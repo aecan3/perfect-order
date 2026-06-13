@@ -26,6 +26,7 @@ import { CardCell } from "@/components/set/CardCell";
 import { VirtualCardGrid } from "@/components/set/VirtualCardGrid";
 import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
 import { RATES, CURRENCY_OPTIONS, CURRENCY_TO_COUNTRY } from "@/lib/currency";
+import { track, EVENTS } from "@/lib/track";
 
 const valueOf = (priceUsd, currency) => (priceUsd || 0) * (RATES[currency]?.rate || 1);
 const daysSince = (ts) => Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000);
@@ -592,6 +593,7 @@ export default function SetTrackerPage() {
 
       setProfile(prof);
       setSetRow(setData);
+      track(EVENTS.SET_OPENED, { set_id: setId });
       setPricesUpdatedAt(userSetData?.prices_updated_at || null);
       if (authUser) {
         setEditionMode(userSetData?.edition_mode || "any");
@@ -666,6 +668,7 @@ export default function SetTrackerPage() {
       if (count >= threshold && !thresholdsFiredRef.current.has(threshold)) {
         thresholdsFiredRef.current.add(threshold);
         setBlockerTrigger("card_threshold");
+        track(EVENTS.THRESHOLD_SHOWN, { threshold, total_count: count });
         break;
       }
     }
@@ -688,7 +691,11 @@ export default function SetTrackerPage() {
   // Anonymous: warn before unloading when there are unsaved cards
   useEffect(() => {
     if (!isAnonymous || anonCollection.totalCount === 0) return;
-    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    const handler = (e) => {
+      track(EVENTS.NAV_AWAY_WARNED, { total_count: anonCollection.totalCount });
+      e.preventDefault();
+      e.returnValue = "";
+    };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [isAnonymous, anonCollection.totalCount]);
@@ -818,6 +825,15 @@ export default function SetTrackerPage() {
           },
           { onConflict: "user_id,set_id,card_number,printing_id" }
         );
+        // card_added — add path only (willOwn). ownedSlotCount is the pre-add
+        // value (state update above hasn't flushed), so +1 is the post-add total.
+        track(EVENTS.CARD_ADDED, {
+          set_id: setId,
+          printing_id: printing.id,
+          card_number: printing.card_number,
+          is_anonymous: false,
+          total_count_after: ownedSlotCount + 1,
+        });
         fetch("/api/feed/record-milestone", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1066,7 +1082,11 @@ export default function SetTrackerPage() {
     },
     onOpenPicker: (card) => setPickingCard(card),
     onToggleFavourite: async (card, favPrintId, isFav) => {
-      if (!user) { setBlockerTrigger("auth_required"); return; }
+      if (!user) {
+        setBlockerTrigger("auth_required");
+        track(EVENTS.AUTH_REQUIRED_SHOWN, { surface: "favourite_star" });
+        return;
+      }
       if (isFav) {
         setFavourites((prev) => { const next = new Set(prev); next.delete(favPrintId); return next; });
         supabase.from("favourites").delete().eq("user_id", user.id).eq("printing_id", favPrintId).then(() => {});
