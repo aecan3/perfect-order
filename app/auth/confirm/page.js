@@ -121,23 +121,10 @@ function ConfirmContent() {
       // a race against verifyOtp/getSession. The timer just lets the user
       // read the "Confirmed!" state before the redirect fires.
       setTimeout(async () => {
-        const intentType = searchParams.get("intentType");
-        const sharerHandle = searchParams.get("sharerHandle");
-        const targetCardName = searchParams.get("targetCardName");
-        const intentSubType = searchParams.get("intentSubType");
-
-        if (intentType === "propose_trade" && sharerHandle) {
-          const subType = intentSubType || "message";
-          const messageBody = subType === "trade"
-            ? (targetCardName
-                ? `Hi! I'm interested in trading for your "${targetCardName}". I'm building my own binder — let's chat!`
-                : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
-            : (targetCardName
-                ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
-                : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
-          router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
-          router.refresh();
-        } else {
+        // Shared post-confirm work (stash migration + identity stitch +
+        // signup_completed), run by BOTH the trade-invite and catch-all branches
+        // before they navigate. No routing inside — each branch does its own push.
+        async function runPostConfirmMigrationAndAnalytics() {
           // Cross-device onboarding: the SERVER STASH (keyed by the confirmed
           // user's email) is the source of truth; localStorage is a same-device
           // fallback used only when the stash migrated nothing (e.g. the
@@ -233,6 +220,27 @@ function ConfirmContent() {
             });
             markFired("signup_completed");
           }
+        }
+
+        const intentType = searchParams.get("intentType");
+        const sharerHandle = searchParams.get("sharerHandle");
+        const targetCardName = searchParams.get("targetCardName");
+        const intentSubType = searchParams.get("intentSubType");
+
+        if (intentType === "propose_trade" && sharerHandle) {
+          const subType = intentSubType || "message";
+          const messageBody = subType === "trade"
+            ? (targetCardName
+                ? `Hi! I'm interested in trading for your "${targetCardName}". I'm building my own binder — let's chat!`
+                : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
+            : (targetCardName
+                ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
+                : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
+          await runPostConfirmMigrationAndAnalytics();
+          router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+          router.refresh();
+        } else {
+          await runPostConfirmMigrationAndAnalytics();
 
           router.push(safeReturnTo(searchParams.get("returnTo")) || "/");
           router.refresh();
