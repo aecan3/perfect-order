@@ -71,6 +71,12 @@ const PUBLIC_PATHS = new Set([
   // Authenticated via PUSH_WEBHOOK_SECRET Authorization header.
   "/api/push/notify",
 
+  // First-party analytics ingestion — anonymous visitors POST funnel events here
+  // (page_view, referral_landing, etc.) before any session exists. Writes go via
+  // the service-role client; user_id is derived server-side from the auth cookie
+  // when present. Must be public or logged-out funnel events would 307 to /welcome.
+  "/api/track",
+
   // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.
