@@ -1159,6 +1159,7 @@ export default function SetTrackerPage() {
           : card.number ? String(card.number).padStart(3, "0") : ""}
         themePrimary={themePrimary}
         userCountry={userCountry}
+        setId={setId}
         isAnonymous={isAnonymous}
         onTapCard={cellHandlers.onTapCard}
         onOpenPicker={cellHandlers.onOpenPicker}
@@ -1495,6 +1496,7 @@ export default function SetTrackerPage() {
                                   collectorNumber=""
                                   rarity={gmCard.rarity}
                                   userCountry={userCountry}
+                                  setId={setId}
                                 />
                               )}
                             </div>
@@ -1817,6 +1819,7 @@ export default function SetTrackerPage() {
                   : pickingCard.number ? String(pickingCard.number).padStart(3, "0") : ""}
                 rarity={pickingCard.rarity}
                 userCountry={userCountry}
+                setId={setId}
                 inline
               />
             </div>

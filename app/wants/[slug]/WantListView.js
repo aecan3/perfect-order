@@ -196,6 +196,7 @@ export function WantListView({ initialCards, isOwner, listId, slug, initialTitle
                   cardName={card.card_name || `#${card.card_number}`}
                   collectorNumber={String(card.card_number)}
                   userCountry="AU"
+                  setId={card.set_id}
                 />
 
                 {/* Bottom overlay */}

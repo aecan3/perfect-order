@@ -2,18 +2,19 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { buildEbayUrl } from "@/lib/ebay";
+import { buildEbayUrl, ebayCampaignId } from "@/lib/ebay";
+import { track, EVENTS, getAnonId } from "@/lib/track";
 
 const MARKET_LABEL = { AU: "AU", US: "US", UK: "UK", DE: "DE", CA: "CA" };
 
-export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry = "AU", inline = false }) {
+export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry = "AU", setId = null, inline = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const ebayOpeningRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  const ebayUrl = buildEbayUrl({ cardName, collectorNumber, rarity, userCountry });
+  const ebayUrl = buildEbayUrl({ cardName, collectorNumber, rarity, userCountry, customId: getAnonId() });
 
   const handleOpen = (e) => {
     e.stopPropagation();
@@ -35,6 +36,17 @@ export function FindOnline({ cardName, collectorNumber = "", rarity, userCountry
       localStorage.setItem("ebay_location_prompted", "true");
       try { navigator.geolocation.getCurrentPosition(() => {}, () => {}); } catch (_) {}
     }
+    // ebay_click — the lone monetisation event. sendBeacon-first transport
+    // survives the window.open / navigation. Fires per genuine click (the 1s
+    // debounce above already guards against double-fire).
+    track(EVENTS.EBAY_CLICK, {
+      set_id: setId ?? null,
+      card_name: cardName ?? null,
+      collector_number: collectorNumber ?? null,
+      rarity: rarity ?? null,
+      user_country: userCountry ?? null,
+      campaign_id: ebayCampaignId(userCountry),
+    });
     window.open(ebayUrl, "_blank", "noopener,noreferrer");
     setIsOpen(false);
   };

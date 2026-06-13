@@ -134,6 +134,7 @@ export default function FavouritesPage() {
               collectorNumber={collectorNum(activeCard.card, activeCard.set)}
               rarity={activeCard.card?.rarity}
               userCountry={userCountry}
+              setId={activeCard.set?.id}
               inline
             />
           </div>

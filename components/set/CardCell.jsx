@@ -28,6 +28,7 @@ function CardCellInner({
   collectorNumber,
   themePrimary,
   userCountry,
+  setId = null,
   isAnonymous,
   onTapCard,
   onOpenPicker,
@@ -109,6 +110,7 @@ function CardCellInner({
             collectorNumber={collectorNumber}
             rarity={card.rarity}
             userCountry={userCountry}
+            setId={setId}
           />
         )}
         {completionState !== "complete" && prints.length > 0 && (
