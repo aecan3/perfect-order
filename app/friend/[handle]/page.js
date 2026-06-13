@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { Flag, ShieldOff, MessageCircle } from "lucide-react";
@@ -16,6 +16,7 @@ import { ReportUserForm } from "@/components/ReportUserForm";
 import { BlockConfirmModal } from "@/components/BlockConfirmModal";
 import * as Sentry from "@sentry/nextjs";
 import { RATES } from "@/lib/currency";
+import { track, EVENTS } from "@/lib/track";
 
 const fmtMoney = (v, currency) => {
   const sym = RATES[currency]?.symbol || "$";
@@ -288,6 +289,17 @@ export default function FriendOverviewPage() {
     })();
     return () => { cancelled = true; };
   }, [handle, router, supabase]);
+
+  // friend_link_viewed — fire once, on resolution (status === "ok"), so
+  // viewer_is_friend reflects the settled friendship rather than the mount-time
+  // default. Ref-guarded against the effect re-running on later state updates.
+  const friendLinkFiredRef = useRef(false);
+  useEffect(() => {
+    if (friendLinkFiredRef.current) return;
+    if (status !== "ok") return;
+    friendLinkFiredRef.current = true;
+    track(EVENTS.FRIEND_LINK_VIEWED, { handle, viewer_is_friend: isFriend });
+  }, [status, isFriend, handle]);
 
   const isAnonymous = !currentUserId;
 

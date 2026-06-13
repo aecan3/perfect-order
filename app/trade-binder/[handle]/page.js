@@ -17,6 +17,7 @@ import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 import BackButton from "@/components/BackButton";
 import { RATES } from "@/lib/currency";
+import { track, EVENTS } from "@/lib/track";
 
 const rarityRankOf = (rarity) => {
   const bucket = rarityBucket(rarity, [], 0, 0);
@@ -93,6 +94,20 @@ export default function TradeBinderPage() {
     const c = localStorage.getItem("po:currency");
     if (c && RATES[c]) setCurrency(c);
   }, []);
+
+  // trade_invite_viewed — fire once, on resolution (status === "ok"), so
+  // viewer_is_anonymous reflects the settled viewerId rather than the mount-time
+  // null default. Ref-guarded against the effect re-running on later updates.
+  const tradeInviteFiredRef = useRef(false);
+  useEffect(() => {
+    if (tradeInviteFiredRef.current) return;
+    if (status !== "ok") return;
+    tradeInviteFiredRef.current = true;
+    track(EVENTS.TRADE_INVITE_VIEWED, {
+      sharer_handle: handle,
+      viewer_is_anonymous: viewerId === null,
+    });
+  }, [status, viewerId, handle]);
 
   // ── Faceted options ─────────────────────────────────────────────────────────
   // Each section ignores ITS OWN filter when computing which options to show,

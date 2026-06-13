@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Pencil, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { FindOnline } from "@/components/FindOnline";
+import { track, EVENTS } from "@/lib/track";
 
 function fmtPrice(priceUsd) {
   const val = Number(priceUsd) * 1.53;
@@ -12,7 +13,7 @@ function fmtPrice(priceUsd) {
   return `A$${val < 10 ? val.toFixed(2) : Math.round(val)}`;
 }
 
-export function WantListView({ initialCards, isOwner, listId, slug, initialTitle, ownerName, dateStr }) {
+export function WantListView({ initialCards, isOwner, listId, slug, initialTitle, ownerName, ownerHandle, dateStr }) {
   const supabase = createClient();
   const [cards, setCards] = useState(initialCards);
   const [title, setTitle] = useState(initialTitle);
@@ -23,6 +24,19 @@ export function WantListView({ initialCards, isOwner, listId, slug, initialTitle
   useEffect(() => {
     if (renaming) inputRef.current?.focus();
   }, [renaming]);
+
+  // want_list_viewed — fire once on mount. Relationship is known synchronously
+  // here (isOwner is a server-computed prop), so no resolve-wait needed.
+  const viewedFiredRef = useRef(false);
+  useEffect(() => {
+    if (viewedFiredRef.current) return;
+    viewedFiredRef.current = true;
+    track(EVENTS.WANT_LIST_VIEWED, {
+      slug,
+      list_owner_handle: ownerHandle ?? null,
+      viewer_is_owner: isOwner,
+    });
+  }, []);
 
   const heading = title || `${ownerName}'s Want List`;
   const subheading = title

@@ -98,6 +98,7 @@ export default async function WantListPage({ params }) {
         slug={slug}
         initialTitle={list.title}
         ownerName={ownerName}
+        ownerHandle={profile?.handle}
         dateStr={dateStr}
       />
     </MSShell>
