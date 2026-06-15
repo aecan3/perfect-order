@@ -105,6 +105,7 @@ function LoginContent() {
         const THIRTY_MIN = 30 * 60 * 1000;
         if (ageMs > THIRTY_MIN) {
           sessionStorage.removeItem("ms_anon_intent");
+          try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
         } else {
           intent = parsed;
         }
@@ -134,6 +135,7 @@ function LoginContent() {
             ? `Hi! I'd love to chat about your "${cardName}". Are you open to a trade or sale?`
             : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
       try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+      try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
       router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
       router.refresh();
       return;
@@ -173,6 +175,7 @@ function LoginContent() {
         Sentry.captureException(e, { tags: { location: "login-intent-migration" } });
       }
       try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+      try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
       router.push("/");
       router.refresh();
       return;

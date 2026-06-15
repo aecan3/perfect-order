@@ -203,6 +203,23 @@ export default function TradeBinderPage() {
       // sessionStorage unavailable — URL params carry the intent
     }
 
+    // Also persist to localStorage under the SAME key. localStorage survives the
+    // signup email round-trip (a fresh browsing context where sessionStorage is
+    // gone), so /auth/confirm can recover the intent when Supabase drops the URL
+    // params. Additive — the sessionStorage + URL logic above is unchanged.
+    try {
+      localStorage.setItem("ms_anon_intent", JSON.stringify({
+        type: "propose_trade",
+        intentSubType,
+        sharerHandle: handle,
+        targetPrintingId: card.printing_id,
+        targetCardName: card.card_name || null,
+        capturedAt: Date.now(),
+      }));
+    } catch (e) {
+      // localStorage unavailable — sessionStorage + URL params carry the intent
+    }
+
     router.push(`/welcome?${params.toString()}`);
   };
 

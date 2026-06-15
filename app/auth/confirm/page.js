@@ -228,10 +228,33 @@ function ConfirmContent() {
           }
         }
 
-        const intentType = searchParams.get("intentType");
-        const sharerHandle = searchParams.get("sharerHandle");
-        const targetCardName = searchParams.get("targetCardName");
-        const intentSubType = searchParams.get("intentSubType");
+        let intentType = searchParams.get("intentType");
+        let sharerHandle = searchParams.get("sharerHandle");
+        let targetCardName = searchParams.get("targetCardName");
+        let intentSubType = searchParams.get("intentSubType");
+
+        // The signup email round-trip lands in a fresh context (sessionStorage gone)
+        // and Supabase can drop the URL params — fall back to the localStorage
+        // carrier (survives the round-trip, same as Door B's ms_anon_entries).
+        // 30-min expiry, matching resolvePostSignin. URL takes precedence above.
+        if (!intentType) {
+          try {
+            const raw = localStorage.getItem("ms_anon_intent");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const ageMs = Date.now() - (parsed.capturedAt || 0);
+              if (ageMs > 30 * 60 * 1000) {
+                try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+                try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+              } else {
+                intentType = parsed.type ?? null;
+                intentSubType = parsed.intentSubType ?? null;
+                sharerHandle = parsed.sharerHandle ?? null;
+                targetCardName = parsed.targetCardName ?? null;
+              }
+            }
+          } catch (e) { /* ignore — intent stays null, falls through to default */ }
+        }
 
         if (intentType === "propose_trade" && sharerHandle) {
           const subType = intentSubType || "message";
@@ -243,6 +266,9 @@ function ConfirmContent() {
                 ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
                 : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           await runPostConfirmMigrationAndAnalytics();
+          // Intent consumed — clear BOTH carriers so a later session can't re-fire it.
+          try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
+          try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
           // Navigating away to /messages — do NOT router.refresh() the current
           // /auth/confirm route. Refreshing it mid-navigation re-mounts this page
           // and re-runs the one-shot confirm() against the now-consumed token → a
