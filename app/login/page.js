@@ -117,27 +117,29 @@ function LoginContent() {
       const sharerHandle = searchParams.get("sharerHandle");
       const targetCardName = searchParams.get("targetCardName");
       const intentSubType = searchParams.get("intentSubType");
+      const targetPrintingId = searchParams.get("targetPrintingId");
       if (intentType === "propose_trade" && sharerHandle) {
-        intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName };
+        intent = { type: "propose_trade", intentSubType, sharerHandle, targetCardName, targetPrintingId };
       } else if (intentType === "collection_migration") {
         intent = { type: "collection_migration" };
       }
     }
 
     if (intent?.type === "propose_trade" && intent.sharerHandle) {
-      const subType = intent.intentSubType || "message";
-      const cardName = intent.targetCardName;
-      const messageBody = subType === "trade"
-        ? (cardName
-            ? `Hi! I'm interested in trading for your "${cardName}". I'm building my own binder — let's chat!`
-            : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
-        : (cardName
-            ? `Hi! I'd love to chat about your "${cardName}". Are you open to a trade or sale?`
-            : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
       try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
       try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
-      router.push(`/messages/${intent.sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
-      router.refresh();
+      // Hand the resolved intent to /sets, which renders the trade-request modal
+      // (reads + clears this key on mount). No router.refresh() — same cross-route
+      // re-mount race the confirm-stranding fix avoids.
+      try {
+        sessionStorage.setItem("ms_trade_modal_intent", JSON.stringify({
+          sharerHandle: intent.sharerHandle,
+          targetPrintingId: intent.targetPrintingId ?? null,
+          targetCardName: intent.targetCardName ?? null,
+          intentSubType: intent.intentSubType ?? null,
+        }));
+      } catch (e) { /* ignore — the modal just won't show */ }
+      router.push("/sets");
       return;
     }
 

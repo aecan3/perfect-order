@@ -233,6 +233,7 @@ function ConfirmContent() {
         let sharerHandle = null;
         let targetCardName = null;
         let intentSubType = null;
+        let targetPrintingId = null;
 
         // 1. HIGHEST PRIORITY — the server-side pending_intents row, keyed to this user.
         //    The confirmation email strips URL params and opens in a different storage
@@ -251,6 +252,7 @@ function ConfirmContent() {
               intentSubType = row.intent_subtype;
               sharerHandle = row.sharer_handle;
               targetCardName = row.target_card_name;
+              targetPrintingId = row.target_printing_id;
               try { await supabase.from("pending_intents").delete().eq("user_id", user.id); } catch (e) { /* ignore */ }
             }
           } catch (e) { /* ignore — fall through to URL / localStorage */ }
@@ -262,6 +264,7 @@ function ConfirmContent() {
           sharerHandle = searchParams.get("sharerHandle");
           targetCardName = searchParams.get("targetCardName");
           intentSubType = searchParams.get("intentSubType");
+          targetPrintingId = searchParams.get("targetPrintingId");
         }
 
         // 3. localStorage carrier (same-context fallback; 30-min expiry, matching
@@ -280,29 +283,27 @@ function ConfirmContent() {
                 intentSubType = parsed.intentSubType ?? null;
                 sharerHandle = parsed.sharerHandle ?? null;
                 targetCardName = parsed.targetCardName ?? null;
+                targetPrintingId = parsed.targetPrintingId ?? null;
               }
             }
           } catch (e) { /* ignore — intent stays null, falls through to default */ }
         }
 
         if (intentType === "propose_trade" && sharerHandle) {
-          const subType = intentSubType || "message";
-          const messageBody = subType === "trade"
-            ? (targetCardName
-                ? `Hi! I'm interested in trading for your "${targetCardName}". I'm building my own binder — let's chat!`
-                : "Hi! I saw your Trade Binder on Master Setter and I'm interested in a trade. Let's chat!")
-            : (targetCardName
-                ? `Hi! I'd love to chat about your "${targetCardName}". Are you open to a trade or sale?`
-                : "Hi! I saw your Trade Binder on Master Setter and wanted to reach out. Want to chat?");
           await runPostConfirmMigrationAndAnalytics();
           // Intent consumed — clear BOTH carriers so a later session can't re-fire it.
           try { sessionStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
           try { localStorage.removeItem("ms_anon_intent"); } catch (e) { /* ignore */ }
-          // Navigating away to /messages — do NOT router.refresh() the current
-          // /auth/confirm route. Refreshing it mid-navigation re-mounts this page
-          // and re-runs the one-shot confirm() against the now-consumed token → a
-          // false "invalid" / stranded user. The destination fetches its own data.
-          router.push(`/messages/${sharerHandle}?prefill=${encodeURIComponent(messageBody)}`);
+          // Hand the resolved intent to /sets, which renders the trade-request modal
+          // (it reads + clears this key on mount). Same-tab push preserves sessionStorage.
+          try {
+            sessionStorage.setItem("ms_trade_modal_intent", JSON.stringify({
+              sharerHandle, targetPrintingId, targetCardName, intentSubType,
+            }));
+          } catch (e) { /* ignore — the modal just won't show */ }
+          // No router.refresh() (same re-mount race as the confirm-stranding fix);
+          // /sets loads its own data.
+          router.push("/sets");
         } else {
           await runPostConfirmMigrationAndAnalytics();
 

@@ -149,6 +149,7 @@ export default function SetBrowserPage() {
   const [tradeIntent, setTradeIntent] = useState(null);   // resolved ms_trade_modal_intent
   const [tradeData, setTradeData] = useState(null);       // { card, owner, alreadyFriends, viewerId, targetPrintingId }
   const [tradeLoading, setTradeLoading] = useState(false);
+  const [tradeToast, setTradeToast] = useState(null);     // success bar after onSend
 
   useScrollRestoration({ key: "/sets", ready: !loading });
 
@@ -279,6 +280,13 @@ export default function SetBrowserPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-dismiss the trade success toast.
+  useEffect(() => {
+    if (!tradeToast) return;
+    const t = setTimeout(() => setTradeToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [tradeToast]);
 
   // ── Wizard derived values ─────────────────────────────────────────────────
 
@@ -525,10 +533,39 @@ export default function SetBrowserPage() {
   // ── Trade-request modal overlay (null when no intent → /sets is untouched) ──
   const dismissTradeModal = () => { setTradeIntent(null); setTradeData(null); setTradeLoading(false); };
 
-  // PART 3 wires onSend (is_blocked → friendships → message → toast). Stubbed for
-  // PART 2 — the modal is unreachable until PART 3 swaps the intent writers.
-  const handleTradeSend = async () => {
-    throw new Error("Messaging isn't available yet.");
+  // onSend: is_blocked → (friend request if needed) → message → toast. Throws on
+  // failure so the modal shows the inline error + un-disables (component handles it).
+  const handleTradeSend = async (message) => {
+    const { viewerId: viewer, owner: ownerObj, targetPrintingId: printingId, alreadyFriends } = tradeData;
+    const owner = ownerObj.id;
+
+    // 1. Block guard (matches the messages composer).
+    const { data: blocked } = await supabase.rpc("is_blocked", { viewer, target: owner });
+    if (blocked) throw new Error("You can't message this user.");
+
+    // 2. Friend request — only when not already friends/pending. alreadyFriends already
+    //    covered both directions; swallow a 23505 (row appeared in a race) and proceed.
+    if (!alreadyFriends) {
+      const { error: friendErr } = await supabase
+        .from("friendships")
+        .insert({ user_a: viewer, user_b: owner, status: "pending" });
+      if (friendErr && friendErr.code !== "23505") throw friendErr;
+    }
+
+    // 3. Message — always. If it throws, propagate (modal shows the error). A friend
+    //    request from step 2 that already landed is independently valid (no rollback).
+    const { error: msgErr } = await supabase.from("messages").insert({
+      sender_id: viewer,
+      recipient_id: owner,
+      body: message,
+      message_type: "trade_proposal",
+      metadata: { cards: [printingId] },
+    });
+    if (msgErr) throw msgErr;
+
+    // 4. Success → dismiss modal + success toast.
+    dismissTradeModal();
+    setTradeToast(alreadyFriends ? "Message sent" : `Friend request sent to @${ownerObj.handle}`);
   };
 
   const tradeOverlay = tradeData ? (
@@ -550,10 +587,27 @@ export default function SetBrowserPage() {
     </div>
   ) : null;
 
+  // Trade success toast — mirrors the restoreToast bar on /set/[setId].
+  const tradeToastBar = tradeToast ? (
+    <div
+      onClick={() => setTradeToast(null)}
+      style={{
+        position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 300,
+        display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
+        background: "rgba(5,5,7,0.96)", border: "1px solid rgba(200,255,74,0.35)", borderRadius: 10,
+        color: "var(--po-green)", fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 700,
+        whiteSpace: "nowrap", boxShadow: "0 4px 20px rgba(0,0,0,0.5)", cursor: "pointer",
+      }}
+    >
+      ✓ {tradeToast}
+    </div>
+  ) : null;
+
   if (loading) {
     return (
       <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
         {tradeOverlay}
+        {tradeToastBar}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading...
         </div>
@@ -573,6 +627,7 @@ export default function SetBrowserPage() {
   return (
     <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
       {tradeOverlay}
+      {tradeToastBar}
       <MSPageTitle>{isAnonymous ? "BROWSE SETS" : "ADD A SET"}</MSPageTitle>
 
       <div className="px-4 pb-3 max-w-md mx-auto">
