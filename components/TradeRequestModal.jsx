@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, UserPlus, Send, Loader2 } from "lucide-react";
 import { CardHero } from "@/components/CardHero";
+import { Avatar } from "@/components/Avatar";
 
 // TradeRequestModal — centred dialog shown over /sets after a trade-invite signup/
 // signin. Variant A (alreadyFriends=false): friend request + message. Variant C
@@ -153,21 +154,10 @@ export function TradeRequestModal({ card, owner, alreadyFriends, onSend, onDismi
 
         {/* Owner attribution row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-          <div
-            style={{
-              width: 30, height: 30, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
-              background: "rgba(255,255,255,0.08)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            {owner?.avatarUrl ? (
-              <img src={owner.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : (
-              <span style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, color: "var(--po-text-dim)" }}>
-                {(owner?.handle || "?").charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
+          <Avatar
+            profile={{ avatar_url: owner?.avatarUrl, display_name: owner?.displayName, handle: owner?.handle }}
+            size={30}
+          />
           <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 13, color: "var(--po-text-dim)" }}>
             <span style={{ color: "var(--po-green)", fontWeight: 700 }}>@{owner?.handle}</span>'s card
           </div>
