@@ -240,7 +240,7 @@ export default function SetBrowserPage() {
             .eq("handle", intent.sharerHandle).maybeSingle(),
         ]);
 
-        if (!owner) { setTradeIntent(null); setTradeLoading(false); return; }
+        if (!owner || !p) { setTradeIntent(null); setTradeLoading(false); return; }
 
         let setName = null, setTotal = null;
         if (p?.set_id) {
