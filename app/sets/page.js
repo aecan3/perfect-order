@@ -559,7 +559,14 @@ export default function SetBrowserPage() {
       recipient_id: owner,
       body: message,
       message_type: "trade_proposal",
-      metadata: { cards: [printingId] },
+      // Rich object (snake_case = the renderer's "new propose API" path) so the thread's
+      // trade-proposal tile renders the card. card_name/image_url come from the PART 2
+      // fetch — no new query. price_usd/side intentionally omitted.
+      metadata: { cards: [{
+        printing_id: printingId,
+        card_name: tradeData.card.name,
+        image_url: tradeData.card.imageUrl,
+      }] },
     });
     if (msgErr) throw msgErr;
 
