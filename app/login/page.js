@@ -332,7 +332,7 @@ function LoginContent() {
         Sentry.captureException(e, { tags: { location: "anon-stash-write" } });
       }
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -360,6 +360,34 @@ function LoginContent() {
         setError(signUpError.message);
         setLoading(false);
         return;
+      }
+
+      // Server-side pending-intent carrier: the branded confirmation email strips
+      // emailRedirectTo's query params and opens in a different storage context, so
+      // the trade intent can't ride the URL or client storage to /auth/confirm.
+      // Persist it keyed to the new user's id via the service-role route — the intent
+      // params ARE still in window.location.search here. Fire-and-forget: a failed
+      // write must never block signup or the "check your email" screen.
+      try {
+        const newUserId = signUpData?.user?.id;
+        const sp = new URLSearchParams(window.location.search);
+        if (newUserId && sp.get("intentType") === "propose_trade" && sp.get("sharerHandle")) {
+          fetch("/api/pending-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              user_id: newUserId,
+              intent_type: "propose_trade",
+              intent_subtype: sp.get("intentSubType"),
+              sharer_handle: sp.get("sharerHandle"),
+              target_printing_id: sp.get("targetPrintingId"),
+              target_card_name: sp.get("targetCardName"),
+            }),
+          }).catch(() => {});
+        }
+      } catch (e) {
+        Sentry.captureException(e, { tags: { location: "pending-intent-write" } });
       }
 
       setAwaitingConfirmation(true);

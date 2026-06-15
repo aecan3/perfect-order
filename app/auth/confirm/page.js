@@ -228,15 +228,44 @@ function ConfirmContent() {
           }
         }
 
-        let intentType = searchParams.get("intentType");
-        let sharerHandle = searchParams.get("sharerHandle");
-        let targetCardName = searchParams.get("targetCardName");
-        let intentSubType = searchParams.get("intentSubType");
+        // Resolve the trade intent in priority order: DB carrier → URL → localStorage.
+        let intentType = null;
+        let sharerHandle = null;
+        let targetCardName = null;
+        let intentSubType = null;
 
-        // The signup email round-trip lands in a fresh context (sessionStorage gone)
-        // and Supabase can drop the URL params — fall back to the localStorage
-        // carrier (survives the round-trip, same as Door B's ms_anon_entries).
-        // 30-min expiry, matching resolvePostSignin. URL takes precedence above.
+        // 1. HIGHEST PRIORITY — the server-side pending_intents row, keyed to this user.
+        //    The confirmation email strips URL params and opens in a different storage
+        //    context, so the DB is the only carrier that survives the round-trip. The
+        //    confirm client is the new user here (post-verifyOtp), so RLS permits the
+        //    SELECT + DELETE. Consume-on-read: copy into locals, then delete the row.
+        if (user?.id) {
+          try {
+            const { data: row } = await supabase
+              .from("pending_intents")
+              .select("*")
+              .eq("user_id", user.id)
+              .maybeSingle();
+            if (row?.intent_type) {
+              intentType = row.intent_type;
+              intentSubType = row.intent_subtype;
+              sharerHandle = row.sharer_handle;
+              targetCardName = row.target_card_name;
+              try { await supabase.from("pending_intents").delete().eq("user_id", user.id); } catch (e) { /* ignore */ }
+            }
+          } catch (e) { /* ignore — fall through to URL / localStorage */ }
+        }
+
+        // 2. URL params (same-context cases where Supabase kept them).
+        if (!intentType) {
+          intentType = searchParams.get("intentType");
+          sharerHandle = searchParams.get("sharerHandle");
+          targetCardName = searchParams.get("targetCardName");
+          intentSubType = searchParams.get("intentSubType");
+        }
+
+        // 3. localStorage carrier (same-context fallback; 30-min expiry, matching
+        //    resolvePostSignin).
         if (!intentType) {
           try {
             const raw = localStorage.getItem("ms_anon_intent");

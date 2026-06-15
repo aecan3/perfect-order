@@ -83,6 +83,11 @@ const PUBLIC_PATHS = new Set([
   // Must be public or the unauthenticated signup-start POST would 307 to /welcome.
   "/api/anon-stash",
 
+  // Server-side pending-intent carrier — the signup branch POSTs the trade intent
+  // here (service role) before any session exists, so it survives the confirmation
+  // email round-trip (which strips URL params + opens a fresh storage context).
+  "/api/pending-intent",
+
   // Sentry tunnel route — browser SDK POSTs events here to bypass ad-blockers.
   // Must be public: events are sent from unauthenticated contexts (pre-login errors,
   // logged-out error states). Auth gate would silently 307 these to /welcome.
