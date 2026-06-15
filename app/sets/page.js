@@ -3,11 +3,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Check, Plus, X, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Search, Check, Plus, X, ChevronLeft, AlertTriangle, Loader2 } from "lucide-react";
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@/lib/supabase";
 import { selectMasterPrintings } from "@/lib/queries/printings";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { TradeRequestModal } from "@/components/TradeRequestModal";
 import { useScrollRestoration } from "@/lib/hooks/useScrollRestoration";
 import { RATES } from "@/lib/currency";
 
@@ -143,6 +145,11 @@ export default function SetBrowserPage() {
   // delete-confirmation sub-modal
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
 
+  // Trade-request modal (mounted only when a resolved intent was handed to /sets).
+  const [tradeIntent, setTradeIntent] = useState(null);   // resolved ms_trade_modal_intent
+  const [tradeData, setTradeData] = useState(null);       // { card, owner, alreadyFriends, viewerId, targetPrintingId }
+  const [tradeLoading, setTradeLoading] = useState(false);
+
   useScrollRestoration({ key: "/sets", ready: !loading });
 
   // Scroll lock while wizard is open
@@ -197,6 +204,81 @@ export default function SetBrowserPage() {
       setLoading(false);
     })();
   }, [router, supabase]);
+
+  // Trade-request modal: if the signup/signin handlers handed a resolved trade
+  // intent to /sets, read-and-clear it on mount, fetch display data, and show the
+  // modal over the page. No key → /sets is completely untouched (no fetch, no modal,
+  // no blur). The intent key is the only thing that changes /sets.
+  useEffect(() => {
+    let raw = null;
+    try {
+      raw = sessionStorage.getItem("ms_trade_modal_intent");
+      if (raw) sessionStorage.removeItem("ms_trade_modal_intent"); // read-and-clear
+    } catch (e) { return; }
+    if (!raw) return;
+
+    let intent;
+    try { intent = JSON.parse(raw); } catch (e) { return; }
+    if (!intent?.sharerHandle || !intent?.targetPrintingId) return;
+
+    setTradeIntent(intent);
+    setTradeLoading(true);
+    (async () => {
+      try {
+        const { data: { user: viewer } } = await supabase.auth.getUser();
+        if (!viewer) { setTradeIntent(null); setTradeLoading(false); return; }
+
+        // Printing + card (printing_id is text = printings.id; no cast) and owner,
+        // in parallel. Set name/total is a separate query (avoids the cards↔sets FK
+        // ambiguity — do NOT nest set:sets off printings).
+        const [{ data: p }, { data: owner }] = await Promise.all([
+          supabase.from("printings")
+            .select("id, set_id, card_number, printing_label, card:cards(name, image_large, image_small)")
+            .eq("id", intent.targetPrintingId).maybeSingle(),
+          supabase.from("profiles")
+            .select("id, handle, display_name, avatar_url")
+            .eq("handle", intent.sharerHandle).maybeSingle(),
+        ]);
+
+        if (!owner) { setTradeIntent(null); setTradeLoading(false); return; }
+
+        let setName = null, setTotal = null;
+        if (p?.set_id) {
+          const { data: s } = await supabase.from("sets").select("name, total").eq("id", p.set_id).maybeSingle();
+          setName = s?.name ?? null;
+          setTotal = s?.total ?? null;
+        }
+
+        const { data: rel } = await supabase.from("friendships").select("*")
+          .or(`and(user_a.eq.${viewer.id},user_b.eq.${owner.id}),and(user_a.eq.${owner.id},user_b.eq.${viewer.id})`)
+          .maybeSingle();
+
+        const number =
+          (p?.card_number != null && setTotal != null)
+            ? `${String(p.card_number).padStart(3, "0")}/${String(setTotal).padStart(3, "0")}`
+            : (p?.card_number != null ? String(p.card_number).padStart(3, "0") : null);
+
+        setTradeData({
+          viewerId: viewer.id,
+          targetPrintingId: intent.targetPrintingId,
+          card: {
+            name: p?.card?.name || intent.targetCardName || null,
+            setName,
+            number,
+            imageUrl: p?.card?.image_large || p?.card?.image_small || null,
+          },
+          owner: { id: owner.id, handle: owner.handle, displayName: owner.display_name, avatarUrl: owner.avatar_url },
+          alreadyFriends: !!rel,
+        });
+        setTradeLoading(false);
+      } catch (e) {
+        Sentry.captureException(e, { tags: { location: "sets-trade-modal-fetch" } });
+        setTradeIntent(null);
+        setTradeLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Wizard derived values ─────────────────────────────────────────────────
 
@@ -440,9 +522,38 @@ export default function SetBrowserPage() {
 
   const isAnonymous = !user;
 
+  // ── Trade-request modal overlay (null when no intent → /sets is untouched) ──
+  const dismissTradeModal = () => { setTradeIntent(null); setTradeData(null); setTradeLoading(false); };
+
+  // PART 3 wires onSend (is_blocked → friendships → message → toast). Stubbed for
+  // PART 2 — the modal is unreachable until PART 3 swaps the intent writers.
+  const handleTradeSend = async () => {
+    throw new Error("Messaging isn't available yet.");
+  };
+
+  const tradeOverlay = tradeData ? (
+    <TradeRequestModal
+      card={tradeData.card}
+      owner={tradeData.owner}
+      alreadyFriends={tradeData.alreadyFriends}
+      onSend={handleTradeSend}
+      onDismiss={dismissTradeModal}
+      onViewProfile={() => router.push(`/friend/${tradeData.owner.handle}`)}
+    />
+  ) : (tradeIntent && tradeLoading) ? (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <Loader2 size={28} className="animate-spin" style={{ color: "var(--po-green)" }} />
+    </div>
+  ) : null;
+
   if (loading) {
     return (
       <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
+        {tradeOverlay}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200, color: "var(--ms-dim)" }}>
           Loading...
         </div>
@@ -461,6 +572,7 @@ export default function SetBrowserPage() {
 
   return (
     <MSShell hideTabBar={!authResolved} anonymousNav={authResolved && isAnonymous}>
+      {tradeOverlay}
       <MSPageTitle>{isAnonymous ? "BROWSE SETS" : "ADD A SET"}</MSPageTitle>
 
       <div className="px-4 pb-3 max-w-md mx-auto">
