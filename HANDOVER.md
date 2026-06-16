@@ -1313,6 +1313,10 @@ When picking this back up, suggested sequence:
   Full stack (oldest→newest): `7b604a8` (carrier) · `2c4129d` · `a30e8d3` · `a7e59ec` · `5e09675` ·
   `df9e6ac` · `bcfe97d` · `1fb3e40`. **Origin (16 Jun 2026): all pushed — `origin/main` at `1fb3e40`,
   working tree clean, nothing unpushed.** Migrations applied via MCP and committed alongside (standing rule).
+  **UPDATED (16 Jun 2026):** the `onSend` + CTA described above are SUPERSEDED by Message Requests —
+  `onSend` now routes through `create_message_request` (no send-time friendship insert; the friendship
+  is born at ACCEPT), and the CTA reads "Send message request" / "Send message". The mount, intent
+  carrier, and rich-card-tile pieces are unchanged. See "MESSAGE REQUESTS — SHIPPED" below.
 
 - **PARKED (not built) — Trade Binder share affordance:** copy-link of the bare binder URL + a
   "Link copied" toast; plus share-button placement (above the Wants List, and an in-binder entry
@@ -1917,89 +1921,114 @@ Post-launch experiments. No Feed milestone depends on them.
 
 ---
 
-## MESSAGE REQUESTS — NEXT BUILD (Option 1 LOCKED, 16 Jun 2026; supersedes the 13 Jun parked spec)
+## MESSAGE REQUESTS — SHIPPED (Option 1 hold-the-body, 16 Jun 2026)
 
-**Status:** Designed, not built. Full PART-0 audit completed 16 Jun 2026; the held-message
-fork is now DECIDED — **Option 1 (hold-the-body)**. This is the next build.
+**Status:** Built, deployed, device-tested. Supersedes the 16-Jun "NEXT BUILD" spec and the
+13-Jun parked spec. Replaces the trade-modal's old send-time friend-request model (§18 trade-modal
+entry): a non-friend's first contact is now HELD as a request; the recipient ACCEPTS (where the
+friendship is born) or DECLINES. ANY non-friend first contact flows through this — the trade-invite
+signup is just the first caller.
 
-**Why:** Messaging + trading are friends-only first-contact. The shipped trade-modal (see §18,
-16 Jun) currently lets a non-friend send a friend-request + message in one shot, with the
-friendship created at SEND time by the sender. Message Requests replaces that with a properly
-gated model: a non-friend's first contact is HELD as a request; the recipient ACCEPTS (which is
-where the friendship is created) or DECLINES. ANY non-friend first contact flows through this —
-the trade-invite signup is just the first caller.
+**Commit stack (oldest→newest, all on `origin/main`):**
+- `2c4bd74` — PART 1: `message_requests` table + `create_message_request` / `accept_message_request`
+  / `decline_message_request` RPCs + the `notify_new_message` `_suppress_notify` guard. Migration
+  applied via MCP + committed together.
+- `5d13c5a` — PART 2a: `create_message_request` fast-path tightened to `status = 'accepted'` only
+  (a PENDING friendship is NOT a connection → routes through the request gate like a stranger).
+- `f888063` — PART 2c/2d: composer `send()` + `/sets` modal `onSend` routed through
+  `create_message_request`; **send-time friendship insert REMOVED** (friendship is now born at
+  ACCEPT time in RPC 2); CTA copy "Send message request" / "Send message"; toast "Message request
+  sent to @handle".
+- `06666d7` — PART 3: inbox "Message requests" section (above conversations, only when ≥1 pending)
+  + inline accept/decline (reusing the notifications lime-Accept / outline-Decline pattern) +
+  `message_request` notification type (MailPlus icon, tappable → `/messages?tab=requests`).
+- `57f15e4` — sender-SELECT RLS so a sender can read their OWN outgoing requests (deferred from
+  PART 1).
+- `04d3321` — sender's thread shows their pending request read-only (green outgoing bubble + card
+  tile via the extracted shared `CardStrip` + "Pending — they'll see this if they accept"), gated
+  on `messages.length === 0` so it flips to the real delivered message on accept (no double-render).
 
-**DECISION LOCKED — Option 1 (hold-the-body).** The message content is NOT inserted into
-`messages` until accept. A new `message_requests` table holds the body + card payload. The
-crucial property: **the existing `messages` table, every `messages` reader, the
-`notify_new_message` trigger, and `messages` RLS are ALL UNTOUCHED** — held content simply
-isn't in `messages` yet, so the gate is structural, not a filter bolted onto every query.
-*Option 2 (insert-into-messages-then-filter-everywhere) was REJECTED:* it would force edits to
-get_inbox_threads, the thread loader, the MSShell badge, the notify trigger, both realtime
-subscriptions, AND a hard cross-table SELECT RLS rule — far more surface, easy to leak.
+**LOCKED BEHAVIOUR (so a fresh session doesn't re-derive it):**
+- **Option 1 (hold-the-body):** held content lives in `message_requests` (`first_message` +
+  `payload` jsonb), NEVER in `messages` until accept. The existing `messages` table, every
+  `messages` reader, `get_inbox_threads`, `notify_new_message`, the MSShell badge, both realtime
+  subs, and `messages` RLS are ALL UNTOUCHED — the gate is structural, not a filter.
+- **Gate:** any pair that is NOT accepted-friends routes through a request; accepted-friends send
+  normally. Two send sites gated: composer `send()` (`app/messages/[handle]/page.js`) + `/sets`
+  modal `onSend` (`app/sets/page.js`). `/api/trade/propose` is already friends-gated (403 "Not
+  friends") — UNTOUCHED.
+- **`create_message_request` returns** `blocked` | `friends` | `created` | `updated`. Callers
+  branch: `friends` → normal `messages` insert; `created`/`updated` → held (no messages row);
+  `blocked` → silent generic failure (never reveal the block).
+- **Re-send = REPLACE** (`ON CONFLICT (sender_id, recipient_id) DO UPDATE`, D1), no
+  re-notification. Plain `UNIQUE(sender_id, recipient_id)` + delete-on-resolve.
+- **Decline (RPC 3):** delete the request row; `friendships` UNTOUCHED; no sender notification; no
+  block.
+- **Accept (RPC 2, atomic, one transaction):** friendship → accepted (`user_a` = request sender =
+  initiator, both directions guarded against the directional UNIQUE) + held content replayed into
+  `messages` as UNREAD from the new friend (carries `metadata._suppress_notify` so
+  `notify_new_message` skips the redundant ping — the `message_request` notification already fired
+  at create time) + request row deleted.
+- **Sender pending view:** the sender sees their own held request read-only in the thread (gated on
+  an empty thread). On accept, RPC 2 delivers the real message via realtime → `messages.length`
+  0→1 → block flips to the real bubble (identical content) and the request row is deleted;
+  `pendingRequest` is also cleared on the me→them realtime insert. A re-send updates the block
+  optimistically (D1 replace).
+- **RLS:** `message_requests_recipient_select` (`auth.uid() = recipient_id`) +
+  `message_requests_sender_select` (`auth.uid() = sender_id`); NO client write policies — all
+  writes via the three RPCs. All three RPCs SECURITY DEFINER, actor = `auth.uid()` derived
+  INTERNALLY (never a param — house security rule), `SET search_path = public`.
+- **Notification link** `/messages?tab=requests` lands on `/messages` where the requests section
+  sits at the top (no separate tab/route; the param is honoured by position).
 
-**PART-0 AUDIT FINDINGS (16 Jun 2026) — the internals to build against:**
-- *Conversation list source:* `get_inbox_threads(viewer)` — a SECURITY DEFINER RPC doing
-  `DISTINCT ON (LEAST/GREATEST(sender_id,recipient_id))` over `messages` (there is NO thread
-  table), returning last message + per-thread unread count. **Untouched by Option 1.**
-- *Thread view:* `app/messages/[handle]/page.js` loads via
-  `.or(and(sender_id,recipient_id),and(recipient_id,sender_id))`; messages are sender_id /
-  recipient_id direct (no thread FK); unread = `messages.read` boolean.
-- *Tab badge:* `MSShell.fetchUnreadMessages` counts DISTINCT senders of unread messages,
-  **already filtered to `message_type='message'`** (so it ignores trade_proposal today).
-- *The two non-friend first-contact SEND sites that must route through a request:*
-  (1) the composer `send()` in `app/messages/[handle]/page.js` — this is the shared path behind
-  NewMessageSheet, the Discover/duplicates `?cards` composer, and the friend-page message button;
-  it currently checks `is_blocked` ONLY, with **no friendship gate**. (2) the `/sets` trade-modal
-  `onSend`. **NOT a first-contact site:** `/api/trade/propose` is already friends-gated (returns
-  403 "Not friends") — leave it.
-- *Friendship check is inlined per-caller* (the symmetric `.or()` query, status pending|accepted) —
-  there is no friendship-status helper RPC to reuse; the new create_message_request RPC should do
-  this check server-side.
-- *messages RLS (stays as-is under Option 1):* INSERT `with_check (auth.uid()=sender_id)`;
-  SELECT `using (auth.uid() = sender_id OR auth.uid() = recipient_id)`; UPDATE recipient-only.
-- *Reusable accept/decline UI:* `app/notifications/page.js` already has the exact pattern —
-  `acceptRequest` / `declineRequest` handlers (~`:121–167`) + the lime-Accept / outline-Decline
-  two-button row (~`:295–330`) + a `pendingSenderHandles` optimistic-persistence pattern. **REUSE
-  this; do not reinvent.** (The friends page has a sibling implementation.)
-- *Notifications render:* a typed list keyed by `TYPE_ICON`; `friend_request` rows get the inline
-  accept/decline, all other types are tappable → `notif.link`. A `message_request` type ⇒ add a
-  `TYPE_ICON` entry + either inline accept/decline OR a link into the Messages "Message requests"
-  section.
-- *Messages list render:* `app/messages/page.js` is a single `divide-y` over `conversations.map`;
-  the "Message requests" section header + pending count slots ABOVE that list.
+**DEVICE-TESTED:** full loop (send → notify → inbox accept → thread + friendship), decline,
+accepted-friends bypass, re-send/replace — all pass. Sender pending view + accept reconciliation
+pending a final device pass.
 
-**Locked behaviour:**
-- Single sender CTA "Send message & friend request" creates ONE held request (body + card payload),
-  NOT a friendship and NOT a `messages` row.
-- **One pending request per (sender→recipient) pair** (unique constraint). A re-send ATTACHES TO
-  the existing request — no duplicate row, **no re-notification** (the existing request persists;
-  re-sends are quietly absorbed; optionally update the held body).
-- ACCEPT (atomic, one RPC): friendship → accepted (created here) + the held body inserted into
-  `messages` as UNREAD from the new friend + the request row deleted.
-- DECLINE: silently deletes the request (and any paired pending friend-request). No block, no
-  notice to the sender.
-- NOTIFICATIONS: a NEW request raises a notification at create time. Because no `messages` row
-  exists yet, `notify_new_message` never fires for it → no double-notify. Re-sends raise nothing.
+**Migrations:** `20260616120000_message_requests.sql`,
+`20260616130000_message_request_accepted_fast_path.sql`,
+`20260616140000_message_requests_sender_select.sql` (each applied via MCP + committed together).
 
-**Build shape (Option 1):**
-- **PART 1 — schema + RPCs (no UI).** New `message_requests` table: `{ id, sender_id,
-  recipient_id, first_message text, payload jsonb (the modal's metadata.cards rich object),
-  status, created_at }`, UNIQUE on (sender_id, recipient_id) pending pair. RLS per house pattern
-  (no broad client policies — service-role / RPC only). Three SECURITY DEFINER RPCs that derive
-  the actor from `auth.uid()` (NEVER a param — house security rule): `create_message_request`
-  (idempotent on pair; runs the friendship check server-side), `accept_message_request` (the
-  atomic accept above), `decline_message_request`. Body-only `CREATE OR REPLACE` on any existing
-  fn needs no DROP; new fns are fine. Commit the migration WITH the apply.
-- **PART 2 — rewire the two send sites.** Composer `send()` + `/sets` trade-modal `onSend` route
-  through `create_message_request` when the pair is non-friends. **The `/sets` `onSend` is
-  REVISED: it no longer inserts a friendship + message at SEND time — it creates a
-  message_request; the friendship is created at ACCEPT time by the recipient.** Also rewire the
-  trade-invite confirm landing intent if needed.
-- **PART 3 — inbox UI.** "Message requests" section in `app/messages/page.js` (count + list above
-  the conversations), reusing the notifications accept/decline two-button row.
-- **PART 4 — notification.** `message_request` type inserted by the create path (+ TYPE_ICON +
-  inline accept/decline); honour the no-renotify rule.
+---
 
-**Start point for next session:** PART 1 — write the `message_requests` migration + the three
-RPCs against the audit findings above (no UI), commit + verify, then PART 2.
+## TRADE BINDER SHARE — SHIPPED (16 Jun 2026)
+
+Was parked (three share fixes); now done. Share/copy the BARE URL only — the "Check out…" message
+rides in the trade-binder page's Open Graph preview, not glued into the copied string (that
+concatenation broke paste-into-URL-bar on the iOS sheet).
+
+**Commit stack:**
+- `2f45376` — share/copy BARE URL only (dropped `text`/`title` from `navigator.share`; the desktop
+  clipboard fallback was already bare); OG description → "Check out {name}'s Pokémon TCG Trade
+  Binder on Master Setter." (`app/trade-binder/[handle]/layout.js`); "Link copied" toast on the
+  clipboard path (the `tradeToastBar` / `restoreToast` lime bottom-centre pattern).
+- `188459f` — extracted `components/ShareTradeBinder.jsx` (SSR-safe: `origin` resolved in a mount
+  `useEffect`, null during SSR); moved the share control ABOVE the Wants List on `/you`; added the
+  lighter single-button entry point in the owner's trade-binder header (`isOwnPage`, below "Add
+  Cards"). The `showQr` prop gates the QR bottom-sheet (folded into the component; only `/you`
+  passes it).
+- `0b8c740` — toast on successful `navigator.share` resolve ("Shared") so desktop (Windows
+  Edge/Chrome now support `navigator.share`, whose sheet gives little feedback) isn't silent;
+  AbortError/cancel stays silent. Clipboard path keeps "Link copied".
+
+**OG verified live** (`curl` on `mastersettertcg.com/trade-binder/alex`): `og:description` AND
+`twitter:description` both carry the new "Check out…" copy, plus `og:image` (1200×630). A title-only
+unfurl on device is platform unfurl-caching or that app rendering large-image cards without a
+description line — NOT a bug; OG left untouched. (`proxy.js` already whitelists `/trade-binder/` +
+`/brand/`, so unfurl bots fetch both unauthenticated.)
+
+---
+
+## PARKED / OPTIONAL NEXT (small)
+
+- **"Cancel request" affordance** — senders can now SEE their pending request (read-only, in the
+  thread) but can't retract it before accept. Natural next addition if wanted; explicitly out of
+  scope so far. Would need a `cancel_message_request` RPC (actor = sender, derived from
+  `auth.uid()`) + a cancel button on the sender's pending block.
+- **Mobile toast double-confirm** — the share toast now fires on BOTH desktop and mobile
+  (`navigator.share` resolve). If the mobile OS-sheet + in-app toast feels redundant, gate the
+  toast desktop-only (one line in `ShareTradeBinder.handleShare`). Pending Alex's device judgement.
+
+**Conventions still in force (unchanged):** migrations committed WITH their MCP apply; body-only
+`CREATE OR REPLACE` needs no DROP; per-part commits with a build between; device-test before "done";
+diagnose-first with hard stops.
