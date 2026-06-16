@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import {
   Bell, UserPlus, UserCheck, ArrowLeftRight,
   CheckCircle2, XCircle, Camera, Award, Crown,
-  Heart, MessageCircle,
+  Heart, MessageCircle, MailPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { MSShell } from "@/components/chrome/MSShell";
@@ -17,6 +17,8 @@ import { MSPageTitle } from "@/components/chrome/MSPageTitle";
 const TYPE_ICON = {
   friend_request:           { Icon: UserPlus,        color: "var(--ms-dim)" },
   friend_accepted:          { Icon: UserCheck,        color: "var(--ms-dim)" },
+  // Tappable row → '/messages?tab=requests'; accept/decline lives in the inbox section.
+  message_request:          { Icon: MailPlus,         color: "var(--ms-dim)" },
   trade_proposal:           { Icon: ArrowLeftRight,   color: "var(--ms-dim)" },
   trade_accepted:           { Icon: CheckCircle2,     color: "var(--ms-dim)" },
   trade_declined:           { Icon: XCircle,          color: "var(--ms-dim)" },
