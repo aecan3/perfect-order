@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, UserPlus, Send, Loader2 } from "lucide-react";
+import { X, Send, Loader2 } from "lucide-react";
 import { CardHero } from "@/components/CardHero";
 import { Avatar } from "@/components/Avatar";
 
 // TradeRequestModal — centred dialog shown over /sets after a trade-invite signup/
-// signin. Variant A (alreadyFriends=false): friend request + message. Variant C
-// (true): message only. Self-contained focus-trap + ESC + scroll-lock + return-focus
-// (pattern copied from ReportUserForm). Tokens only; NO amber (--ms-gold reserved).
+// signin. Variant A (alreadyFriends=false): the message is held as a message request
+// until the owner accepts (friendship is created on accept). Variant C (true): normal
+// message to an accepted friend. Self-contained focus-trap + ESC + scroll-lock +
+// return-focus (pattern copied from ReportUserForm). Tokens only; NO amber reserved.
 //
 // Props: card { name, setName, number, imageUrl }, owner { id, handle, displayName,
 // avatarUrl }, alreadyFriends, onSend(message) [async; throws on failure],
@@ -93,8 +94,11 @@ export function TradeRequestModal({ card, owner, alreadyFriends, onSend, onDismi
 
   if (!mounted) return null;
 
-  const ctaLabel = alreadyFriends ? "Send message" : "Send friend request & message";
-  const CtaIcon = alreadyFriends ? Send : UserPlus;
+  // Not accepted-friends → the message is held as a request until they accept; the
+  // friendship is created on accept, not here. So the CTA promises a request, not a
+  // friend request. Accepted-friends send a normal message.
+  const ctaLabel = alreadyFriends ? "Send message" : "Send message request";
+  const CtaIcon = Send;
   const disabled = sending || !message.trim();
 
   return createPortal(

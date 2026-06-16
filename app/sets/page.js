@@ -269,7 +269,9 @@ export default function SetBrowserPage() {
             imageUrl: p?.card?.image_large || p?.card?.image_small || null,
           },
           owner: { id: owner.id, handle: owner.handle, displayName: owner.display_name, avatarUrl: owner.avatar_url },
-          alreadyFriends: !!rel,
+          // Only an ACCEPTED friendship is a connection. A pending row routes through
+          // the message-request gate like a stranger, so the CTA must read "request".
+          alreadyFriends: rel?.status === "accepted",
         });
         setTradeLoading(false);
       } catch (e) {
@@ -533,46 +535,50 @@ export default function SetBrowserPage() {
   // ── Trade-request modal overlay (null when no intent → /sets is untouched) ──
   const dismissTradeModal = () => { setTradeIntent(null); setTradeData(null); setTradeLoading(false); };
 
-  // onSend: is_blocked → (friend request if needed) → message → toast. Throws on
-  // failure so the modal shows the inline error + un-disables (component handles it).
+  // onSend: route through create_message_request (Option 1). The RPC owns the block
+  // check and the accepted-friends decision; the friendship is created at ACCEPT time
+  // by the recipient (RPC 2), never here. Throws on failure so the modal shows the
+  // inline error + un-disables (component handles it).
   const handleTradeSend = async (message) => {
-    const { viewerId: viewer, owner: ownerObj, targetPrintingId: printingId, alreadyFriends } = tradeData;
-    const owner = ownerObj.id;
+    const { viewerId: viewer, owner: ownerObj, targetPrintingId: printingId } = tradeData;
 
-    // 1. Block guard (matches the messages composer).
-    const { data: blocked } = await supabase.rpc("is_blocked", { viewer, target: owner });
-    if (blocked) throw new Error("You can't message this user.");
+    // The same rich card object the thread's trade-proposal tile renders (snake_case =
+    // the renderer's "new propose API" path). card_name/image_url come from the fetch
+    // above — no new query. price_usd/side intentionally omitted.
+    const cardsPayload = { cards: [{
+      printing_id: printingId,
+      card_name: tradeData.card.name,
+      image_url: tradeData.card.imageUrl,
+    }] };
 
-    // 2. Friend request — only when not already friends/pending. alreadyFriends already
-    //    covered both directions; swallow a 23505 (row appeared in a race) and proceed.
-    if (!alreadyFriends) {
-      const { error: friendErr } = await supabase
-        .from("friendships")
-        .insert({ user_a: viewer, user_b: owner, status: "pending" });
-      if (friendErr && friendErr.code !== "23505") throw friendErr;
+    const { data: result, error } = await supabase.rpc("create_message_request", {
+      p_recipient_id: ownerObj.id,
+      p_first_message: message,
+      p_payload: cardsPayload,
+    });
+    if (error) throw error;
+
+    // Block → generic failure, never reveal the block reason.
+    if (result === "blocked") throw new Error("You can't message this user.");
+
+    if (result === "friends") {
+      // Already accepted-friends → deliver a normal message straight to the thread.
+      const { error: msgErr } = await supabase.from("messages").insert({
+        sender_id: viewer,
+        recipient_id: ownerObj.id,
+        body: message,
+        message_type: "trade_proposal",
+        metadata: cardsPayload,
+      });
+      if (msgErr) throw msgErr;
+      dismissTradeModal();
+      setTradeToast("Message sent");
+      return;
     }
 
-    // 3. Message — always. If it throws, propagate (modal shows the error). A friend
-    //    request from step 2 that already landed is independently valid (no rollback).
-    const { error: msgErr } = await supabase.from("messages").insert({
-      sender_id: viewer,
-      recipient_id: owner,
-      body: message,
-      message_type: "trade_proposal",
-      // Rich object (snake_case = the renderer's "new propose API" path) so the thread's
-      // trade-proposal tile renders the card. card_name/image_url come from the PART 2
-      // fetch — no new query. price_usd/side intentionally omitted.
-      metadata: { cards: [{
-        printing_id: printingId,
-        card_name: tradeData.card.name,
-        image_url: tradeData.card.imageUrl,
-      }] },
-    });
-    if (msgErr) throw msgErr;
-
-    // 4. Success → dismiss modal + success toast.
+    // 'created' | 'updated' → held as a message request until they accept.
     dismissTradeModal();
-    setTradeToast(alreadyFriends ? "Message sent" : `Friend request sent to @${ownerObj.handle}`);
+    setTradeToast(`Message request sent to @${ownerObj.handle}`);
   };
 
   const tradeOverlay = tradeData ? (

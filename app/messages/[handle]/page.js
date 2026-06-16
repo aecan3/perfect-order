@@ -42,6 +42,7 @@ export default function ThreadPage() {
   const [sending, setSending] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [sendError, setSendError] = useState(null);
+  const [requestSent, setRequestSent] = useState(false); // held as a message request (not delivered to the thread)
   const [currency, setCurrency] = useState("AUD");
 
   // Pre-populated trade message from discover panel
@@ -200,26 +201,55 @@ export default function ThreadPage() {
 
   const send = async () => {
     if (!body.trim() || !user || !otherProfile || sending) return;
-    const { data: nowBlocked } = await supabase.rpc("is_blocked", { viewer: user.id, target: otherProfile.id });
-    if (nowBlocked) {
+    setSending(true);
+    setSendError(null);
+    const text = body.trim();
+    const cardsPayload = cardsMeta ? { cards: cardsMeta } : null;
+
+    // Route first-contact through the message-request gate. The RPC decides:
+    // accepted-friends → 'friends' (deliver normally); not-friends → the message
+    // is HELD as a request ('created'/'updated', no messages row); block → 'blocked'.
+    // (The RPC runs its own is_blocked check, so no separate pre-send block call.)
+    const { data: result, error: rpcError } = await supabase.rpc("create_message_request", {
+      p_recipient_id: otherProfile.id,
+      p_first_message: text,
+      p_payload: cardsPayload,
+    });
+
+    if (rpcError) {
       setSendError("Couldn't send message.");
+      setSending(false);
+      inputRef.current?.focus();
       return;
     }
-    setSending(true);
-    const payload = {
-      sender_id: user.id,
-      recipient_id: otherProfile.id,
-      body: body.trim(),
-      message_type: cardsMeta ? "trade_proposal" : "message",
-      metadata: cardsMeta ? { cards: cardsMeta } : null,
-    };
-    const { error } = await supabase.from("messages").insert(payload);
-    if (!error) {
+
+    if (result === "friends") {
+      // Accepted-friends: normal delivered message — unchanged behaviour. The
+      // realtime subscription appends it to the thread.
+      const { error } = await supabase.from("messages").insert({
+        sender_id: user.id,
+        recipient_id: otherProfile.id,
+        body: text,
+        message_type: cardsMeta ? "trade_proposal" : "message",
+        metadata: cardsPayload,
+      });
+      if (error) {
+        setSendError("Couldn't send message.");
+      } else {
+        setBody("");
+        setRequestSent(false);
+        if (cardsMeta) router.replace(`/messages/${handle}`); // clear card attachment after first send
+      }
+    } else if (result === "created" || result === "updated") {
+      // Held as a request — NOT delivered. Do not append to the thread; show notice.
       setBody("");
-      setSendError(null);
-      // Clear card attachment after first send
+      setRequestSent(true);
       if (cardsMeta) router.replace(`/messages/${handle}`);
+    } else {
+      // 'blocked' or anything unexpected → generic failure (never reveal the block).
+      setSendError("Couldn't send message.");
     }
+
     setSending(false);
     inputRef.current?.focus();
   };
@@ -487,11 +517,16 @@ export default function ThreadPage() {
           {sendError && (
             <p className="text-xs text-rose-400 text-center mb-2 max-w-md mx-auto">{sendError}</p>
           )}
+          {requestSent && !sendError && (
+            <p className="text-xs text-center mb-2 max-w-md mx-auto" style={{ color: "var(--po-green)" }}>
+              Message request sent — they'll see it if they accept.
+            </p>
+          )}
           <div className="flex items-end gap-2 max-w-md mx-auto">
             <textarea
               ref={inputRef}
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => { setBody(e.target.value); if (requestSent) setRequestSent(false); }}
               onKeyDown={handleKeyDown}
               placeholder="Message…"
               rows={1}
