@@ -34,8 +34,13 @@ export function ShareTradeBinder({ handle, showQr = false }) {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ url: binderUrl });
+        // Resolved → the share completed (sent or copied). Confirm with a toast so
+        // desktop (Windows Edge/Chrome now support navigator.share but its sheet gives
+        // little feedback) isn't silent. "Shared" — the sheet may send OR copy.
+        // A cancel rejects with AbortError → handled below, no toast.
+        setShareToast("Shared");
       } catch (e) {
-        // user cancelled — no-op
+        // AbortError (user cancelled) or share failure — no toast.
       }
     } else {
       try {
