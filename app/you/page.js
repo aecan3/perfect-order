@@ -5,8 +5,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Settings, LogOut, ChevronRight } from "lucide-react";
+import { Settings, LogOut, ChevronRight, BarChart3, Flag } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { isAdminClient } from "@/lib/admin-client";
 import { MSShell } from "@/components/chrome/MSShell";
 import { ProfileView } from "@/components/profile/ProfileView";
 import { ShareTradeBinder } from "@/components/ShareTradeBinder";
@@ -28,6 +29,7 @@ export default function YouPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
   const [wantLists, setWantLists] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false); // founder-only admin door; starts false → no flash for normal users
   const [wantListCopied, setWantListCopied] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const confirmDeleteTimerRef = useRef(null);
@@ -127,6 +129,11 @@ export default function YouPage() {
       setFriends({ count: friendIds.length, sample: sampleProfiles });
       setWantLists(wantListsWithCount);
       setLoading(false);
+
+      // Founder-only admin door — same gate /admin/reports uses (profiles.is_admin),
+      // one source of truth. Resolves after the main render so non-admins never flash it.
+      const admin = await isAdminClient(supabase, uid);
+      if (!cancelled) setIsAdmin(admin);
     })();
     return () => { cancelled = true; };
   }, [router, supabase]);
@@ -398,6 +405,46 @@ export default function YouPage() {
           </span>
           <ChevronRight size={16} style={{ color: "var(--po-text-faint)", flexShrink: 0 }} />
         </Link>
+
+        {/* Founder-only admin doors. The pages are also server-side gated (redirect
+            non-admins) — these links are convenience, not the security boundary. */}
+        {isAdmin && (
+          <>
+            <Link
+              href="/admin/analytics"
+              className="ms-pressable"
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "14px 0",
+                textDecoration: "none",
+                borderBottom: "0.5px solid rgba(244,244,246,0.06)",
+              }}
+            >
+              <BarChart3 size={18} style={{ color: "var(--po-green)", flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--po-text)" }}>
+                Admin · Analytics
+              </span>
+              <ChevronRight size={16} style={{ color: "var(--po-text-faint)", flexShrink: 0 }} />
+            </Link>
+            <Link
+              href="/admin/reports"
+              className="ms-pressable"
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "14px 0",
+                textDecoration: "none",
+                borderBottom: "0.5px solid rgba(244,244,246,0.06)",
+              }}
+            >
+              <Flag size={18} style={{ color: "var(--po-green)", flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 15, fontWeight: 500, color: "var(--po-text)" }}>
+                Admin · Reports
+              </span>
+              <ChevronRight size={16} style={{ color: "var(--po-text-faint)", flexShrink: 0 }} />
+            </Link>
+          </>
+        )}
+
         <button
           onClick={handleSignOut}
           className="ms-pressable"
