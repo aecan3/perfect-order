@@ -27,6 +27,64 @@ const fmtMoney = (v, currency) => {
   return `${sym}${v.toFixed(2)}`;
 };
 
+// Horizontal card-preview strip for trade proposals. Shared by the delivered-message
+// render and the sender's pending-request render so a pending request looks identical
+// to the message it becomes once accepted. Normalises camelCase (legacy) / snake_case.
+function CardStrip({ cardList, isMine, currency, onImgLoad }) {
+  if (!cardList?.length) return null;
+  const norm = (c) => ({
+    imageUrl: c.imageUrl || c.image_url,
+    cardName: c.cardName || c.card_name,
+    priceUsd: c.priceUsd ?? c.price_usd,
+    side: c.side,
+  });
+  return (
+    <div
+      className="flex gap-2 mb-1 overflow-x-auto pb-1"
+      style={{ maxWidth: 280, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+    >
+      {cardList.map((raw, ci) => {
+        const c = norm(raw);
+        return (
+          <div
+            key={ci}
+            className="flex-none flex flex-col rounded-xl overflow-hidden border"
+            style={{
+              width: 88,
+              background: "var(--po-bg-soft)",
+              scrollSnapAlign: "start",
+              borderColor: c.side === "request" ? "var(--po-green)" : "var(--po-border)",
+            }}
+          >
+            {c.imageUrl ? (
+              <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} onLoad={onImgLoad} />
+            ) : (
+              <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
+                {c.cardName}
+              </div>
+            )}
+            <div className="px-1.5 py-1.5">
+              {c.side && (
+                <p className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: c.side === "request" ? "var(--po-green)" : "var(--po-text-dim)" }}>
+                  {c.side === "offer"
+                    ? (isMine ? "You offer" : "They offer")
+                    : (isMine ? "They offer" : "You offer")}
+                </p>
+              )}
+              <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
+              {c.priceUsd > 0 && (
+                <p className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
+                  {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ThreadPage() {
   const router = useRouter();
   const { handle } = useParams();
@@ -43,6 +101,7 @@ export default function ThreadPage() {
   const [blocked, setBlocked] = useState(false);
   const [sendError, setSendError] = useState(null);
   const [requestSent, setRequestSent] = useState(false); // held as a message request (not delivered to the thread)
+  const [pendingRequest, setPendingRequest] = useState(null); // my OWN outgoing held request to this person
   const [currency, setCurrency] = useState("AUD");
 
   // Pre-populated trade message from discover panel
@@ -111,6 +170,16 @@ export default function ThreadPage() {
       // Load messages
       await loadMessages(user.id, profile.id);
 
+      // My own outgoing held request to this person (Option 1: no messages row yet).
+      // Readable via the sender-SELECT RLS. Shown read-only while no real message exists.
+      const { data: outReq } = await supabase
+        .from("message_requests")
+        .select("first_message, payload")
+        .eq("sender_id", user.id)
+        .eq("recipient_id", profile.id)
+        .maybeSingle();
+      setPendingRequest(outReq || null);
+
       // Mark received messages as read
       await supabase
         .from("messages")
@@ -136,6 +205,13 @@ export default function ThreadPage() {
               if (prev.find((m) => m.id === msg.id)) return prev;
               return [...prev, msg];
             });
+
+            // A real message from me → them means a held request was just accepted
+            // (RPC 2 inserted it and deleted the request row). Clear the pending block;
+            // the gate on messages.length also hides it, this keeps state honest.
+            if (msg.sender_id === user.id && msg.recipient_id === profile.id) {
+              setPendingRequest(null);
+            }
 
             // Auto-mark incoming as read
             if (msg.recipient_id === user.id) {
@@ -241,9 +317,12 @@ export default function ThreadPage() {
         if (cardsMeta) router.replace(`/messages/${handle}`); // clear card attachment after first send
       }
     } else if (result === "created" || result === "updated") {
-      // Held as a request — NOT delivered. Do not append to the thread; show notice.
+      // Held as a request — NOT delivered. Do not append to the thread; show notice +
+      // the read-only pending block. A re-send REPLACES the held content (D1), so mirror
+      // the new content optimistically (the RPC already upserted the row).
       setBody("");
       setRequestSent(true);
+      setPendingRequest({ first_message: text, payload: cardsPayload });
       if (cardsMeta) router.replace(`/messages/${handle}`);
     } else {
       // 'blocked' or anything unexpected → generic failure (never reveal the block).
@@ -320,7 +399,35 @@ export default function ThreadPage() {
         {/* Scrollable message list */}
         <div ref={scrollContainerRef} style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <div className="px-4 py-4 max-w-md mx-auto w-full">
-        {messages.length === 0 && (
+        {/* My pending outgoing request — read-only, styled as my outgoing bubble.
+            Gated on an empty thread so it disappears the instant the accepted message
+            arrives via realtime (RPC 2 delivers it + deletes the request row). */}
+        {messages.length === 0 && pendingRequest && (
+          <div className="flex flex-col items-end space-y-1.5 py-4">
+            <CardStrip
+              cardList={pendingRequest.payload?.cards}
+              isMine
+              currency={currency}
+              onImgLoad={handleAsyncContentLoaded}
+            />
+            {pendingRequest.first_message && (
+              <div
+                className="px-3 py-2 rounded-2xl max-w-[75%] text-sm leading-relaxed"
+                style={{ background: "var(--po-green)", color: "#050507", borderBottomRightRadius: 4 }}
+              >
+                {pendingRequest.first_message}
+              </div>
+            )}
+            <span
+              className="text-[10px] uppercase tracking-widest text-[var(--po-text-faint)] mt-0.5"
+              style={{ fontFamily: '"IBM Plex Mono", monospace' }}
+            >
+              Pending — they'll see this if they accept
+            </span>
+          </div>
+        )}
+
+        {messages.length === 0 && !pendingRequest && (
           <div className="text-center text-[var(--po-text-faint)] text-sm py-12">
             No messages yet — say something!
           </div>
@@ -387,62 +494,12 @@ export default function ThreadPage() {
                     )}
 
                     {/* Card previews for trade proposals — horizontal scroll row */}
-                    {(() => {
-                      const cardList = meta?.cards || (meta?.cardName ? [meta] : null);
-                      if (!cardList?.length) return null;
-                      // normalise camelCase (legacy) and snake_case (new propose API)
-                      const norm = (c) => ({
-                        imageUrl: c.imageUrl || c.image_url,
-                        cardName: c.cardName || c.card_name,
-                        priceUsd: c.priceUsd ?? c.price_usd,
-                        side: c.side,
-                      });
-                      return (
-                        <div
-                          className="flex gap-2 mb-1 overflow-x-auto pb-1"
-                          style={{ maxWidth: 280, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
-                        >
-                          {cardList.map((raw, ci) => {
-                            const c = norm(raw);
-                            return (
-                              <div
-                                key={ci}
-                                className="flex-none flex flex-col rounded-xl overflow-hidden border"
-                                style={{
-                                  width: 88,
-                                  background: "var(--po-bg-soft)",
-                                  scrollSnapAlign: "start",
-                                  borderColor: c.side === "request" ? "var(--po-green)" : "var(--po-border)",
-                                }}
-                              >
-                                {c.imageUrl ? (
-                                  <img src={c.imageUrl} alt={c.cardName} className="w-full object-cover" style={{ height: 120 }} onLoad={handleAsyncContentLoaded} />
-                                ) : (
-                                  <div className="flex items-center justify-center text-[8px] text-[var(--po-text-faint)] p-1 text-center" style={{ height: 120 }}>
-                                    {c.cardName}
-                                  </div>
-                                )}
-                                <div className="px-1.5 py-1.5">
-                                  {c.side && (
-                                    <p className="text-[8px] uppercase tracking-widest mb-0.5" style={{ color: c.side === "request" ? "var(--po-green)" : "var(--po-text-dim)" }}>
-                                      {c.side === "offer"
-                                        ? (isMine ? "You offer" : "They offer")
-                                        : (isMine ? "They offer" : "You offer")}
-                                    </p>
-                                  )}
-                                  <p className="text-[9px] font-bold leading-tight line-clamp-2 text-[var(--po-text)]">{c.cardName}</p>
-                                  {c.priceUsd > 0 && (
-                                    <p className="text-[9px] font-black mt-0.5" style={{ color: "var(--po-green)" }}>
-                                      {fmtMoney(c.priceUsd * (RATES[currency]?.rate || 1), currency)}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
+                    <CardStrip
+                      cardList={meta?.cards || (meta?.cardName ? [meta] : null)}
+                      isMine={isMine}
+                      currency={currency}
+                      onImgLoad={handleAsyncContentLoaded}
+                    />
 
                     {msg.message_type !== "trade_verification_photo" && (
                       <div
