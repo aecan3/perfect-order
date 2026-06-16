@@ -1983,7 +1983,8 @@ signup is just the first caller.
 
 **DEVICE-TESTED:** full loop (send → notify → inbox accept → thread + friendship), decline,
 accepted-friends bypass, re-send/replace — all pass. Sender pending view + accept reconciliation
-pending a final device pass.
+device-tested 16 Jun 2026 — pass (the pending block flips to the delivered message on accept, no
+double-render).
 
 **Migrations:** `20260616120000_message_requests.sql`,
 `20260616130000_message_request_accepted_fast_path.sql`,
