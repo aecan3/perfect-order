@@ -15,7 +15,7 @@ export async function generateMetadata({ params }) {
 
   const displayName = profile.display_name || `@${profile.handle}`;
   const title = `${displayName}'s Trade Binder — Master Setter`;
-  const description = `Browse ${displayName}'s tradeable Pokémon TCG cards on Master Setter.`;
+  const description = `Check out ${displayName}'s Pokémon TCG Trade Binder on Master Setter.`;
 
   return {
     title,

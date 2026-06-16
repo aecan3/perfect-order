@@ -28,7 +28,7 @@ export default function YouPage() {
   const [friends, setFriends] = useState({ count: 0, sample: [] });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
-  const [shareCopied, setShareCopied] = useState(false);
+  const [shareToast, setShareToast] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
   const [qrCopied, setQrCopied] = useState(false);
@@ -160,23 +160,33 @@ export default function YouPage() {
 
   const handleShare = async () => {
     const url = `${window.location.origin}/trade-binder/${profile?.handle}`;
-    const text = `Check out my Pokémon TCG Trade Binder on Master Setter`;
+    // Share/copy the BARE URL only — the descriptive blurb rides in the page's Open
+    // Graph preview (trade-binder/[handle]/layout.js), so we never glue text into the
+    // copied string (that concatenation broke paste-into-URL-bar on the iOS sheet).
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ url, text, title: "My Trade Binder" });
+        await navigator.share({ url });
       } catch (e) {
         // user cancelled — no-op
       }
     } else {
+      // Desktop / no native sheet → copy + toast. (Mobile's OS sheet self-confirms,
+      // so we only toast on this path to avoid a double confirmation.)
       try {
         await navigator.clipboard.writeText(url);
-        setShareCopied(true);
-        setTimeout(() => setShareCopied(false), 2000);
+        setShareToast("Link copied");
       } catch (e) {
         console.error("Clipboard write failed:", e);
       }
     }
   };
+
+  // Auto-dismiss the "Link copied" toast (~2.8s); also click-to-dismiss on the bar.
+  useEffect(() => {
+    if (!shareToast) return;
+    const t = setTimeout(() => setShareToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [shareToast]);
 
   const openQr = () => {
     setQrOpen(true);
@@ -436,7 +446,7 @@ export default function YouPage() {
               flex: 1,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               padding: "13px 16px",
-              background: shareCopied ? "rgba(200,255,74,0.18)" : "rgba(200,255,74,0.08)",
+              background: "rgba(200,255,74,0.08)",
               border: "0.5px solid rgba(200,255,74,0.25)",
               borderRadius: "var(--border-radius-md)",
               cursor: "pointer",
@@ -445,7 +455,7 @@ export default function YouPage() {
           >
             <Share2 size={16} style={{ color: "var(--po-green)", flexShrink: 0 }} />
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--po-green)" }}>
-              {shareCopied ? "Link copied!" : "Share my Trade Binder"}
+              Share my Trade Binder
             </span>
           </button>
           {binderUrl && (
@@ -468,6 +478,22 @@ export default function YouPage() {
           )}
         </div>
       </div>
+
+      {/* "Link copied" toast — mirrors the restoreToast / tradeToastBar pattern. */}
+      {shareToast && (
+        <div
+          onClick={() => setShareToast(null)}
+          style={{
+            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 300,
+            display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
+            background: "rgba(5,5,7,0.96)", border: "1px solid rgba(200,255,74,0.35)", borderRadius: 10,
+            color: "var(--po-green)", fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 700,
+            whiteSpace: "nowrap", boxShadow: "0 4px 20px rgba(0,0,0,0.5)", cursor: "pointer",
+          }}
+        >
+          ✓ {shareToast}
+        </div>
+      )}
 
       {/* QR sheet portal */}
       {qrOpen && binderUrl && createPortal(
