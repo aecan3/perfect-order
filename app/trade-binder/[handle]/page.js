@@ -15,6 +15,7 @@ import { fetchUserDuplicates } from "@/lib/queries/duplicates";
 import { rarityBucket, BUCKET_ORDER } from "@/lib/rarity";
 import { MSShell } from "@/components/chrome/MSShell";
 import { MSPageTitle } from "@/components/chrome/MSPageTitle";
+import { ShareTradeBinder } from "@/components/ShareTradeBinder";
 import BackButton from "@/components/BackButton";
 import { RATES } from "@/lib/currency";
 import { track, EVENTS } from "@/lib/track";
@@ -452,6 +453,14 @@ export default function TradeBinderPage() {
             <Zap size={15} />
             Scan Cards
           </Link>
+        )}
+
+        {/* Share entry point — owner only, below Add Cards. Lighter single affordance
+            (no QR); reuses the same handler as /you via the shared component. */}
+        {isOwnPage && (
+          <div style={{ marginBottom: 16 }}>
+            <ShareTradeBinder handle={handle} />
+          </div>
         )}
 
         {/* Sharer profile button — shown to all non-owner viewers (anon + logged-in) */}
