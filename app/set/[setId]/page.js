@@ -662,7 +662,7 @@ export default function SetTrackerPage() {
 
   // Anonymous: re-arm blocking modal at 5/15/30/50 cards across all sets
   useEffect(() => {
-    if (!isAnonymous) return;
+    if (!authResolved || !isAnonymous) return;
     const count = anonCollection.totalCount;
     for (const threshold of THRESHOLDS) {
       if (count >= threshold && !thresholdsFiredRef.current.has(threshold)) {
@@ -672,7 +672,13 @@ export default function SetTrackerPage() {
         break;
       }
     }
-  }, [isAnonymous, anonCollection.totalCount]);
+  }, [authResolved, isAnonymous, anonCollection.totalCount]);
+
+  // Clear any already-armed blocker the moment auth resolves to an authenticated
+  // user — covers the pre-auth race where the modal was armed while user was null.
+  useEffect(() => {
+    if (authResolved && !isAnonymous) setBlockerTrigger(null);
+  }, [authResolved, isAnonymous]);
 
   // Restore toast: show after migration if this set was migrated
   useEffect(() => {
@@ -1910,7 +1916,7 @@ export default function SetTrackerPage() {
         blockerOpen={!!blockerTrigger}
       />
       <AnonymousCollectionBlocker
-        open={!!blockerTrigger}
+        open={!!blockerTrigger && isAnonymous}
         trigger={blockerTrigger}
         count={anonCollection.totalCount}
         valueUsd={anonCollection.totalValueUsd}
