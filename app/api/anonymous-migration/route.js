@@ -47,7 +47,7 @@ export async function POST(request) {
     }));
 
   if (rows.length === 0) {
-    return NextResponse.json({ inserted: 0, requested: 0, setIds: [] });
+    return NextResponse.json({ inserted: 0, skipped: 0, requested: 0, setIds: [] });
   }
 
   const { data: inserted, error: insertErr } = await supabase
@@ -92,8 +92,16 @@ export async function POST(request) {
     // Worst case: user sees empty MY SETS but cards exist and can re-add the set.
   }
 
+  // ignoreDuplicates:true means RETURNING yields only NEWLY-inserted rows, so
+  // already-owned cards are absent from `inserted`. A skipped row is still a
+  // success (the card is already saved); count it so callers can tell a
+  // fully-accounted migration (inserted + skipped == requested) from a failure.
+  const insertedCount = inserted?.length || 0;
+  const skipped = Math.max(0, rows.length - insertedCount);
+
   return NextResponse.json({
-    inserted: inserted?.length || 0,
+    inserted: insertedCount,
+    skipped,
     requested: rows.length,
     setIds,
   });

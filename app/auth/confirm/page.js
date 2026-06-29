@@ -137,6 +137,7 @@ function ConfirmContent() {
           // signup-start stash write failed but this device still holds the data).
           let effectiveMigrated = 0;
           let effectiveSetIds = [];
+          let effectiveAccountedFor = false; // fallback migration fully accounted (inserted+skipped>=requested)
           let stashedAnonId = null; // original signup-device anon_id, if recovered
 
           // 1. Consume the server-side stash (authenticated via the session cookie).
@@ -189,6 +190,11 @@ function ConfirmContent() {
                     }
                     effectiveMigrated = result.inserted ?? 0;
                     effectiveSetIds = result.setIds ?? [];
+                    // A duplicate is still saved — clear localStorage once every
+                    // requested entry is either inserted or a known existing dup.
+                    if (((result.inserted || 0) + (result.skipped || 0)) >= (result.requested ?? entries.length)) {
+                      effectiveAccountedFor = true;
+                    }
                   }
                 }
               }
@@ -200,12 +206,14 @@ function ConfirmContent() {
           // 3. After a successful migrate via EITHER path, clear local entries (so a
           //    later same-device visit doesn't re-migrate / re-toast) and surface the
           //    "restored N cards" toast with the single effective count.
-          if (effectiveMigrated > 0) {
+          if (effectiveMigrated > 0 || effectiveAccountedFor) {
             try { localStorage.removeItem("ms_anon_entries"); } catch (e) { /* ignore */ }
-            sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
-              count: effectiveMigrated,
-              setIds: effectiveSetIds,
-            }));
+            if (effectiveMigrated > 0) {
+              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
+                count: effectiveMigrated,
+                setIds: effectiveSetIds,
+              }));
+            }
           }
 
           // 4. Identity stitch — CRITICAL cross-device FIX. If the stash was consumed

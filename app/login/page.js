@@ -168,8 +168,13 @@ function LoginContent() {
                   extra: { inserted: result.inserted, expected: entries.length },
                 });
               }
-              if (result.inserted === entries.length) localStorage.removeItem("ms_anon_entries");
-              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
+              const accountedFor = (result.inserted || 0) + (result.skipped || 0);
+              if (accountedFor >= (result.requested ?? entries.length)) {
+                localStorage.removeItem("ms_anon_entries");
+              }
+              if (result.inserted > 0) {
+                sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({ count: result.inserted, setIds: result.setIds || [] }));
+              }
             }
           }
         }
@@ -212,13 +217,16 @@ function LoginContent() {
                 extra: { inserted: result.inserted, expected: entries.length },
               });
             }
-            if (result.inserted === entries.length) {
+            const accountedFor = (result.inserted || 0) + (result.skipped || 0);
+            if (accountedFor >= (result.requested ?? entries.length)) {
               localStorage.removeItem("ms_anon_entries");
             }
-            sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
-              count: result.inserted,
-              setIds: result.setIds || [],
-            }));
+            if (result.inserted > 0) {
+              sessionStorage.setItem("ms_show_restore_toast", JSON.stringify({
+                count: result.inserted,
+                setIds: result.setIds || [],
+              }));
+            }
           }
         }
       }
